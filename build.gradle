@@ -5,4 +5,29 @@ plugins {
     id("io.micronaut.docker") version "4.4.2" apply(false)
     id("com.google.protobuf") version "0.9.2" apply(false)
 
+    id("maven-publish")
+
 }
+
+
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId = 'com.tcn.exile'
+
+            // from components.java
+        }
+    }
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/tcncloud/sati")
+            credentials {
+                username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_USERNAME")
+                password = project.findProperty("gpr.key") ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
+}
+
