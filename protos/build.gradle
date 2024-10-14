@@ -61,7 +61,7 @@ publishing {
     publications {
         maven(MavenPublication) {
             groupId = 'com.tcn.exile.sati'
-            // from components.java
+            from components.java
         }
     }
     repositories {
