@@ -32,13 +32,19 @@ jobs:
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582 # v4.0.0
 
+    - name: Compute version
+      id: version
+      run: echo VERSION=$(echo $GITHUB_REF | sed -e "s/refs\/tags\///" | sed -e "s/^v//") >> $GITHUB_ENV
+
+      shell: bash
+
     - name: Build with Gradle
-      run: ./gradlew -Pversion=$GITHUB_REF build
+      run: ./gradlew -Pversion=$VERSION build
 
     # The USERNAME and TOKEN need to correspond to the credentials environment variables used in
     # the publishing section of your build.gradle
     - name: Publish to GitHub Packages
-      run: ./gradlew -Pversion=$GITHUB_REF publish
+      run: ./gradlew -Pversion=$VERSION publish
       env:
         GITHUB_USERNAME: ${{ github.actor }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
