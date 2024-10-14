@@ -70,23 +70,22 @@ micronaut {
     }
 }
 
-// publishing {
-//     publications {
-//         maven (MavenPublication) {
-//             groupId = 'com.tcn.exile.sati'
-//             artifactId = 'core'
 
-//             from components.java
-//         }
-//     }    
-//     repositories {
-//         maven {
-//             name = "GitHubPackages"
-//             url = uri("https://maven.pkg.github.com/tcncloud/sati")
-//             credentials {
-//                 username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_USERNAME")
-//                 password = project.findProperty("gpr.key") ?: System.getenv("GITHUB_TOKEN")
-//             }
-//         }
-//     }
-// }
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId = 'com.tcn.exile.sati'
+            // from components.java
+        }
+    }
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/tcncloud/sati")
+            credentials {
+                username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_USERNAME")
+                password = project.findProperty("gpr.key") ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
+}
