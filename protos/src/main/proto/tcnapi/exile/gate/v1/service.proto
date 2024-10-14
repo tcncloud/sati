@@ -1,0 +1,291 @@
+syntax = "proto3";
+
+package tcnapi.exile.gate.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+import "tcnapi/exile/gate/v1/entities.proto";
+import "tcnapi/exile/gate/v1/api_entities.proto";
+
+service ExileGateService {
+  // this is the first method that an exile gate client needs to call before any other rpc
+  // methods will will be called. This will return the pairded configuration for the given
+  // certificate that the client is using to connect to the gate service.
+  rpc Config(ConfigReq) returns (ConfigRes);
+
+  // Org will return the organization information for the current
+  // certificate that the client is using to connect to the gate service.
+  rpc Org(OrgReq) returns (OrgRes);
+
+  // JobStream will establish a connection with the gate service that will
+  // stream job requests that need to be executed by exiled app.
+  rpc JobStream(stream JobStreamRequest) returns (stream JobStreamResponse);
+
+  // EventStream will receive events from the gate service that will need to
+  // be processed an saved into the local database in order to be exposed thru local
+  // api to the clients
+  // The gate service has a limited window of time while the events are kept then are
+  // discarded, therefore the client must be able to process the events in a timely manner.
+  rpc EventStream(EventStreamRequest) returns (stream EventStreamResponse);
+
+  rpc ResultsStream(stream ResultsStreamRequest) returns (ResultsStreamResponse);
+
+  rpc GetAgentState(GetAgentStateReq) returns (GetAgentStateRes);
+  rpc SetAgentState(SetAgentStateReq) returns (SetAgentStateRes);
+  rpc ListAgents(ListAgentsReq) returns (stream ListAgentsRes);
+  rpc UpsertAgent(UpsertAgentReq) returns (UpsertAgentRes);
+  rpc GetAgent(GetAgentReq) returns (GetAgentRes);
+  rpc GetAgentByPartnerId(GetAgentByPartnerIdReq) returns (GetAgentByPartnerIdRes);
+
+  rpc Dial(DialReq) returns (DialRes);
+
+  rpc StartRecording(StartRecordingReq) returns (StartRecordingRes);
+  rpc StopRecording(StopRecordingReq) returns (StopRecordingRes);
+  rpc GetRecording(GetRecordingReq) returns (GetRecordingRes);
+
+  rpc ListScrubLists(ListScrubListsReq) returns (ListScrubListsRes);
+  rpc AddScrubListEntries(AddScrubListEntriesReq) returns (AddScrubListEntriesRes);
+  rpc UpdateScrubListEntry(UpdateScrubListEntryReq) returns (UpdateScrubListEntryRes);
+  rpc DeleteScrubListEntries(DeleteScrubListEntriesReq) returns (DeleteScrubListEntriesRes);
+}
+
+message DeleteScrubListEntriesReq {
+  string scrub_list_id = 1;
+  repeated string content = 2;
+}
+
+message DeleteScrubListEntriesRes {}
+
+message UpdateScrubListEntryReq {
+  string scrub_list_id = 1;
+  google.protobuf.StringValue notes = 10;
+  string content = 11;
+  google.protobuf.Timestamp expiration_date = 12;
+  google.protobuf.StringValue country_code = 13;
+}
+
+message UpdateScrubListEntryRes {}
+
+message AddScrubListEntriesReq {
+  string scrub_list_id = 1;
+  repeated ScrubListEntry scrub_list_entry = 10;
+  string country_code = 11;
+
+  message ScrubListEntry {
+    // entry content (phone number, sms, email ...)
+    string content = 1;
+    // date when entry should expire
+    google.protobuf.Timestamp expiration_date = 2;
+    google.protobuf.StringValue notes = 3;
+  }
+}
+
+message AddScrubListEntriesRes {}
+
+message ListScrubListsReq {}
+message ListScrubListsRes {
+  repeated ScrubList scrub_list = 1;
+}
+
+message ScrubList {
+  string scrub_list_id = 1;
+  bool read_only = 2;
+  ContentType content_type = 3;
+  enum ContentType {
+    PHONE_NUMBER = 0;
+    EMAIL = 1;
+    SMS = 2;
+    OTHER = 3;
+    ACCOUNT_NUMBER = 4;
+    WHATSAPP = 5;
+  }
+}
+
+message ConfigReq {
+  bool docker = 10;
+}
+
+message ConfigRes {
+  string org_id = 1;
+  string org_name = 2;
+  //   string certificate_name = 3;
+  //   string certificate_description = 4;
+  //   string certificate_string_sha256 = 5;
+  string configuration_name = 6;
+  string configuration_payload = 7;
+}
+
+message OrgReq {}
+message OrgRes {
+  string org_id = 1;
+  string org_name = 2;
+}
+
+message GetRecordingReq {
+  string user_id = 1;
+}
+
+message GetRecordingRes {
+  bool recording = 1;
+}
+
+message UpsertAgentReq {
+  string username = 1;
+  string partner_agent_id = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string password = 5;
+}
+
+message UpsertAgentRes {
+  Agent agent = 1;
+}
+
+message GetAgentByPartnerIdReq {
+  string partner_agent_id = 1;
+}
+
+message GetAgentByPartnerIdRes {
+  Agent agent = 1;
+}
+
+message GetAgentReq {
+  string user_id = 1;
+}
+
+message GetAgentRes {
+  Agent agent = 1;
+}
+
+message StopRecordingReq {
+  string user_id = 1;
+}
+message StopRecordingRes {}
+
+message StartRecordingReq {
+  string user_id = 1;
+}
+message StartRecordingRes {}
+
+message DialReq {
+  string user_id = 1;
+  string phone_number = 2;
+  string caller_id = 3;
+}
+
+message DialRes {
+  string phone_number = 1;
+  string caller_id = 2;
+  int64 call_sid = 3;
+  CallType call_type = 4;
+  string org_id = 5;
+  string partner_agent_id = 6;
+}
+
+message GetAgentStateReq {
+  string user_id = 1;
+}
+message GetAgentStateRes {
+  string user_id = 1;
+  AgentState agent_state = 10;
+  int64 current_session_id = 11;
+  ConnectedParty connected_party = 12;
+}
+
+message ConnectedParty {
+    int64 call_sid = 1;
+    CallType call_type = 2;
+    bool inbound = 3;
+}
+message SetAgentStateReq {
+  string user_id = 1;
+  AgentState new_state = 2;
+}
+message SetAgentStateRes {}
+
+message ListAgentsReq {}
+message ListAgentsRes {
+  Agent agent = 1;
+}
+
+message Agent {
+  string user_id = 1;
+  string org_id = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string username = 5;
+  string partner_agent_id = 6;
+}
+
+message EventStreamRequest {}
+message EventStreamResponse {
+  // TBD
+  oneof event {
+    CallerEvent call_event = 1;
+    AgentEvent agent_event = 2;
+  }
+}
+
+message PingRequest {}
+message PingResponse {}
+
+message JobStreamRequest {
+  string job_id = 1;
+}
+message JobStreamResponse {
+  string job_id = 1;
+  oneof job {
+    Info info = 10;
+    Seppuku seppuku = 11 [deprecated=true];
+    ExileAgentCall exile_agent_call = 12;
+    ExileTelephonyResult exile_telephony_result = 13;
+    ExileAgentResponse exile_agent_response = 14;
+    ExileNamedJobRequest exile_named_job_request = 16;
+
+//    QueryPoolList 2
+//    QueryPoolStatus 3
+//    QueryPoolRecords 4
+//    QueryUserRecords 5
+//    AgentResponse 6
+//    TelephonyResult 7
+//    AgentCallData 8
+//    QueryRecords 9
+//    ReadFields 10
+//    WriteFields 11
+//    ExecuteLogic 12
+//    CreatePayment 13
+//    PopAccount
+    GetPoolList getPoolList = 20;
+    GetPoolStatus get_pool_status = 21;
+    GetPoolRecords get_pool_records = 22;
+    GetUsers get_users = 23;
+
+  }
+}
+
+
+message ExileNamedJobRequest {
+  string api_call = 1;
+}
+
+message Seppuku {}
+message Info {}
+
+message ResultsStreamRequest {
+  string job_id = 1;
+  string payload = 2[deprecated = true];
+  ResultError error = 3[deprecated = true];
+
+  oneof job_result {
+    Pool pool = 10;
+
+    Eot eot = 100;
+  }
+}
+
+message ResultError {
+  string error_message = 1;
+  JobStreamResponse errored_job = 2;
+}
+
+message ResultsStreamResponse {}

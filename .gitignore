@@ -1,0 +1,23 @@
+# Ignore Gradle project-specific cache directory
+.gradle
+
+# Ignore Gradle build output directory
+build
+
+*.class
+.metal
+.idea
+.vscode
+.bloop
+cache/durable/iris_conf.d
+.metals
+
+bin
+
+workdir/*/*.db
+java_pid*
+keystore.jks
+tmp
+cert
+workdir/config/*
+pems/*

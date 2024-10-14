@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+
+package tcnapi.exile.station.v1;
+
+import "google/protobuf/wrappers.proto";
+
+service Station {
+  rpc ListPools(ListPoolsRequest) returns (stream ListPoolsResponse);
+  rpc GetPoolStatus(GetPoolStatusRequest) returns (GetPoolStatusResponse);
+  rpc ListPoolRecords(ListPoolRecordsRequest) returns (stream PoolRecord);
+  rpc SearchRecords(GetRecordRequest) returns(GetRecordResponse);
+
+}
+
+
+message Pool {
+  string sati_pool_id = 1;
+  string display_name = 2;
+  PoolStatus status = 3;
+  google.protobuf.Int64Value size = 10;
+
+  enum PoolStatus {
+    READY = 0;
+    NOT_READY = 1;
+    BUSY = 2;
+  }
+}
+
+message Record {
+  string sati_record_id = 1;
+  string sati_parent_id = 2;
+  google.protobuf.StringValue sati_pool_id = 3; // if the record came from a ListPoolRecords or not
+  google.protobuf.StringValue json_record_payload = 10;
+}
+
+
+
+message ListPoolsRequest{}
+message ListPoolsResponse{
+  repeated Pool pool =1;
+}
+
+message GetPoolStatusRequest{
+  string sati_pool_id = 1;
+}
+message GetPoolStatusResponse {
+  Pool pool = 1;
+}
+
+
+message GetRecordRequest{
+  LookupType lookup_type = 1;
+  string lookup_value = 2;
+  enum LookupType {
+    RECORD = 0;
+    PHONE = 1;
+    CLIENT_REF =2;
+  }
+  google.protobuf.StringValue sati_parent_id = 10;
+}
+message GetRecordResponse {
+  string sati_record_id = 1;
+}
+
+message ListPoolRecordsRequest{
+  string sati_pool_id = 1;
+}
+message PoolRecord {
+  string sati_record_id = 1;
+  string sati_pool_id = 2;
+  string json_record_payload = 10;
+}
+
