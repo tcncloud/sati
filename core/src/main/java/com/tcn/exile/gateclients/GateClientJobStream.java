@@ -16,6 +16,7 @@
 
 package com.tcn.exile.gateclients;
 
+import com.tcn.exile.config.ConfigEvent;
 import com.tcn.exile.plugin.PluginInterface;
 import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
@@ -37,7 +38,16 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
   private StreamObserver<Service.JobStreamRequest> requestObserver;
 
   public GateClientJobStream() {
+    // throw new RuntimeException("Unimplemented");
     log.debug("GateClientJobStream created");
+    // start();
+  }
+
+  public GateClientJobStream(PluginInterface plugin, ConfigEvent event) {
+    this.plugin = plugin;
+    this.event = event;
+    log.debug("GateClientJobStream created with plugin {}", plugin.getName());
+    // start();
   }
 
   @Override
@@ -48,6 +58,7 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
 
   public boolean isRunning() {
     if (channel == null) {
+        log.debug("channel is null, JobStream is not running");
       return false;
     }
     log.debug("channel {} shutdown {} terminated {} -> {}", channel, channel.isShutdown(), channel.isTerminated(), !channel.isShutdown() && !channel.isTerminated());
@@ -56,6 +67,7 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
 
   public synchronized void eventStream() {
     if (!isRunning()) {
+        log.debug("starting JobStream");
       try {
         channel = getChannel();
         var client = ExileGateServiceGrpc.newStub(channel).withWaitForReady();

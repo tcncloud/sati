@@ -56,6 +56,13 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
    */
   public abstract void start();
 
+  public GateClientAbstract() {}
+  
+  public GateClientAbstract(ConfigEvent configEvent) {
+    this.event = configEvent;
+    start();
+  }
+
   /**
    * Handles configuration changes.
    * @param event The new configuration event.
@@ -156,7 +163,13 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
     var res = client.listAgents(Service.ListAgentsReq.newBuilder().build());
     while (res.hasNext()) {
       var r = res.next();
-      ret.add(new Agent(r.getAgent().getUserId(), r.getAgent().getFirstName(), r.getAgent().getLastName(), r.getAgent().getUsername(), r.getAgent().getPartnerAgentId()));
+      ret.add(new Agent(
+            r.getAgent().getUserId(), 
+            r.getAgent().getPartnerAgentId(),
+            r.getAgent().getUsername(), 
+            r.getAgent().getFirstName(), 
+            r.getAgent().getLastName()
+        ));
     }
     return ret;
   }
