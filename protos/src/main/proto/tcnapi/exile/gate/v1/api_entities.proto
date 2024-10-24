@@ -7,15 +7,15 @@ import "google/protobuf/wrappers.proto";
 
 
 
-// Request payload for GetPoolList method
-message GetPoolList {
-}
+// // Request payload for GetPoolList method
+// message GetPoolList {
+// }
 
-// Request payload for GetPoolStatus method
-message GetPoolStatus {
-  // serialized form of pool_id
-  string pool_id = 1;
-}
+// // Request payload for GetPoolStatus method
+// message GetPoolStatus {
+//   // serialized form of pool_id
+//   string pool_id = 1;
+// }
 
 // Pool message
 message Pool {
@@ -29,34 +29,34 @@ message Pool {
   }
 }
 
-// Request payload for GetPoolRecords method
-message GetPoolRecords {
-  string pool_id = 1;
-}
+// // Request payload for GetPoolRecords method
+// message GetPoolRecords {
+//   string pool_id = 1;
+// }
 
-// Response item for GetPoolRecords
-message PoolRecord {
-  // json serialized record
-  string sati_record_id = 1; // record/[record_id]/table/[table_id][/pool/[pool_id]]
-  string sati_parent_record_id = 2; // table/[table_id][/pool/[pool_id]]
-  string json_record_payload = 3;
+// // Response item for GetPoolRecords
+// message PoolRecord {
+//   // json serialized record
+//   string sati_record_id = 1; // record/[record_id]/table/[table_id][/pool/[pool_id]]
+//   string sati_parent_record_id = 2; // table/[table_id][/pool/[pool_id]]
+//   string json_record_payload = 3;
 
-}
+// }
 
-message GetUsers {
-}
+// message GetUsers {
+// }
 
-message GetUsersResponse {
-  string partner_user_id = 1;
-  string first_name = 2;
-  string last_name = 3;
-  string email = 4;
-}
+// message GetUsersResponse {
+//   string partner_user_id = 1;
+//   string first_name = 2;
+//   string last_name = 3;
+//   string email = 4;
+// }
 
-message GetRecord {
+// message GetRecord {
 
 
-}
+// }
 
 // End of transmission message
 message Eot {}

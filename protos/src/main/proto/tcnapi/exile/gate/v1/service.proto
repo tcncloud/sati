@@ -255,17 +255,33 @@ message JobStreamResponse {
 //    ExecuteLogic 12
 //    CreatePayment 13
 //    PopAccount
-    GetPoolList getPoolList = 20;
-    GetPoolStatus get_pool_status = 21;
-    GetPoolRecords get_pool_records = 22;
-    GetUsers get_users = 23;
+    // GetPoolList getPoolList = 20;
+    // GetPoolStatus get_pool_status = 21;
+    // GetPoolRecords get_pool_records = 22;
+    // GetUsers get_users = 23;
 
   }
 }
 
 
 message ExileNamedJobRequest {
-  string api_call = 1;
+  string api_call = 1[deprecated = true];
+  oneof call {
+    ListPools list_pools = 10;
+    GetPoolStatus get_pool_status = 11;
+    GetPoolRecords get_pool_records = 12;
+  }
+}
+
+message ListPools {
+}
+
+message GetPoolStatus {
+  string pool_id = 1;
+}
+
+message GetPoolRecords {
+  string pool_id = 1;
 }
 
 message Seppuku {}
@@ -273,8 +289,8 @@ message Info {}
 
 message ResultsStreamRequest {
   string job_id = 1;
-  string payload = 2[deprecated = true];
-  ResultError error = 3[deprecated = true];
+  string payload = 2;
+  ResultError error = 3;
 
   oneof job_result {
     Pool pool = 10;
