@@ -25,79 +25,97 @@ import tcnapi.exile.gate.v1.ExileGateServiceGrpc;
 import tcnapi.exile.gate.v1.Service;
 
 @Singleton
-public class GateClientResponseStream extends GateClientAbstract implements StreamObserver<Service.ResultsStreamResponse> {
-  private static final Logger log = LoggerFactory.getLogger(GateClientResponseStream.class);
-  private ManagedChannel channel;
-  private StreamObserver<Service.ResultsStreamRequest> streamObserver;
+public class GateClientResponseStream extends GateClientAbstract
+        implements StreamObserver<Service.ResultsStreamResponse> {
+    private static final Logger log = LoggerFactory.getLogger(GateClientResponseStream.class);
+    private ManagedChannel channel;
+    private StreamObserver<Service.ResultsStreamRequest> streamObserver;
 
-
-  public boolean isRunning() {
-    if (channel == null) {
-      return false;
+    public GateClientResponseStream() {
+        log.debug("GateClientResponseStream created");
     }
-    log.debug("channel {} shutdown {} terminated {} -> {}", channel, channel.isShutdown(), channel.isTerminated(), !channel.isShutdown() && !channel.isTerminated());
-    return (!channel.isShutdown() && !channel.isTerminated());
-  }
 
-  @Override
-  public void start() {
-    responseStream();
-  }
-
-  @Override
-  public void onNext(Service.ResultsStreamResponse response) {
-    log.debug("GateClientResponseStream onNext {}", response);
-  }
-
-  @Override
-  public void onError(Throwable throwable) {
-    log.debug("GateClientResponseStream onError {}", throwable);
-    responseStream();
-  }
-
-  @Override
-  public void onCompleted() {
-    log.debug("GateClientResponseStream onCompleted");
-    responseStream();
-  }
-
-  public void sendError(Service.ResultsStreamRequest datasourceIsClosed) {
-    log.debug("GateClientResponseStream sendError {}", datasourceIsClosed);
-    streamObserver.onNext(datasourceIsClosed);
-
-  }
-
-  public void sendResult(Service.ResultsStreamRequest build) {
-    if (!isRunning()) {
-      log.debug("stream observer not running");
+    public GateClientResponseStream(ManagedChannel channel2) {
+        log.debug("GateClientResponseStream created with channel {}", channel2);
+        this.channel = channel2;
+        start();
     }
-    log.debug("GateClientResponseStream sendResult {}", build);
-    if (streamObserver == null) {
-      log.debug("streamObserver not set");
+
+    public boolean isRunning() {
+        if ((channel == null) && (streamObserver == null)) {
+            return false;
+        }
+        log.debug("channel {} shutdown {} terminated {} -> return {}", channel, channel.isShutdown(),
+                channel.isTerminated(),
+                !channel.isShutdown() && !channel.isTerminated() && (streamObserver != null));
+        return (!channel.isShutdown() && !channel.isTerminated()) && (streamObserver != null);
     }
-    streamObserver.onNext(build);
-    log.debug("After GateClientResponseStream sendResult {}", build);
-  }
 
-  public synchronized void responseStream() {
-    if (!isRunning()) {
-      log.debug("setting up responseStream");
-      try {
-        channel = getChannel();
-      } catch (UnconfiguredException e) {
-        throw new RuntimeException(e);
-      }
-      var client = ExileGateServiceGrpc.newStub(channel).withWaitForReady();
-      this.streamObserver = client.resultsStream(this);
+    @Override
+    public void start() {
+        responseStream();
     }
-  }
 
-  public void sendEOF(String jobId) {
-    log.debug("Sending EOF of {}", jobId);
-    streamObserver.onNext(Service.ResultsStreamRequest.newBuilder()
-        .setPayload("EOF")
-        .setJobId(jobId)
-        .build());
+    @Override
+    public void onNext(Service.ResultsStreamResponse response) {
+        log.debug("GateClientResponseStream onNext {}", response);
+    }
 
-  }
+    @Override
+    public void onError(Throwable throwable) {
+        log.debug("GateClientResponseStream onError {}", throwable);
+        responseStream();
+    }
+
+    @Override
+    public void onCompleted() {
+        log.debug("GateClientResponseStream onCompleted");
+        responseStream();
+    }
+
+    public void sendError(Service.ResultsStreamRequest datasourceIsClosed) {
+        log.debug("GateClientResponseStream sendError {}", datasourceIsClosed);
+        streamObserver.onNext(datasourceIsClosed);
+
+    }
+
+    public void sendResult(Service.ResultsStreamRequest build) {
+        if (!isRunning()) {
+            log.debug("stream observer not running");
+        }
+        log.debug("GateClientResponseStream sendResult {}", build);
+        if (streamObserver == null) {
+            log.debug("streamObserver not set");
+        }
+        streamObserver.onNext(build);
+        log.debug("After GateClientResponseStream sendResult {}", build);
+    }
+
+    public synchronized void responseStream() {
+        if (!isRunning()) {
+            log.debug("setting up responseStream");
+            if (channel == null) {
+                try {
+                    channel = getChannel();
+                } catch (UnconfiguredException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            var client = ExileGateServiceGrpc.newStub(channel).withWaitForReady();
+            log.debug("setting stream observer ");
+            this.streamObserver = client.resultsStream(this);
+            log.debug("stream observer set");
+        } else {
+            log.debug("response stream, already running");
+        }
+    }
+
+    public void sendEOF(String jobId) {
+        log.debug("Sending EOF of {}", jobId);
+        streamObserver.onNext(Service.ResultsStreamRequest.newBuilder()
+                .setPayload("EOF")
+                .setJobId(jobId)
+                .build());
+
+    }
 }

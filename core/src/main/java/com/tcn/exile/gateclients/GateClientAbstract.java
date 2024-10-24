@@ -63,6 +63,11 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
     start();
   }
 
+
+  public GateClientResponseStream getResponseStream() throws UnconfiguredException {
+    return new GateClientResponseStream(getChannel());
+  }
+
   /**
    * Handles configuration changes.
    * @param event The new configuration event.
@@ -95,7 +100,7 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
    * @return A ManagedChannel instance.
    * @throws UnconfiguredException if the client is not configured.
    */
-  protected ManagedChannel getChannel() throws UnconfiguredException {
+  public ManagedChannel getChannel() throws UnconfiguredException {
     if ((channel != null) && !channel.isShutdown() && !channel.isTerminated()) {
       return channel;
     }

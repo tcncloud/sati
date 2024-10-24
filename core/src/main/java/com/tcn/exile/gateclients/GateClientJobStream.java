@@ -93,7 +93,15 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
       } else if (job.hasExileAgentResponse()) {
         plugin.scheduleExileAgentRespose(job.getJobId(), job.getExileAgentResponse());
       } else if (job.hasExileNamedJobRequest()) {
-        plugin.scheduleExileNamedJob(job.getJobId(), job.getExileNamedJobRequest());
+        if (job.getExileNamedJobRequest().hasListPools()){
+            plugin.listPools(job.getJobId());
+        } else if (job.getExileNamedJobRequest().hasGetPoolStatus()) {
+            plugin.getPoolStatus(job.getJobId(), job.getExileNamedJobRequest().getGetPoolStatus().getPoolId());
+        } else if (job.getExileNamedJobRequest().hasGetPoolRecords()) {
+            plugin.getPoolRecords(job.getJobId(), job.getExileNamedJobRequest().getGetPoolRecords().getPoolId());
+        } else {
+            plugin.scheduleExileNamedJob(job.getJobId(), job.getExileNamedJobRequest());
+        }
       } else {
         // TODO report back an error & reject job
       }
