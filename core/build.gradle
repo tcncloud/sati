@@ -29,12 +29,12 @@ dependencies {
 
     implementation("com.zaxxer:HikariCP:5.1.0")
 
-    implementation("io.grpc:grpc-protobuf:1.66.0")
-    implementation("io.grpc:grpc-services:1.66.0")
-    implementation("io.grpc:grpc-stub:1.66.0")
+    implementation("io.grpc:grpc-protobuf:1.68.0")
+    implementation("io.grpc:grpc-services:1.68.0")
+    implementation("io.grpc:grpc-stub:1.68.0")
     compileOnly("org.apache.tomcat:annotations-api:6.0.53")
-    runtimeOnly("io.grpc:grpc-netty-shaded:1.66.0")
-    implementation("com.google.protobuf:protobuf-java-util:3.25.4")
+    runtimeOnly("io.grpc:grpc-netty-shaded:1.68.0")
+    implementation("com.google.protobuf:protobuf-java-util:4.28.3")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
 
 
