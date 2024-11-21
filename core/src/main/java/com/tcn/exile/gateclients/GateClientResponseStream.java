@@ -21,6 +21,7 @@ import io.grpc.stub.StreamObserver;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tcnapi.exile.gate.v1.Entities;
 import tcnapi.exile.gate.v1.ExileGateServiceGrpc;
 import tcnapi.exile.gate.v1.Service;
 
