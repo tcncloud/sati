@@ -24,7 +24,11 @@ message ExileAgentCall {
   string org_id = 17;
   string user_id = 18;
   string internal_key = 19;
+  repeated string task_data_keys = 20;
+  repeated string task_data_values = 21;
+
   string partner_agent_id = 100;
+
 }
 
 message ExileTelephonyResult {
