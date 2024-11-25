@@ -50,6 +50,8 @@ message ExileTelephonyResult {
   string org_id = 16;
   string internal_key = 17;
   //   string partner_agent_id = 100;
+  repeated string task_data_keys = 20;
+  repeated string task_data_values = 21;
   enum Result {
     RESULT_UNKNOWN = 0;
     PENDING = 1000;
