@@ -1,12 +1,12 @@
-/* 
+/*
  *  Copyright 2017-2024 original authors
- *  
+ *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
- *  
+ *
  *  https://www.apache.org/licenses/LICENSE-2.0
- *  
+ *
  *  Unless required by applicable law or agreed to in writing, software
  *  distributed under the License is distributed on an "AS IS" BASIS,
  *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -58,7 +58,7 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
 
   public boolean isRunning() {
     if (channel == null) {
-        log.debug("channel is null, JobStream is not running");
+      log.debug("channel is null, JobStream is not running");
       return false;
     }
     log.debug("channel {} shutdown {} terminated {} -> {}", channel, channel.isShutdown(), channel.isTerminated(), !channel.isShutdown() && !channel.isTerminated());
@@ -67,7 +67,7 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
 
   public synchronized void eventStream() {
     if (!isRunning()) {
-        log.debug("starting JobStream");
+      log.debug("starting JobStream");
       try {
         channel = getChannel();
         var client = ExileGateServiceGrpc.newStub(channel).withWaitForReady();
@@ -93,14 +93,14 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
       } else if (job.hasExileAgentResponse()) {
         plugin.scheduleExileAgentRespose(job.getJobId(), job.getExileAgentResponse());
       } else if (job.hasExileNamedJobRequest()) {
-        if (job.getExileNamedJobRequest().hasListPools()){
-            plugin.listPools(job.getJobId());
+        if (job.getExileNamedJobRequest().hasListPools()) {
+          plugin.listPools(job.getJobId());
         } else if (job.getExileNamedJobRequest().hasGetPoolStatus()) {
-            plugin.getPoolStatus(job.getJobId(), job.getExileNamedJobRequest().getGetPoolStatus().getPoolId());
+          plugin.getPoolStatus(job.getJobId(), job.getExileNamedJobRequest().getGetPoolStatus().getPoolId());
         } else if (job.getExileNamedJobRequest().hasGetPoolRecords()) {
-            plugin.getPoolRecords(job.getJobId(), job.getExileNamedJobRequest().getGetPoolRecords().getPoolId());
+          plugin.getPoolRecords(job.getJobId(), job.getExileNamedJobRequest().getGetPoolRecords().getPoolId());
         } else {
-            plugin.scheduleExileNamedJob(job.getJobId(), job.getExileNamedJobRequest());
+          plugin.scheduleExileNamedJob(job.getJobId(), job.getExileNamedJobRequest());
         }
       } else {
         // TODO report back an error & reject job
@@ -117,12 +117,18 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
   @Override
   public void onError(Throwable throwable) {
     log.debug("GateClientJobStream error {}", throwable.getMessage());
-    eventStream();
+    channel.shutdownNow();
+//    if (isRunning()) {
+//      log.debug("shutting down channel");
+//      channel.shutdownNow();
+//    }
+//    eventStream();
   }
 
   @Override
   public void onCompleted() {
     log.debug("GateClientJobStream completed");
-    eventStream();
+    channel.shutdownNow();
+//    eventStream();
   }
 }
