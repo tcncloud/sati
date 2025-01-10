@@ -20,6 +20,8 @@ import com.tcn.exile.gateclients.UnconfiguredException;
 import io.micronaut.context.event.ApplicationEvent;
 import io.micronaut.serde.annotation.Serdeable;
 import jakarta.validation.constraints.NotEmpty;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.net.MalformedURLException;
@@ -34,6 +36,7 @@ import java.util.Date;
 @Serdeable
 public class ConfigEvent extends ApplicationEvent {
 
+  private static final Logger log = LoggerFactory.getLogger(ConfigEvent.class);
   private boolean unconfigured = true;
   private String rootCert;
   private String publicCert;
@@ -191,7 +194,7 @@ public class ConfigEvent extends ApplicationEvent {
       return null;
 //      throw new UnconfiguredException("Can't find org id in certificate");
     } catch (CertificateException e) {
-      e.printStackTrace();
+      log.error("Error parsing certificate", e);
       // throw new RuntimeException(e);
     }
     return null;
@@ -210,7 +213,7 @@ public class ConfigEvent extends ApplicationEvent {
                 new ByteArrayInputStream(cert.getBytes()));
         return myCert.getNotAfter();
       } catch (CertificateException e) {
-        e.printStackTrace();
+        log.error("Error parsing certificate", e);
         // throw new RuntimeException(e);
       }
       return null;

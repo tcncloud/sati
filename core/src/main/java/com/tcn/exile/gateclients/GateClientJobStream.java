@@ -74,7 +74,7 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
         this.requestObserver = client.jobStream(this);
       } catch (UnconfiguredException ex) {
         // TODO decide what to do if we don't have a channel
-        ex.printStackTrace();
+        log.error("Channel not available anymore {}", ex.getMessage(), ex);
       }
     }
   }
@@ -110,7 +110,7 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
           .setJobId(job.getJobId())
           .build());
     } catch (Exception ex) {
-      ex.printStackTrace();
+      log.error("Error processing job {}", job.getJobId(), ex);
     }
   }
 
