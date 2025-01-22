@@ -105,6 +105,7 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
       return channel;
     }
     try {
+      log.debug("creating a new channel");
       var channelCredentials = TlsChannelCredentials.newBuilder()
           .trustManager(new ByteArrayInputStream(getConfig().getRootCert().getBytes()))
           .keyManager(
