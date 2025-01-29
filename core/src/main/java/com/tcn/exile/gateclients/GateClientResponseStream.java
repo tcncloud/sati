@@ -43,13 +43,16 @@ public class GateClientResponseStream extends GateClientAbstract
   }
 
   public boolean isRunning() {
-    if ((channel == null) && (streamObserver == null)) {
+    if ((channel == null) || (streamObserver == null)) {
       return false;
     }
-    log.debug("channel {} shutdown {} terminated {} -> return {}", channel, channel.isShutdown(),
-        channel.isTerminated(),
-        !channel.isShutdown() && !channel.isTerminated() && (streamObserver != null));
-    return (!channel.isShutdown() && !channel.isTerminated()) && (streamObserver != null);
+    if (channel.isShutdown()) return false;
+    if (channel.isTerminated()) return false;
+    return true;
+//    log.debug("channel {} shutdown {} terminated {} -> return {}", channel, channel.isShutdown(),
+//        channel.isTerminated(),
+//        !channel.isShutdown() && !channel.isTerminated() && (streamObserver != null));
+//    return (!channel.isShutdown() && !channel.isTerminated()) && (streamObserver != null);
   }
 
   @Override
