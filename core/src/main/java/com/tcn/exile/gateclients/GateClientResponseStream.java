@@ -65,12 +65,14 @@ public class GateClientResponseStream extends GateClientAbstract
   @Override
   public void onError(Throwable throwable) {
     log.debug("GateClientResponseStream onError {}", throwable);
+    if (channel != null) channel.shutdownNow();
     responseStream();
   }
 
   @Override
   public void onCompleted() {
     log.debug("GateClientResponseStream onCompleted");
+    if (channel != null) channel.shutdownNow();
     responseStream();
   }
 
@@ -96,6 +98,7 @@ public class GateClientResponseStream extends GateClientAbstract
     if (!isRunning()) {
       log.debug("setting up responseStream with a new channel");
 //            if (channel == null) {
+
       try {
         channel = getChannel();
       } catch (UnconfiguredException e) {
