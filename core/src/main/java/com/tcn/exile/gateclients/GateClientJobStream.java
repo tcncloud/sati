@@ -61,8 +61,12 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
 //      log.debug("channel is null, JobStream is not running");
       return false;
     }
+    if (channel.isTerminated()) return false;
+    if (channel.isShutdown()) return false;
+    return true;
 //    log.debug("channel {} shutdown {} terminated {} -> {}", channel, channel.isShutdown(), channel.isTerminated(), !channel.isShutdown() && !channel.isTerminated());
-    return (!channel.isShutdown() || !channel.isTerminated());
+//    var ret = !channel.isShutdown() && !channel.isTerminated();
+//    log.debug("JobStream is running {}", ret);
   }
 
   public synchronized void eventStream() {
