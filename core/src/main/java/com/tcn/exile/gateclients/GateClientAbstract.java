@@ -34,6 +34,7 @@ import tcnapi.exile.gate.v1.Service;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.sql.Time;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -77,8 +78,7 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
     log.debug("onApplicationEvent, config changed {}", event);
     this.event = event;
     if ((channel != null) && !channel.isShutdown() && !channel.isTerminated()) {
-      channel.shutdown();
-      channel = null;
+      this.shutdown();
     }
     start();
   }
@@ -95,6 +95,24 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
     return event;
   }
 
+  public void shutdown() {
+    if (channel != null) {
+      channel.shutdown();
+      try {
+        channel.awaitTermination(30, TimeUnit.SECONDS);
+      } catch (InterruptedException e) {
+        log.error("Channel shutdown interrupted", e);
+        channel.shutdownNow();
+        try {
+          channel.awaitTermination(30, TimeUnit.SECONDS);
+        } catch (InterruptedException ex) {
+          log.error("2nd Attempt to channel shutdown interrupted", ex);
+        }
+      }
+      channel = null;
+    }
+  }
+
   /**
    * Gets or creates a gRPC channel for communication with the Gate service.
    * @return A ManagedChannel instance.
@@ -104,6 +122,7 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
     if ((channel != null) && !channel.isShutdown() && !channel.isTerminated()) {
       return channel;
     }
+    shutdown();
     try {
       log.debug("creating a new channel");
       var channelCredentials = TlsChannelCredentials.newBuilder()
@@ -114,6 +133,8 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
           .build();
       channel = Grpc.newChannelBuilderForAddress(
               getConfig().getApiHostname(), getConfig().getApiPort(), channelCredentials)
+          .keepAliveTime(1, TimeUnit.SECONDS)
+          .keepAliveTimeout(10, TimeUnit.SECONDS)
           .overrideAuthority("exile-proxy")
           // TODO: add service configuration for retry
 //          .defaultServiceConfig(null)

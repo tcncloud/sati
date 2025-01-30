@@ -121,14 +121,14 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
   @Override
   public void onError(Throwable throwable) {
     log.debug("GateClientJobStream error {}", throwable.getMessage());
-    if (channel != null) channel.shutdownNow();
+    if (channel != null) this.shutdown();
     eventStream();
   }
 
   @Override
   public void onCompleted() {
     log.debug("GateClientJobStream completed");
-    channel.shutdownNow();
+    this.shutdown();
 //    eventStream();
   }
 }
