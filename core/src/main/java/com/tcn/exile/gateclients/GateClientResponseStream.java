@@ -29,7 +29,6 @@ import tcnapi.exile.gate.v1.Service;
 public class GateClientResponseStream extends GateClientAbstract
     implements StreamObserver<Service.ResultsStreamResponse> {
   private static final Logger log = LoggerFactory.getLogger(GateClientResponseStream.class);
-  private ManagedChannel channel;
   private StreamObserver<Service.ResultsStreamRequest> streamObserver;
 
   public GateClientResponseStream() {

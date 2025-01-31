@@ -18,7 +18,6 @@ package com.tcn.exile.gateclients;
 
 import com.tcn.exile.config.ConfigEvent;
 import com.tcn.exile.plugin.PluginInterface;
-import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -34,7 +33,6 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
   @Inject
   PluginInterface plugin;
 
-  private ManagedChannel channel;
   private StreamObserver<Service.JobStreamRequest> requestObserver;
 
   public GateClientJobStream() {

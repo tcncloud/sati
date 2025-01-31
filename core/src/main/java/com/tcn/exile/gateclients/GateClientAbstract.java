@@ -49,7 +49,7 @@ import java.util.concurrent.TimeUnit;
 public abstract class GateClientAbstract implements ApplicationEventListener<ConfigEvent> {
   private static final Logger log = LoggerFactory.getLogger(GateClientAbstract.class);
   protected ConfigEvent event;
-  private ManagedChannel channel;
+  protected ManagedChannel channel;
 
   /**
    * Initializes the Gate Client.
