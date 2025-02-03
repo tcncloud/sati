@@ -135,6 +135,7 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
               getConfig().getApiHostname(), getConfig().getApiPort(), channelCredentials)
           .keepAliveTime(1, TimeUnit.SECONDS)
           .keepAliveTimeout(10, TimeUnit.SECONDS)
+          .idleTimeout(30, TimeUnit.MINUTES)
           .overrideAuthority("exile-proxy")
           // TODO: add service configuration for retry
 //          .defaultServiceConfig(null)
