@@ -171,6 +171,8 @@ message DialReq {
   string user_id = 1;
   string phone_number = 2;
   string caller_id = 3;
+  google.protobuf.StringValue pool_id = 4;
+  google.protobuf.StringValue record_id = 5;
 }
 
 message DialRes {

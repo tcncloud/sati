@@ -105,6 +105,7 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
           plugin.scheduleExileNamedJob(job.getJobId(), job.getExileNamedJobRequest());
         }
       } else {
+        log.error("Unknown job type {} {}", job.getJobId(), job);
         // TODO report back an error & reject job
       }
 

@@ -322,10 +322,14 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
    * @return A ManualDialResult object.
    * @throws UnconfiguredException if the client is not configured.
    */
-  public ManualDialResult agentManualDial(String userId, String phoneNumber, String callerId) throws UnconfiguredException {
+  public ManualDialResult agentManualDial(String userId, String phoneNumber, String callerId, String poolId, String recordId) throws UnconfiguredException {
     var client = ExileGateServiceGrpc.newBlockingStub(getChannel());
     var req = Service.DialReq.newBuilder().setUserId(userId).setPhoneNumber(phoneNumber);
     if ((callerId != null) && (!callerId.trim().isEmpty())) req = req.setCallerId(callerId.trim());
+
+    if (poolId != null)  req.setPoolId(StringValue.of(poolId));
+    if (recordId != null)  req.setRecordId(StringValue.of(recordId));
+
     var res = client.dial(req.build());
 
     return ManualDialResult.fromProto(res);
