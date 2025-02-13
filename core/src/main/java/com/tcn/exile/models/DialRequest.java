@@ -19,7 +19,12 @@ package com.tcn.exile.models;
 import io.micronaut.serde.annotation.Serdeable;
 import jakarta.annotation.Nullable;
 import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.Null;
 
 @Serdeable
-public record DialRequest(@NotEmpty String phoneNumber, @Nullable String callerId) {
+public record DialRequest(
+    @NotEmpty String phoneNumber,
+    @Nullable String callerId,
+    @Nullable String recordId,
+    @Nullable String poolId) {
 }
