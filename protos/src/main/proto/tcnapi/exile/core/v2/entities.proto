@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package tcnapi.exile.core.v2;
+
+message Pool {
+  string pool_id = 1;
+  string description = 2;
+  PoolStatus status = 3;
+  enum PoolStatus {
+    READY = 0;
+    NOT_READY = 1;
+    BUSY = 2;
+  }
+}
+
+message Record {
+  string record_id = 1; // record/[record_id]/table/[table_id][/pool/[pool_id]]
+  string parent_record_id = 2; // table/[table_id][/pool/[pool_id]]
+  string json_record_payload = 3; // json serialized record
+}
+
+message Field {
+  // the parent collection/table that this field belongs to
+  string pool_id = 3;
+  // the record this field belongs to
+  string record_id = 4;
+  string field_name = 1;
+  string field_value = 2;
+}

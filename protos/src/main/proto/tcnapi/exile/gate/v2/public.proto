@@ -1,0 +1,367 @@
+syntax = "proto3";
+
+package tcnapi.exile.gate.v2;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+import "tcnapi/exile/core/v2/entities.proto";
+import "tcnapi/exile/gate/v2/entities.proto";
+import "tcnapi/exile/gate/v2/gate.proto";
+
+service GateService {
+  // Initial configuration retrieval for client setup
+  rpc GetClientConfiguration(ClientConfigRequest) returns (ClientConfigResponse);
+
+  // Organization details retrieval
+  rpc GetOrganizationInfo(OrganizationRequest) returns (OrganizationResponse);
+
+  // Periodic event polling (up to 4MB)
+  rpc PollEvents(EventPollRequest) returns (EventPollResponse);
+
+  // Job streaming connection
+  rpc StreamJobs(StreamJobsRequest) returns (stream StreamJobsResponse);
+
+  // Job results submission (max 2MB)
+  rpc SubmitJobResults(JobResultsRequest) returns (JobResultsResponse);
+
+  // Agent state management
+  rpc GetAgentStatus(AgentStatusRequest) returns (AgentStatusResponse);
+  rpc UpdateAgentStatus(AgentStatusUpdateRequest) returns (AgentStatusUpdateResponse);
+  rpc ListAgents(AgentListRequest) returns (stream AgentListResponse);
+  rpc UpsertAgent(AgentUpsertRequest) returns (AgentUpsertResponse);
+  rpc GetAgentById(AgentRequest) returns (AgentResponse);
+  rpc GetAgentByPartnerId(AgentByPartnerIdRequest) returns (AgentByPartnerIdResponse);
+
+  // Telephony operations
+  rpc Dial(CallRequest) returns (CallResponse);
+
+  // Recording controls
+  rpc StartCallRecording(RecordingStartRequest) returns (RecordingStartResponse);
+  rpc StopCallRecording(RecordingStopRequest) returns (RecordingStopResponse);
+  rpc GetRecordingStatus(RecordingStatusRequest) returns (RecordingStatusResponse);
+
+  // Scrub list management
+  rpc ListScrubLists(ScrubListRequest) returns (ScrubListResponse);
+  rpc AddScrubListEntries(ScrubListEntriesAddRequest) returns (ScrubListEntriesAddResponse);
+  rpc UpdateScrubListEntry(ScrubListEntryUpdateRequest) returns (ScrubListEntryUpdateResponse);
+  rpc RemoveScrubListEntries(ScrubListEntriesRemoveRequest) returns (ScrubListEntriesRemoveResponse);
+}
+
+message EventPollRequest {
+  int32 event_count = 10;  // Default 100 if 0
+}
+
+message EventPollResponse {
+  repeated Event events = 1;
+}
+
+message EventPollResponseAlternative {
+  repeated ExileAgentCall agent_calls = 1;
+  repeated ExileTelephonyResult telephony_results = 2;
+  repeated ExileAgentResponse agent_responses = 3;
+}
+
+message StreamJobsRequest {
+}
+
+message StreamJobsResponse {
+  repeated Job jobs = 1;
+}
+
+message JobResultsRequest {
+  string job_id = 2;
+  bool end_of_transmission = 3;
+  
+  oneof result {
+    PoolListResult pool_list_result = 10;
+    PoolStatusResult pool_status_result = 11;
+    PoolRecordsResult pool_records_result = 12;
+    RecordSearchResult record_search_result = 13;
+    RecordFieldsResult record_fields_result = 14;
+    RecordFieldsUpdateResult record_fields_update_result = 15;
+    PaymentCreationResult payment_creation_result = 16;
+    AccountPopResult account_pop_result = 17;
+    AgentCallResult agent_call_result = 18;
+    TelephonyResult telephony_result = 19;
+    AgentResponseResult agent_response_result = 20;
+    ErrorResult error_result = 21;
+    InfoResult info_result = 22;
+    ShutdownResult shutdown_result = 23;
+    LogResult log_result = 24;
+  }
+  
+  message PoolListResult {
+    repeated tcnapi.exile.core.v2.Pool pools = 1;
+  }
+  message PoolStatusResult {
+    tcnapi.exile.core.v2.Pool pool = 1;
+  }
+  message PoolRecordsResult {
+    repeated tcnapi.exile.core.v2.Record records = 1;
+  }
+  message RecordSearchResult {
+    repeated tcnapi.exile.core.v2.Record records = 1;
+  }
+  message RecordFieldsResult {
+    repeated tcnapi.exile.core.v2.Field fields = 1;
+  }
+  message RecordFieldsUpdateResult {}
+  message PaymentCreationResult {}
+  message AccountPopResult {}
+  message AgentCallResult {}
+  message TelephonyResult {}
+  message AgentResponseResult {}
+  message ErrorResult {
+    string message = 1;
+  }
+  message InfoResult {}
+  message ShutdownResult {}
+  message LogResult {}
+}
+
+message JobResultsResponse {}
+
+message Event {
+  oneof entity {
+    ExileAgentCall agent_call = 1;
+    ExileTelephonyResult telephony_result = 2;
+    ExileAgentResponse agent_response = 3;
+  }
+}
+
+message Job {
+  oneof task {
+    ListPoolsRequest list_pools = 1;
+    GetPoolStatusRequest get_pool_status = 2;
+    GetPoolRecordsRequest get_pool_records = 3;
+    SearchRecordsRequest search_records = 4;
+    GetRecordFieldsRequest get_record_fields = 5;
+    SetRecordFieldsRequest set_record_fields = 6;
+    CreatePaymentRequest create_payment = 7;
+    PopAccountRequest pop_account = 8;
+    InfoRequest info = 100;
+    SeppukuRequest shutdown = 101;
+    LogRequest log = 102;
+  }
+}
+
+message ScrubListEntriesRemoveRequest {
+  string scrub_list_id = 1;
+  repeated string entries = 2;
+}
+
+message ScrubListEntriesRemoveResponse {}
+
+message ScrubListEntryUpdateRequest {
+  string scrub_list_id = 1;
+  google.protobuf.StringValue notes = 10;
+  string content = 11;
+  google.protobuf.Timestamp expiration = 12;
+  google.protobuf.StringValue country_code = 13;
+}
+
+message ScrubListEntryUpdateResponse {}
+
+message ScrubListEntriesAddRequest {
+  string scrub_list_id = 1;
+  repeated Entry entries = 10;
+  string country_code = 11;
+  
+  message Entry {
+    string content = 1;
+    google.protobuf.Timestamp expiration = 2;
+    google.protobuf.StringValue notes = 3;
+  }
+}
+
+message ScrubListEntriesAddResponse {}
+
+message ScrubListRequest {}
+message ScrubListResponse {
+  repeated ScrubList scrub_lists = 1;
+}
+
+message ScrubList {
+  string scrub_list_id = 1;
+  bool read_only = 2;
+  ContentType content_type = 3;
+  enum ContentType {
+    PHONE_NUMBER = 0;
+    EMAIL = 1;
+    SMS = 2;
+    OTHER = 3;
+    ACCOUNT_NUMBER = 4;
+    WHATSAPP = 5;
+  }
+}
+
+message ClientConfigRequest {
+  bool is_docker = 10;
+}
+
+message ClientConfigResponse {
+  string org_name = 2;
+  string config_name = 6;
+  string config_payload = 7;
+}
+
+message OrganizationRequest {}
+message OrganizationResponse {
+  string org_name = 2;
+}
+
+message RecordingStatusRequest {
+  string user_id = 1;
+}
+
+message RecordingStatusResponse {
+  bool is_recording = 1;
+}
+
+message AgentUpsertRequest {
+  string username = 1;
+  string partner_agent_id = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string password = 5;
+}
+
+message AgentUpsertResponse {
+  Agent agent = 1;
+}
+
+message AgentByPartnerIdRequest {
+  string partner_agent_id = 1;
+}
+
+message AgentByPartnerIdResponse {
+  Agent agent = 1;
+}
+
+message AgentRequest {
+  string user_id = 1;
+}
+
+message AgentResponse {
+  Agent agent = 1;
+}
+
+message RecordingStopRequest {
+  string user_id = 1;
+}
+message RecordingStopResponse {}
+
+message RecordingStartRequest {
+  string user_id = 1;
+}
+message RecordingStartResponse {}
+
+message CallRequest {
+  string user_id = 1;
+  string phone_number = 2;
+  string caller_id = 3;
+}
+
+message CallResponse {
+  string phone_number = 1;
+  string caller_id = 2;
+  int64 call_sid = 3;
+  CallType call_type = 4;
+  string org_id = 5;
+  string partner_agent_id = 6;
+}
+
+message AgentStatusRequest {
+  string user_id = 1;
+}
+message AgentStatusResponse {
+  string user_id = 1;
+  AgentState agent_state = 10;
+  int64 current_session_id = 11;
+  ConnectedParty connected_party = 12;
+}
+
+message ConnectedParty {
+  int64 call_sid = 1;
+  CallType call_type = 2;
+  bool is_inbound = 3;
+}
+
+message AgentStatusUpdateRequest {
+  string user_id = 1;
+  AgentState new_state = 2;
+}
+message AgentStatusUpdateResponse {}
+
+message AgentListRequest {}
+message AgentListResponse {
+  Agent agent = 1;
+}
+
+message Agent {
+  string user_id = 1;
+  string org_id = 2;
+  string first_name = 3;
+  string last_name = 4;
+  string username = 5;
+  string partner_agent_id = 6;
+}
+
+message EventStreamRequest {}
+message EventStreamResponse {
+  oneof event {
+    CallerEvent call_event = 1;
+    AgentEvent agent_event = 2;
+  }
+}
+
+message PingRequest {}
+message PingResponse {}
+
+message JobStreamRequest {
+  string job_id = 1;
+}
+message JobStreamResponse {
+  string job_id = 1;
+  oneof job {
+    ExileAgentCall agent_call = 12;
+    ExileTelephonyResult telephony_result = 13;
+    ExileAgentResponse agent_response = 14;
+    ExileNamedJobRequest named_job = 16;
+  }
+}
+
+message ExileNamedJobRequest {
+  string api_call = 1 [deprecated = true];
+  oneof call {
+    ListPools list_pools = 10;
+    GetPoolStatus get_pool_status = 11;
+    GetPoolRecords get_pool_records = 12;
+  }
+}
+
+message ListPools {}
+
+message GetPoolStatus {
+  string pool_id = 1;
+}
+
+message GetPoolRecords {
+  string pool_id = 1;
+}
+
+message Seppuku {}
+message Info {}
+
+message ResultsStreamRequest {
+  string job_id = 1;
+  string payload = 2;
+  ResultError error = 3;
+}
+
+message ResultError {
+  string error_message = 1;
+  JobStreamResponse errored_job = 2;
+}
+
+message ResultsStreamResponse {}
