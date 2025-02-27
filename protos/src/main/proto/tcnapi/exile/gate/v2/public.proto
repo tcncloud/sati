@@ -6,7 +6,6 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
 import "tcnapi/exile/core/v2/entities.proto";
 import "tcnapi/exile/gate/v2/entities.proto";
-import "tcnapi/exile/gate/v2/gate.proto";
 
 service GateService {
   // Initial configuration retrieval for client setup
@@ -65,7 +64,7 @@ message StreamJobsRequest {
 }
 
 message StreamJobsResponse {
-  repeated Job jobs = 1;
+  Job jobs = 1;
 }
 
 message JobResultsRequest {
