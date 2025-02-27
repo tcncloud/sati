@@ -69,7 +69,7 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
                 try {
                     channel.awaitTermination(30, TimeUnit.SECONDS);
                 } catch (InterruptedException ex) {
-                    log.error("Can't shutdown the channel", ex)
+                    log.error("Can't shutdown the channel", ex);
                 }
             }
         }
