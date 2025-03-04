@@ -40,6 +40,7 @@ dependencies {
 
 
     testImplementation("io.micronaut:micronaut-http-client")
+    testImplementation("org.mockito:mockito-core:5.15.2")
 }
 
 java {

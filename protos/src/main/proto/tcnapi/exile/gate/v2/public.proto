@@ -64,7 +64,8 @@ message StreamJobsRequest {
 }
 
 message StreamJobsResponse {
-  Job jobs = 1;
+  string job_id = 1;
+  Job job = 2;
 }
 
 message JobResultsRequest {
