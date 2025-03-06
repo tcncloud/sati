@@ -16,7 +16,7 @@ import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 public abstract class GateClientAbstract implements ApplicationEventListener<ConfigEvent> {
-    private static final Logger log = LoggerFactory.getLogger(com.tcn.exile.gateclients.GateClientAbstract.class);
+    private static final Logger log = LoggerFactory.getLogger(com.tcn.exile.gateclients.v2.GateClientAbstract.class);
 
     protected ManagedChannel channel;
     private ConfigEvent event;
@@ -28,6 +28,7 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
 
     @Override
     public void onApplicationEvent(ConfigEvent event) {
+        log.debug("Received ConfigEvent {}", event);
         if (event != null) {
             shutdown();
             this.event = event;
@@ -77,6 +78,7 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
                 // TODO: add service configuration for retry
 //          .defaultServiceConfig(null)
                 .build();
+                log.debug("channel: {}", channel);
             return channel;
         } catch (IOException e) {
             throw new UnconfiguredException("TCN Gate client is unconfigured", e);

@@ -8,6 +8,9 @@ public final class MemoryAppenderInstance {
     }
 
     public static MemoryAppender getInstance() {
+        // if (instance == null) {
+        //     instance = new MemoryAppender();
+        // }
         return instance;
     }
 

@@ -1,11 +1,11 @@
-arguments=--init-script /var/folders/1m/qx1q2kxn7rs1lm2fy455j9b00000gn/T/db3b08fc4a9ef609cb16b96b200fa13e563f396e9bb1ed0905fdab7bc3bc513b.gradle --init-script /var/folders/1m/qx1q2kxn7rs1lm2fy455j9b00000gn/T/52cde0cfcf3e28b8b7510e992210d9614505e0911af0c190bd590d7158574963.gradle
+arguments=--init-script /home/tom/.config/Code/User/globalStorage/redhat.java/1.40.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/init/init.gradle --init-script /home/tom/.config/Code/User/globalStorage/redhat.java/1.40.0/config_linux/org.eclipse.osgi/58/0/.cp/gradle/protobuf/init.gradle
 auto.sync=true
 build.scans.enabled=false
 connection.gradle.distribution=GRADLE_DISTRIBUTION(WRAPPER)
-connection.project.dir=
+connection.project.dir=core
 eclipse.preferences.version=1
 gradle.user.home=
-java.home=/Users/tom/.sdkman/candidates/java/17.0.12-amzn
+java.home=/home/tom/.sdkman/candidates/java/17.0.12-amzn
 jvm.arguments=
 offline.mode=false
 override.workspace.settings=true
