@@ -32,7 +32,7 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
         if (event != null) {
             shutdown();
             this.event = event;
-            start();
+            // start();
         }
     }
 

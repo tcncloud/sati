@@ -36,7 +36,7 @@ public class GateClientJobStream extends GateClientAbstract
                 client.streamJobs(StreamJobsRequest.newBuilder().build(), this);
             }
         } catch (UnconfiguredException e) {
-            log.error("Error while starting job stream", e);
+            log.error("Error while starting job stream {}", e.getMessage());
         }
     }
 
@@ -80,12 +80,15 @@ public class GateClientJobStream extends GateClientAbstract
 
     @Override
     public void onError(Throwable t) {
+        log.error("Error while handling job stream", t);
+        this.shutdown();
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'onError'");
     }
 
     @Override
     public void onCompleted() {
+        this.shutdown();
         // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'onCompleted'");
     }

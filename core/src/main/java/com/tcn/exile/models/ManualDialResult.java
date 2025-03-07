@@ -18,6 +18,8 @@ package com.tcn.exile.models;
 
 import java.util.Objects;
 
+import tcnapi.exile.gate.v2.Public.DialResponse;
+
 public record ManualDialResult(String phoneNumber, String callerId, long callSid, String callType, String orgId,
                                String partnerAgentId) {
   public ManualDialResult
@@ -32,7 +34,7 @@ public record ManualDialResult(String phoneNumber, String callerId, long callSid
     Objects.nonNull(partnerAgentId);
   }
 
-  public static ManualDialResult fromProto(tcnapi.exile.gate.v1.Service.DialRes result) {
+  public static ManualDialResult fromProto(DialResponse result) {
     if (result == null) {
       throw new IllegalArgumentException("result cannot be null");
     }

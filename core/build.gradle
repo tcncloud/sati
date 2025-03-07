@@ -55,7 +55,7 @@ micronaut {
     testRuntime("junit5")
     processing {
         incremental(true)
-        annotations("com.tcn.*")
+        annotations("com.tcn.exile.*")
     }
     aot {
         // Please review carefully the optimizations enabled below

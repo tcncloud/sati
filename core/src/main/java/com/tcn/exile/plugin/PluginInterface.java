@@ -18,10 +18,12 @@ package com.tcn.exile.plugin;
 
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.models.LookupType;
+
 import io.micronaut.core.annotation.Nullable;
 import jakarta.inject.Singleton;
-import tcnapi.exile.gate.v1.Entities;
-import tcnapi.exile.gate.v1.Service;
+import tcnapi.exile.gate.v2.Entities.ExileAgentCall;
+import tcnapi.exile.gate.v2.Entities.ExileAgentResponse;
+import tcnapi.exile.gate.v2.Entities.ExileTelephonyResult;
 
 import java.util.Map;
 
@@ -33,21 +35,8 @@ public interface PluginInterface {
 
     PluginStatus getPluginStatus();
 
-    @Deprecated
-    void scheduleInfo(String jobId, Service.Info info) throws UnconfiguredException;
 
-    @Deprecated
-    void scheduleExileAgentCall(String jobId, Entities.ExileAgentCall exileAgentCall);
 
-    @Deprecated
-    void scheduleExileTelephonyResult(String jobId, Entities.ExileTelephonyResult exileTelephonyResult);
-
-    @Deprecated
-    void scheduleExileAgentRespose(String jobId, Entities.ExileAgentResponse exileAgentResponse);
-
-    @Deprecated
-    void scheduleExileNamedJob(String jobId, Service.ExileNamedJobRequest exileNamedJobRequest)
-            throws UnconfiguredException;
 
     /**
      * List available pools of data for interogation
@@ -138,7 +127,7 @@ public interface PluginInterface {
      * @param jobId
      * @param exileAgentCall
      */
-    void handleAgentCall(String jobId, Entities.ExileAgentCall exileAgentCall);
+    void handleAgentCall(String jobId, ExileAgentCall exileAgentCall);
 
     /**
      * Handle telephony result
@@ -146,7 +135,7 @@ public interface PluginInterface {
      * @param jobId
      * @param exileTelephonyResult
      */
-    void handleTelephonyResult(String jobId, Entities.ExileTelephonyResult exileTelephonyResult);
+    void handleTelephonyResult(String jobId, ExileTelephonyResult exileTelephonyResult);
 
     /**
      * Handle agent response
@@ -154,6 +143,6 @@ public interface PluginInterface {
      * @param jobId
      * @param exileAgentResponse
      */
-    void handleAgentRespose(String jobId, Entities.ExileAgentResponse exileAgentResponse);
+    void handleAgentRespose(String jobId, ExileAgentResponse exileAgentResponse);
 
 }
