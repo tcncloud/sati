@@ -32,7 +32,7 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
         if (event != null) {
             shutdown();
             this.event = event;
-            // start();
+            // start(); <- this is b/c all of the 3 beans have the start() method invoked thru @Scheduled annotation
         }
     }
 
