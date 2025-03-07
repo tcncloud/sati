@@ -24,6 +24,9 @@ public class GateClientJobStream extends GateClientAbstract
     @Override
     @Scheduled(fixedDelay = "10s")
     public void start() {
+        if (!plugin.isRunning()) {
+            return;
+        }
         log.debug("start()");
         try {
             if (!isRunning()) {

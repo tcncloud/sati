@@ -14,11 +14,14 @@ import tcnapi.exile.gate.v2.Entities.ExileAgentCall;
 import tcnapi.exile.gate.v2.Entities.ExileAgentResponse;
 import tcnapi.exile.gate.v2.Entities.ExileTelephonyResult;
 
+import com.tcn.exile.models.PluginConfigEvent;
+import io.micronaut.context.event.ApplicationEventListener;
+
 import java.util.HashMap;
 import java.util.Map;
 
 @Singleton
-public class DemoPlugin implements PluginInterface {
+public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, PluginInterface {
     private static final Logger log = LoggerFactory.getLogger(DemoPlugin.class);
     private boolean running = false;
 
@@ -101,5 +104,11 @@ public class DemoPlugin implements PluginInterface {
     @Override
     public void handleAgentRespose(String jobId, ExileAgentResponse exileAgentResponse) {
         log.info("Handling agent response for job {}: {}", jobId, exileAgentResponse);
+    }
+
+    @Override
+    public void onApplicationEvent(PluginConfigEvent event) {
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'onApplicationEvent'");
     }
 } 

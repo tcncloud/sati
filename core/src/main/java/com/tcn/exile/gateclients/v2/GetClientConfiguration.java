@@ -4,6 +4,7 @@ import java.util.concurrent.TimeUnit;
 
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.models.PluginConfigEvent;
+import com.tcn.exile.plugin.PluginInterface;
 
 import io.grpc.StatusRuntimeException;
 import io.micronaut.context.event.ApplicationEventPublisher;
@@ -18,10 +19,22 @@ public class GetClientConfiguration extends GateClientAbstract {
     PluginConfigEvent event = null;
 
     @Inject
+    PluginInterface plugin;
+
+    @Inject
     ApplicationEventPublisher<PluginConfigEvent> eventPublisher;
 
     protected static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GetClientConfiguration.class);
 
+    private void publishEvent(PluginConfigEvent event) {
+        if (event != null) {
+            log.debug("Publishing event {}", event);
+            eventPublisher.publishEvent(event);
+        }
+
+    }
+
+    
     @Override
     @Scheduled(fixedDelay = "10s")
     public void start() {
@@ -40,7 +53,7 @@ public class GetClientConfiguration extends GateClientAbstract {
                 log.debug("Received new configuration, we will emit an event");
                 log.trace("{}", newEvent);
                 event = newEvent;
-                eventPublisher.publishEvent(event);
+                publishEvent(event);
             }
             return;
         } catch (UnconfiguredException e) {
@@ -52,7 +65,7 @@ public class GetClientConfiguration extends GateClientAbstract {
         if (this.event != null) {
             log.debug("Due to the previous error, we will emit an unconfigured event");
             this.event.setUnconfigured(true);
-            eventPublisher.publishEvent(this.event);
+            publishEvent(event);
         }
     }
 }
