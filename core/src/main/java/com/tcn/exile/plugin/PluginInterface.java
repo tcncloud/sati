@@ -80,43 +80,43 @@ public interface PluginInterface {
      * Read fields from a record
      * 
      * @param jobId
-     * @param satiRecordId
+     * @param recordId
      * @param fields
      * @throws UnconfiguredException
      */
-    void readFields(String jobId, String satiRecordId, String[] fields) throws UnconfiguredException;
+    void readFields(String jobId, String recordId, String[] fields) throws UnconfiguredException;
 
     /**
      * Write fields to a record
      * 
      * @param jobId
-     * @param satiRecordId
+     * @param recordId
      * @param fields
      * @throws UnconfiguredException
      */
-    void writeFields(String jobId, String satiRecordId, Map<String, String> fields) throws UnconfiguredException;
+    void writeFields(String jobId, String recordId, Map<String, String> fields) throws UnconfiguredException;
 
     /**
      * Create a payment record
      * 
      * @param jobId
-     * @param satiRecordId
+     * @param recordId
      * @param fields
      * @throws UnconfiguredException
      */
-    void createPayment(String jobId, String satiRecordId, Map<String, String> fields) throws UnconfiguredException;
+    void createPayment(String jobId, String recordId, Map<String, String> fields) throws UnconfiguredException;
 
     /**
      * Create a payment record
      * 
      * @param jobId
-     * @param satiRecordId
+     * @param recordId
      * @param partnerUserId
      * @param callId
      * @param callType
      * @throws UnconfiguredException
      */
-    void popAccount(String jobId, String satiRecordId, String partnerUserId, String callId, String callType)
+    void popAccount(String jobId, String recordId, String partnerUserId, String callId, String callType)
             throws UnconfiguredException;
 
     // TBD execute logic

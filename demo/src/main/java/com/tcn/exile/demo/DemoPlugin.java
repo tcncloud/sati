@@ -69,23 +69,23 @@ public class DemoPlugin implements PluginInterface {
     }
 
     @Override
-    public void readFields(String jobId, String satiRecordId, String[] fields) throws UnconfiguredException {
-        log.info("Reading fields for job {} and record {}", jobId, satiRecordId);
+    public void readFields(String jobId, String recordId, String[] fields) throws UnconfiguredException {
+        log.info("Reading fields for job {} and record {}", jobId, recordId);
     }
 
     @Override
-    public void writeFields(String jobId, String satiRecordId, Map<String, String> fields) throws UnconfiguredException {
-        log.info("Writing fields for job {} and record {}", jobId, satiRecordId);
+    public void writeFields(String jobId, String recordId, Map<String, String> fields) throws UnconfiguredException {
+        log.info("Writing fields for job {} and record {}", jobId, recordId);
     }
 
     @Override
-    public void createPayment(String jobId, String satiRecordId, Map<String, String> fields) throws UnconfiguredException {
-        log.info("Creating payment for job {} and record {}", jobId, satiRecordId);
+    public void createPayment(String jobId, String recordId, Map<String, String> fields) throws UnconfiguredException {
+        log.info("Creating payment for job {} and record {}", jobId, recordId);
     }
 
     @Override
-    public void popAccount(String jobId, String satiRecordId, String partnerUserId, String callId, String callType) throws UnconfiguredException {
-        log.info("Popping account for job {} and record {}", jobId, satiRecordId);
+    public void popAccount(String jobId, String recordId, String partnerUserId, String callId, String callType) throws UnconfiguredException {
+        log.info("Popping account for job {} and record {}", jobId, recordId);
     }
 
     @Override
