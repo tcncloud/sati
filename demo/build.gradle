@@ -22,6 +22,7 @@ dependencies {
 
     implementation(project(":core"))
     implementation(project(":protos"))
+    implementation(project(":logback-ext"))
 
     runtimeOnly("ch.qos.logback:logback-classic")
     runtimeOnly("org.slf4j:slf4j-simple")

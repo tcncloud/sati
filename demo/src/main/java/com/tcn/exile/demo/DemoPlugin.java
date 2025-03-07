@@ -4,12 +4,15 @@ import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.models.LookupType;
 import com.tcn.exile.plugin.PluginInterface;
 import com.tcn.exile.plugin.PluginStatus;
+
 import io.micronaut.core.annotation.Nullable;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tcnapi.exile.gate.v1.Entities;
-import tcnapi.exile.gate.v1.Service;
+import tcnapi.exile.gate.v2.Entities;
+import tcnapi.exile.gate.v2.Entities.ExileAgentCall;
+import tcnapi.exile.gate.v2.Entities.ExileAgentResponse;
+import tcnapi.exile.gate.v2.Entities.ExileTelephonyResult;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -42,30 +45,8 @@ public class DemoPlugin implements PluginInterface {
         );
     }
 
-    @Override
-    public void scheduleInfo(String jobId, Service.Info info) throws UnconfiguredException {
-        log.info("Received info job {}: {}", jobId, info);
-    }
 
-    @Override
-    public void scheduleExileAgentCall(String jobId, Entities.ExileAgentCall exileAgentCall) {
-        log.info("Received agent call job {}: {}", jobId, exileAgentCall);
-    }
 
-    @Override
-    public void scheduleExileTelephonyResult(String jobId, Entities.ExileTelephonyResult exileTelephonyResult) {
-        log.info("Received telephony result job {}: {}", jobId, exileTelephonyResult);
-    }
-
-    @Override
-    public void scheduleExileAgentRespose(String jobId, Entities.ExileAgentResponse exileAgentResponse) {
-        log.info("Received agent response job {}: {}", jobId, exileAgentResponse);
-    }
-
-    @Override
-    public void scheduleExileNamedJob(String jobId, Service.ExileNamedJobRequest exileNamedJobRequest) throws UnconfiguredException {
-        log.info("Received named job {}: {}", jobId, exileNamedJobRequest);
-    }
 
     @Override
     public void listPools(String jobId) throws UnconfiguredException {
@@ -108,17 +89,17 @@ public class DemoPlugin implements PluginInterface {
     }
 
     @Override
-    public void handleAgentCall(String jobId, Entities.ExileAgentCall exileAgentCall) {
+    public void handleAgentCall(String jobId, ExileAgentCall exileAgentCall) {
         log.info("Handling agent call for job {}: {}", jobId, exileAgentCall);
     }
 
     @Override
-    public void handleTelephonyResult(String jobId, Entities.ExileTelephonyResult exileTelephonyResult) {
+    public void handleTelephonyResult(String jobId, ExileTelephonyResult exileTelephonyResult) {
         log.info("Handling telephony result for job {}: {}", jobId, exileTelephonyResult);
     }
 
     @Override
-    public void handleAgentRespose(String jobId, Entities.ExileAgentResponse exileAgentResponse) {
+    public void handleAgentRespose(String jobId, ExileAgentResponse exileAgentResponse) {
         log.info("Handling agent response for job {}: {}", jobId, exileAgentResponse);
     }
 } 
