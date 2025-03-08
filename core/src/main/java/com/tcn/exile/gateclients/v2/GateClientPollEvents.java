@@ -13,8 +13,8 @@ import tcnapi.exile.gate.v2.GateServiceGrpc;
 import tcnapi.exile.gate.v2.Public.PollEventsRequest;
 
 @Singleton
-public class GateClientEventStream extends GateClientAbstract {
-    protected static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GateClientEventStream.class);
+public class GateClientPollEvents extends GateClientAbstract {
+    protected static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GateClientPollEvents.class);
 
     @Inject
     PluginInterface plugin;
