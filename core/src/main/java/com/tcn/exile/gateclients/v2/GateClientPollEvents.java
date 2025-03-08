@@ -23,16 +23,22 @@ public class GateClientPollEvents extends GateClientAbstract {
     @Scheduled(fixedDelay = "10s")
     public void start() {
         try {
-            if (!isUnconfigured()) {
-                log.debug("pollEvents().start()");
-                var client = GateServiceGrpc.newBlockingStub(getChannel())
-                        .withDeadlineAfter(30, TimeUnit.SECONDS)
-                        .withWaitForReady();
-                var response = client.pollEvents(PollEventsRequest.newBuilder().build());
-                response.getEventsList().forEach(event -> {
-                    log.debug("Received event {}", event);
-                });
+            if (isUnconfigured()) {
+                log.trace("The configuration was not set, we will not start the job stream");
+                return;
             }
+            if (!plugin.isRunning()) {
+                log.trace("The plugin is not running, we will not start the job stream");
+                return;
+            }
+            log.debug("pollEvents().start()");
+            var client = GateServiceGrpc.newBlockingStub(getChannel())
+                    .withDeadlineAfter(30, TimeUnit.SECONDS)
+                    .withWaitForReady();
+            var response = client.pollEvents(PollEventsRequest.newBuilder().build());
+            response.getEventsList().forEach(event -> {
+                log.debug("Received event {}", event);
+            });
         } catch (UnconfiguredException e) {
             log.error("Error while getting client configuration {}", e.getMessage());
         }
