@@ -36,6 +36,10 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
         }
     }
 
+    protected boolean isUnconfigured() {
+        return (event == null) || event.isUnconfigured();
+    }
+
     protected void shutdown() {
         if ((this.channel != null) && (!this.channel.isShutdown() && !this.channel.isTerminated())) {
             channel.shutdown();
