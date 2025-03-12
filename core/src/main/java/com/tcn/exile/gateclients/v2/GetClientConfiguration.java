@@ -38,10 +38,10 @@ public class GetClientConfiguration extends GateClientAbstract {
     @Override
     @Scheduled(fixedDelay = "10s")
     public void start() {
-        if (isUnconfigured()) {
-            log.trace("The configuration was not set, we will not start the job stream");
-            return;
-        }
+        // if (isUnconfigured()) {
+        //     log.trace("The configuration was not set, getting a new one");
+        //     return;
+        // }
         try {
             var client = GateServiceGrpc.newBlockingStub(getChannel())
                     .withDeadlineAfter(30, TimeUnit.SECONDS)

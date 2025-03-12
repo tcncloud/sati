@@ -15,100 +15,123 @@ import tcnapi.exile.gate.v2.Entities.ExileAgentResponse;
 import tcnapi.exile.gate.v2.Entities.ExileTelephonyResult;
 
 import com.tcn.exile.models.PluginConfigEvent;
+import com.tcn.exile.gateclients.v2.GateClient;
+import jakarta.inject.Inject;
 import io.micronaut.context.event.ApplicationEventListener;
+import tcnapi.exile.gate.v2.Public;
 
 import java.util.HashMap;
 import java.util.Map;
 
 @Singleton
 public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, PluginInterface {
-    private static final Logger log = LoggerFactory.getLogger(DemoPlugin.class);
-    private boolean running = false;
+  private static final Logger log = LoggerFactory.getLogger(DemoPlugin.class);
+  private boolean running = false;
 
-    @Override
-    public String getName() {
-        return "DemoPlugin";
+  @Inject
+  GateClient gateClient;
+
+
+  @Override
+  public String getName() {
+    return "DemoPlugin";
+  }
+
+  @Override
+  public boolean isRunning() {
+
+    return running;
+  }
+
+  @Override
+  public PluginStatus getPluginStatus() {
+    return new PluginStatus(
+        getName(),
+        running,
+        100, // queueMaxSize
+        0,   // queueCompletedJobs
+        0,   // queueActiveCount
+        new HashMap<>(), // internalConfig
+        new HashMap<>()  // internalStatus
+    );
+  }
+
+
+  @Override
+  public void listPools(String jobId) throws UnconfiguredException {
+    log.info("Listing pools for job {}", jobId);
+    gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
+        .setJobId(jobId)
+        .setEndOfTransmission(true)
+        .setPoolListResult(Public.SubmitJobResultsRequest.PoolListResult.newBuilder()
+            .addPools(tcnapi.exile.core.v2.Entities.Pool.newBuilder()
+                .setPoolId("A")
+                .setDescription("Pool with id A")
+                .setStatus(tcnapi.exile.core.v2.Entities.Pool.PoolStatus.READY)
+                .build())
+            .build())
+        .build());
+
+  }
+
+  @Override
+  public void getPoolStatus(String jobId, String satiPoolId) throws UnconfiguredException {
+    log.info("Getting pool status for job {} and pool {}", jobId, satiPoolId);
+  }
+
+  @Override
+  public void getPoolRecords(String jobId, String satiPoolId) throws UnconfiguredException {
+    log.info("Getting pool records for job {} and pool {}", jobId, satiPoolId);
+  }
+
+  @Override
+  public void searchRecords(String jobId, LookupType lookupType, String lookupValue, @Nullable String satiParentId) throws UnconfiguredException {
+    log.info("Searching records for job {} with type {} and value {}", jobId, lookupType, lookupValue);
+  }
+
+  @Override
+  public void readFields(String jobId, String recordId, String[] fields) throws UnconfiguredException {
+    log.info("Reading fields for job {} and record {}", jobId, recordId);
+  }
+
+  @Override
+  public void writeFields(String jobId, String recordId, Map<String, String> fields) throws UnconfiguredException {
+    log.info("Writing fields for job {} and record {}", jobId, recordId);
+  }
+
+  @Override
+  public void createPayment(String jobId, String recordId, Map<String, String> fields) throws UnconfiguredException {
+    log.info("Creating payment for job {} and record {}", jobId, recordId);
+  }
+
+  @Override
+  public void popAccount(String jobId, String recordId, String partnerUserId, String callId, String callType) throws UnconfiguredException {
+    log.info("Popping account for job {} and record {}", jobId, recordId);
+  }
+
+  @Override
+  public void handleAgentCall(ExileAgentCall exileAgentCall) {
+    log.info("Handling agent call for job {}", exileAgentCall);
+  }
+
+  @Override
+  public void handleTelephonyResult(ExileTelephonyResult exileTelephonyResult) {
+    log.info("Handling telephony result for job {}", exileTelephonyResult);
+  }
+
+  @Override
+  public void handleAgentRespose(ExileAgentResponse exileAgentResponse) {
+    log.info("Handling agent response for {}", exileAgentResponse);
+  }
+
+  @Override
+  public void onApplicationEvent(PluginConfigEvent event) {
+    if (event.isUnconfigured()) {
+      log.info("Received unconfigured event");
+      running = false;
+    } else {
+      log.info("Received configured event");
+      running = true;
     }
-
-    @Override
-    public boolean isRunning() {
-        return running;
-    }
-
-    @Override
-    public PluginStatus getPluginStatus() {
-        return new PluginStatus(
-            getName(),
-            running,
-            100, // queueMaxSize
-            0,   // queueCompletedJobs
-            0,   // queueActiveCount
-            new HashMap<>(), // internalConfig
-            new HashMap<>()  // internalStatus
-        );
-    }
-
-
-
-
-    @Override
-    public void listPools(String jobId) throws UnconfiguredException {
-        log.info("Listing pools for job {}", jobId);
-    }
-
-    @Override
-    public void getPoolStatus(String jobId, String satiPoolId) throws UnconfiguredException {
-        log.info("Getting pool status for job {} and pool {}", jobId, satiPoolId);
-    }
-
-    @Override
-    public void getPoolRecords(String jobId, String satiPoolId) throws UnconfiguredException {
-        log.info("Getting pool records for job {} and pool {}", jobId, satiPoolId);
-    }
-
-    @Override
-    public void searchRecords(String jobId, LookupType lookupType, String lookupValue, @Nullable String satiParentId) throws UnconfiguredException {
-        log.info("Searching records for job {} with type {} and value {}", jobId, lookupType, lookupValue);
-    }
-
-    @Override
-    public void readFields(String jobId, String recordId, String[] fields) throws UnconfiguredException {
-        log.info("Reading fields for job {} and record {}", jobId, recordId);
-    }
-
-    @Override
-    public void writeFields(String jobId, String recordId, Map<String, String> fields) throws UnconfiguredException {
-        log.info("Writing fields for job {} and record {}", jobId, recordId);
-    }
-
-    @Override
-    public void createPayment(String jobId, String recordId, Map<String, String> fields) throws UnconfiguredException {
-        log.info("Creating payment for job {} and record {}", jobId, recordId);
-    }
-
-    @Override
-    public void popAccount(String jobId, String recordId, String partnerUserId, String callId, String callType) throws UnconfiguredException {
-        log.info("Popping account for job {} and record {}", jobId, recordId);
-    }
-
-    @Override
-    public void handleAgentCall(String jobId, ExileAgentCall exileAgentCall) {
-        log.info("Handling agent call for job {}: {}", jobId, exileAgentCall);
-    }
-
-    @Override
-    public void handleTelephonyResult(String jobId, ExileTelephonyResult exileTelephonyResult) {
-        log.info("Handling telephony result for job {}: {}", jobId, exileTelephonyResult);
-    }
-
-    @Override
-    public void handleAgentRespose(String jobId, ExileAgentResponse exileAgentResponse) {
-        log.info("Handling agent response for job {}: {}", jobId, exileAgentResponse);
-    }
-
-    @Override
-    public void onApplicationEvent(PluginConfigEvent event) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'onApplicationEvent'");
-    }
+  }
 } 

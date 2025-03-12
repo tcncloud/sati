@@ -127,7 +127,7 @@ public interface PluginInterface {
      * @param jobId
      * @param exileAgentCall
      */
-    void handleAgentCall(String jobId, ExileAgentCall exileAgentCall);
+    void handleAgentCall(ExileAgentCall exileAgentCall);
 
     /**
      * Handle telephony result
@@ -135,7 +135,7 @@ public interface PluginInterface {
      * @param jobId
      * @param exileTelephonyResult
      */
-    void handleTelephonyResult(String jobId, ExileTelephonyResult exileTelephonyResult);
+    void handleTelephonyResult(ExileTelephonyResult exileTelephonyResult);
 
     /**
      * Handle agent response
@@ -143,6 +143,6 @@ public interface PluginInterface {
      * @param jobId
      * @param exileAgentResponse
      */
-    void handleAgentRespose(String jobId, ExileAgentResponse exileAgentResponse);
+    void handleAgentRespose(ExileAgentResponse exileAgentResponse);
 
 }

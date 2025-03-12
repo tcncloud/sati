@@ -37,7 +37,10 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
     }
 
     protected boolean isUnconfigured() {
-        return (event == null) || event.isUnconfigured();
+        if ((event == null) || event.isUnconfigured()) {
+            return true;
+        }
+        return false;
     }
 
     protected void shutdown() {

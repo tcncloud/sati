@@ -24,7 +24,7 @@ public class GateClientJobStream extends GateClientAbstract
     @Override
     @Scheduled(fixedDelay = "10s")
     public void start() {
-        if (!isUnconfigured()) {
+        if (isUnconfigured()) {
             log.trace("The configuration was not set, we will not start the job stream");
             return;
         }
@@ -66,11 +66,23 @@ public class GateClientJobStream extends GateClientAbstract
         log.debug("Received {} job", value.getJobId());
         try {
             if (value.hasListPools()) {
-                plugin.listPools(value.getJobId());
+
+                plugin.listPools(value.getListPools().getJobId());
             } else if (value.hasGetPoolStatus()) {
+                plugin.getPoolStatus(
+                    value.getJobId(), 
+                    value.getGetPoolStatus().getPoolId());
             } else if (value.hasGetPoolRecords()) {
+                plugin.getPoolRecords(value.getJobId(), value.getGetPoolRecords().getPoolId());
             } else if (value.hasSearchRecords()) {
+                // plugin.searchRecords(value.getJobId(), value.getSearchRecords().getLookupType(),ull, null, null);
+                // plugin.searchRecords(value.getJobId(), 
+                // value.getSearchRecords().getLookupType(),
+                // value.getSearchRecords().getLookupValue(), 
+                // value.getSearchRecords().getPoolId());
             } else if (value.hasGetRecordFields()) {
+                // plugin.readFields(value.getJobId(), value.getGetRecordFields().getRecordId(),
+                // value.getGetRecordFields().getFieldsList().toArray(new String[0]));
             } else if (value.hasSetRecordFields()) {
             } else if (value.hasCreatePayment()) {
             } else if (value.hasPopAccount()) {
@@ -91,14 +103,14 @@ public class GateClientJobStream extends GateClientAbstract
         log.error("Error while handling job stream", t);
         this.shutdown();
         // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'onError'");
+        // throw new UnsupportedOperationException("Unimplemented method 'onError'");
     }
 
     @Override
     public void onCompleted() {
         this.shutdown();
         // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'onCompleted'");
+        // throw new UnsupportedOperationException("Unimplemented method 'onCompleted'");
     }
 
 }

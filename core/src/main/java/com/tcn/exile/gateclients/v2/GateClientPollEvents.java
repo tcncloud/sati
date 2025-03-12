@@ -5,7 +5,6 @@ import java.util.concurrent.TimeUnit;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.plugin.PluginInterface;
 
-import io.grpc.stub.StreamObserver;
 import io.micronaut.scheduling.annotation.Scheduled;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -20,7 +19,7 @@ public class GateClientPollEvents extends GateClientAbstract {
     PluginInterface plugin;
 
     @Override
-    @Scheduled(fixedDelay = "10s")
+    // @Scheduled(fixedDelay = "10s")
     public void start() {
         try {
             if (isUnconfigured()) {
@@ -31,13 +30,28 @@ public class GateClientPollEvents extends GateClientAbstract {
                 log.trace("The plugin is not running, we will not start the job stream");
                 return;
             }
-            log.debug("pollEvents().start()");
             var client = GateServiceGrpc.newBlockingStub(getChannel())
                     .withDeadlineAfter(30, TimeUnit.SECONDS)
                     .withWaitForReady();
             var response = client.pollEvents(PollEventsRequest.newBuilder().build());
+            if (response.getEventsCount() == 0) {
+                log.debug("No events received");
+                return;
+            }
             response.getEventsList().forEach(event -> {
-                log.debug("Received event {}", event);
+                if (event.hasAgentCall()) {
+                    log.debug("Received agent call event {} - {}", event.getAgentCall().getCallSid(), event.getAgentCall().getCallType());
+                    plugin.handleAgentCall(event.getAgentCall());
+                }
+                if (event.hasAgentResponse()) {
+                    log.debug("Received agent response event {}", event.getAgentResponse().getAgentCallResponseSid());
+                    plugin.handleAgentRespose(event.getAgentResponse());
+                }
+
+                if (event.hasTelephonyResult()) {
+                    log.debug("Received telephony result event {} - {}", event.getTelephonyResult().getCallSid(), event.getTelephonyResult().getCallType());
+                    plugin.handleTelephonyResult(event.getTelephonyResult());
+                }
             });
         } catch (UnconfiguredException e) {
             log.error("Error while getting client configuration {}", e.getMessage());

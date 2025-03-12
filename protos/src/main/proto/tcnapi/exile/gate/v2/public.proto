@@ -123,10 +123,11 @@ message SubmitJobResultsRequest {
 message SubmitJobResultsResponse {}
 
 message Event {
+//   string job_id = 1;
   oneof entity {
-    ExileAgentCall agent_call = 1;
-    ExileTelephonyResult telephony_result = 2;
-    ExileAgentResponse agent_response = 3;
+    ExileAgentCall agent_call = 10;
+    ExileTelephonyResult telephony_result = 11;
+    ExileAgentResponse agent_response = 12;
   }
 }
 
@@ -185,6 +186,7 @@ message GetClientConfigurationRequest {
 }
 
 message GetClientConfigurationResponse {
+  string org_id = 1;
   string org_name = 2;
   string config_name = 6;
   string config_payload = 7;
