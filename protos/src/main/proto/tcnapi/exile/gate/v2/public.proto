@@ -256,6 +256,20 @@ message StreamJobsResponse {
    * Request message related to logging.
    */
   message LogRequest {
+    bool stream_logs = 1; // Whether to stream logs to exile gate
+    repeated LoggerLevels logger_levels = 2; // Logger levels to set
+    message LoggerLevels {
+      string logger_name = 1; // Name of the logger (usually the class name)
+      LoggerLevel logger_level = 2; // Level to set for the logger
+      enum LoggerLevel {
+        TRACE = 0; // Trace level
+        DEBUG = 1; // Debug level
+        INFO = 2; // Info level
+        WARN = 3; // Warn level
+        ERROR = 4; // Error level
+        FATAL = 5; // Fatal level
+      }
+    }
   }
 }
 

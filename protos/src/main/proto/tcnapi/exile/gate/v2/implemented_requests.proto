@@ -1,3 +1,0 @@
-syntax = "proto3";
-
-package tcnapi.exile.gate.v2;

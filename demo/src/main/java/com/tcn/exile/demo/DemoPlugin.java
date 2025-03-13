@@ -1,10 +1,12 @@
 package com.tcn.exile.demo;
 
+import ch.qos.logback.classic.LoggerContext;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.gateclients.v2.BuildVersion;
 import com.tcn.exile.plugin.PluginInterface;
 import com.tcn.exile.plugin.PluginStatus;
 
+import io.micronaut.context.env.Environment;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,6 +31,8 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
   @Inject
   GateClient gateClient;
 
+  @Inject
+  Environment environment;
 
   @Override
   public String getName() {
@@ -221,8 +225,16 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
   }
 
   @Override
-  public void log(String jobId, Public.StreamJobsResponse.LogRequest log) {
+  public void logger(String jobId, Public.StreamJobsResponse.LogRequest logRequest) {
+    log.debug("Received log request {} stream {} payload: {}", jobId, logRequest.getStreamLogs(), logRequest.getLoggerLevelsList());
+    LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
 
+    for (var logger : logRequest.getLoggerLevelsList()) {
+      var v = loggerContext.getLogger(logger.getLoggerName());
+      if (v != null) {
+        v.setLevel(ch.qos.logback.classic.Level.toLevel(logger.getLoggerLevel().name()));
+      }
+    }
   }
 
   @Override
