@@ -8,6 +8,7 @@ import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.models.LookupType;
 import com.tcn.exile.plugin.PluginInterface;
 
+import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import io.micronaut.scheduling.annotation.Scheduled;
 import jakarta.inject.Inject;
@@ -102,15 +103,25 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onError(Throwable t) {
-    log.error("Error while handling job stream", t);
-    this.shutdown();
-    this.start();
+    if (t instanceof io.grpc.StatusRuntimeException) {
+        var status = io.grpc.Status.fromThrowable(t);
+        if (status.getCode() == Status.Code.DEADLINE_EXCEEDED) {
+          try {
+            var chan = this.channel;
+            boolean b = chan.shutdownNow().awaitTermination(30, TimeUnit.SECONDS);
+            log.debug("Channel shutdown {} - {}", chan, b);
+          } catch (InterruptedException e) {
+            log.error("Channel shutdown exception {}", channel, e);
+          }
+        }
+    }
+//    this.start();
   }
 
   @Override
   public void onCompleted() {
     this.shutdown();
-    this.start();
+//    this.start();
   }
 
 }
