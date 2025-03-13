@@ -6,7 +6,6 @@ import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.plugin.PluginInterface;
 
 import io.grpc.Context;
-import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import io.micronaut.scheduling.annotation.Scheduled;
 import jakarta.inject.Inject;
