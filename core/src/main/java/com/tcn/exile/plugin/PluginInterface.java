@@ -143,6 +143,6 @@ public interface PluginInterface {
      * @param jobId
      * @param exileAgentResponse
      */
-    void handleAgentRespose(ExileAgentResponse exileAgentResponse);
+    void handleAgentResponse(ExileAgentResponse exileAgentResponse);
 
 }

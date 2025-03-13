@@ -3,6 +3,7 @@ syntax = "proto3";
 package tcnapi.exile.gate.v2;
 
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
 import "tcnapi/exile/core/v2/entities.proto";
 
 
@@ -281,6 +282,9 @@ message ListPoolsRequest {
   message SearchRecordsRequest {
     string aip160_filter = 2;
     string job_id = 10;
+    string lookup_type = 11;
+    string lookup_value = 12;
+    google.protobuf.StringValue parent_id = 13;
     // TBD
   }
   

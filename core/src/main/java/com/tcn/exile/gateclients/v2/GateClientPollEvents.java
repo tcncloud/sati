@@ -45,7 +45,7 @@ public class GateClientPollEvents extends GateClientAbstract {
                 }
                 if (event.hasAgentResponse()) {
                     log.debug("Received agent response event {}", event.getAgentResponse().getAgentCallResponseSid());
-                    plugin.handleAgentRespose(event.getAgentResponse());
+                    plugin.handleAgentResponse(event.getAgentResponse());
                 }
 
                 if (event.hasTelephonyResult()) {

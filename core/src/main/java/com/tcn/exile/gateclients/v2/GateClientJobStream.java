@@ -1,8 +1,11 @@
 package com.tcn.exile.gateclients.v2;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import com.tcn.exile.gateclients.UnconfiguredException;
+import com.tcn.exile.models.LookupType;
 import com.tcn.exile.plugin.PluginInterface;
 
 import io.grpc.stub.StreamObserver;
@@ -70,22 +73,55 @@ public class GateClientJobStream extends GateClientAbstract
                 plugin.listPools(value.getListPools().getJobId());
             } else if (value.hasGetPoolStatus()) {
                 plugin.getPoolStatus(
-                    value.getJobId(), 
+                    value.getGetPoolStatus().getJobId(),
                     value.getGetPoolStatus().getPoolId());
             } else if (value.hasGetPoolRecords()) {
-                plugin.getPoolRecords(value.getJobId(), value.getGetPoolRecords().getPoolId());
+                plugin.getPoolRecords(value.getGetPoolRecords().getJobId(), value.getGetPoolRecords().getPoolId());
             } else if (value.hasSearchRecords()) {
-                // plugin.searchRecords(value.getJobId(), value.getSearchRecords().getLookupType(),ull, null, null);
-                // plugin.searchRecords(value.getJobId(), 
-                // value.getSearchRecords().getLookupType(),
-                // value.getSearchRecords().getLookupValue(), 
-                // value.getSearchRecords().getPoolId());
+                String satiParentId = null;
+                if (value.getSearchRecords().hasParentId()) {
+                    satiParentId = value.getSearchRecords().getParentId().getValue();
+                }
+                plugin.searchRecords(
+                        value.getSearchRecords().getJobId(),
+                        LookupType.valueOf(value.getSearchRecords().getLookupType().toUpperCase().strip()),
+                        value.getSearchRecords().getLookupValue(),
+                        satiParentId
+                );
             } else if (value.hasGetRecordFields()) {
+                plugin.getPoolRecords(
+                        value.getGetPoolRecords().getJobId(),
+                        value.getGetPoolRecords().getPoolId()
+                );
                 // plugin.readFields(value.getJobId(), value.getGetRecordFields().getRecordId(),
                 // value.getGetRecordFields().getFieldsList().toArray(new String[0]));
             } else if (value.hasSetRecordFields()) {
+                Map<String, String> fieldsMap = new HashMap<>();
+                for (var f : value.getSetRecordFields().getFieldsList()) {
+                  fieldsMap.put(f.getFieldName(), f.getFieldValue());
+                }
+                plugin.writeFields(
+                        value.getSetRecordFields().getJobId(),
+                        value.getSetRecordFields().getRecordId(),
+                        fieldsMap
+                );
             } else if (value.hasCreatePayment()) {
+                plugin.createPayment(
+                        value.getCreatePayment().getJobId(),
+                        value.getCreatePayment().getRecordId(),
+                        Map.of("paymentId", value.getCreatePayment().getPaymentId().toString(),
+                                "paymentAmount", value.getCreatePayment().getPaymentAmount().toString(),
+                                "paymentType", value.getCreatePayment().getPaymentType().toString(),
+                                "paymentDate", value.getCreatePayment().getPaymentDate().toString())
+                );
             } else if (value.hasPopAccount()) {
+                plugin.popAccount(
+                        value.getPopAccount().getJobId(),
+                        value.getPopAccount().getRecordId(),
+                        null,
+                        value.getPopAccount().getCallSid(),
+                        value.getPopAccount().getCallType()
+                );
             } else if (value.hasInfo()) {
             } else if (value.hasShutdown()) {
             } else if (value.hasLog()) {
