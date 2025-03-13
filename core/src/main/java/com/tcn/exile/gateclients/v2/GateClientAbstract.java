@@ -44,19 +44,21 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
     }
 
     protected void shutdown() {
-        if ((this.channel != null) && (!this.channel.isShutdown() && !this.channel.isTerminated())) {
-            channel.shutdown();
-            try {
-                channel.awaitTermination(30, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                channel.shutdownNow();
-                try {
-                    channel.awaitTermination(30, TimeUnit.SECONDS);
-                } catch (InterruptedException ex) {
-                    log.error("Can't shutdown the channel", ex);
-                }
-            }
-        }
+        // log.debug("shutdown({})", channel);
+        // if ((this.channel != null) && (!this.channel.isShutdown() && !this.channel.isTerminated())) {
+        //     channel.shutdown();
+        //     try {
+        //         channel.awaitTermination(30, TimeUnit.SECONDS);
+        //     } catch (InterruptedException e) {
+        //         log.error("Can't shutdown the channel", e);
+        //         channel.shutdownNow();
+        //         try {
+        //             channel.awaitTermination(30, TimeUnit.SECONDS);
+        //         } catch (InterruptedException ex) {
+        //             log.error("Can't shutdown the channel", ex);
+        //         }
+        //     }
+        // }
     }
     /**
      * Gets or creates a gRPC channel for communication with the Gate service.
@@ -67,7 +69,7 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
         if ((channel != null) && !channel.isShutdown() && !channel.isTerminated()) {
             return channel;
         }
-        shutdown();
+        // shutdown();
         try {
             log.debug("creating a new channel");
             var channelCredentials = TlsChannelCredentials.newBuilder()

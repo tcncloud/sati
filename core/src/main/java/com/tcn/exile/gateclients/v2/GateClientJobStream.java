@@ -139,15 +139,13 @@ public class GateClientJobStream extends GateClientAbstract
     public void onError(Throwable t) {
         log.error("Error while handling job stream", t);
         this.shutdown();
-        // TODO Auto-generated method stub
-        // throw new UnsupportedOperationException("Unimplemented method 'onError'");
+        this.start();
     }
 
     @Override
     public void onCompleted() {
         this.shutdown();
-        // TODO Auto-generated method stub
-        // throw new UnsupportedOperationException("Unimplemented method 'onCompleted'");
+        this.start();
     }
 
 }
