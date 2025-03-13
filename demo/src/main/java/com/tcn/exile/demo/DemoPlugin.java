@@ -177,6 +177,27 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
   }
 
   @Override
+  public void info(String jobId, Public.StreamJobsResponse.InfoRequest info) {
+    log.info("Info for job {}", jobId);
+    gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
+        .setJobId(jobId)
+        .setEndOfTransmission(true)
+        .setInfoResult(Public.SubmitJobResultsRequest.InfoResult.newBuilder().build())
+        .build());
+
+  }
+
+  @Override
+  public void shutdown(String jobId, Public.StreamJobsResponse.SeppukuRequest shutdown) {
+
+  }
+
+  @Override
+  public void log(String jobId, Public.StreamJobsResponse.LogRequest log) {
+
+  }
+
+  @Override
   public void onApplicationEvent(PluginConfigEvent event) {
     if (event.isUnconfigured()) {
       log.info("Received unconfigured event");

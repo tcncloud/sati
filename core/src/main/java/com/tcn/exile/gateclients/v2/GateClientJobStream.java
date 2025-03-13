@@ -79,8 +79,6 @@ public class GateClientJobStream extends GateClientAbstract
         plugin.searchRecords(value.getJobId(), value.getSearchRecords());
       } else if (value.hasGetRecordFields()) {
         plugin.readFields(value.getJobId(), value.getGetRecordFields());
-        // plugin.readFields(value.getJobId(), value.getGetRecordFields().getRecordId(),
-        // value.getGetRecordFields().getFieldsList().toArray(new String[0]));
       } else if (value.hasSetRecordFields()) {
         plugin.writeFields(value.getJobId(), value.getSetRecordFields());
       } else if (value.hasCreatePayment()) {
@@ -88,8 +86,11 @@ public class GateClientJobStream extends GateClientAbstract
       } else if (value.hasPopAccount()) {
         plugin.popAccount(value.getJobId(), value.getPopAccount());
       } else if (value.hasInfo()) {
+        plugin.info(value.getJobId(), value.getInfo());
       } else if (value.hasShutdown()) {
+        plugin.shutdown(value.getJobId(), value.getShutdown());
       } else if (value.hasLog()) {
+        plugin.log(value.getJobId(), value.getLog());
       } else {
         log.error("Unknown job type {}", value.getUnknownFields());
       }

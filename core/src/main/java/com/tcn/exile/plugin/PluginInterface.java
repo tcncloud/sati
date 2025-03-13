@@ -99,4 +99,10 @@ public interface PluginInterface {
     void createPayment(String jobId, Public.StreamJobsResponse.CreatePaymentRequest createPayment);
 
     void popAccount(String jobId, Public.StreamJobsResponse.PopAccountRequest popAccount);
+
+    void info(String jobId, Public.StreamJobsResponse.InfoRequest info);
+
+    void shutdown(String jobId, Public.StreamJobsResponse.SeppukuRequest shutdown);
+
+    void log(String jobId, Public.StreamJobsResponse.LogRequest log);
 }
