@@ -17,15 +17,12 @@
 package com.tcn.exile.plugin;
 
 import com.tcn.exile.gateclients.UnconfiguredException;
-import com.tcn.exile.models.LookupType;
 
-import io.micronaut.core.annotation.Nullable;
 import jakarta.inject.Singleton;
 import tcnapi.exile.gate.v2.Entities.ExileAgentCall;
 import tcnapi.exile.gate.v2.Entities.ExileAgentResponse;
 import tcnapi.exile.gate.v2.Entities.ExileTelephonyResult;
-
-import java.util.Map;
+import tcnapi.exile.gate.v2.Public;
 
 @Singleton
 public interface PluginInterface {
@@ -40,11 +37,12 @@ public interface PluginInterface {
 
     /**
      * List available pools of data for interogation
-     * 
+     *
      * @param jobId
+     * @param listPools
      * @throws UnconfiguredException
      */
-    void listPools(String jobId) throws UnconfiguredException;
+    void listPools(String jobId, Public.StreamJobsResponse.ListPoolsRequest listPools) throws UnconfiguredException;
 
     /**
      * Get pool status
@@ -53,7 +51,7 @@ public interface PluginInterface {
      * @param satiPoolId
      * @throws UnconfiguredException
      */
-    void getPoolStatus(String jobId, String satiPoolId) throws UnconfiguredException;
+    void getPoolStatus(String jobId, Public.StreamJobsResponse.GetPoolStatusRequest satiPoolId) throws UnconfiguredException;
 
     /**
      * Stream the records belonging to a pool
@@ -62,64 +60,11 @@ public interface PluginInterface {
      * @param satiPoolId
      * @throws UnconfiguredException
      */
-    void getPoolRecords(String jobId, String satiPoolId) throws UnconfiguredException;
+    void getPoolRecords(String jobId, Public.StreamJobsResponse.GetPoolRecordsRequest satiPoolId) throws UnconfiguredException;
 
-    /**
-     * Search for records using lookup value and type and optionally a parent id
-     * 
-     * @param jobId
-     * @param lookupType
-     * @param lookupValue
-     * @param satiParentId
-     * @throws UnconfiguredException
-     */
-    void searchRecords(String jobId, LookupType lookupType, String lookupValue, @Nullable String satiParentId)
-            throws UnconfiguredException;
 
-    /**
-     * Read fields from a record
-     * 
-     * @param jobId
-     * @param recordId
-     * @param fields
-     * @throws UnconfiguredException
-     */
-    void readFields(String jobId, String recordId, String[] fields) throws UnconfiguredException;
 
-    /**
-     * Write fields to a record
-     * 
-     * @param jobId
-     * @param recordId
-     * @param fields
-     * @throws UnconfiguredException
-     */
-    void writeFields(String jobId, String recordId, Map<String, String> fields) throws UnconfiguredException;
 
-    /**
-     * Create a payment record
-     * 
-     * @param jobId
-     * @param recordId
-     * @param fields
-     * @throws UnconfiguredException
-     */
-    void createPayment(String jobId, String recordId, Map<String, String> fields) throws UnconfiguredException;
-
-    /**
-     * Create a payment record
-     * 
-     * @param jobId
-     * @param recordId
-     * @param partnerUserId
-     * @param callId
-     * @param callType
-     * @throws UnconfiguredException
-     */
-    void popAccount(String jobId, String recordId, String partnerUserId, String callId, String callType)
-            throws UnconfiguredException;
-
-    // TBD execute logic
 
     /**
      * Handle agent call
@@ -145,4 +90,13 @@ public interface PluginInterface {
      */
     void handleAgentResponse(ExileAgentResponse exileAgentResponse);
 
+    void searchRecords(String jobId, Public.StreamJobsResponse.SearchRecordsRequest searchRecords);
+
+    void readFields(String jobId, Public.StreamJobsResponse.GetRecordFieldsRequest getRecordFields);
+
+    void writeFields(String jobId, Public.StreamJobsResponse.SetRecordFieldsRequest setRecordFields);
+
+    void createPayment(String jobId, Public.StreamJobsResponse.CreatePaymentRequest createPayment);
+
+    void popAccount(String jobId, Public.StreamJobsResponse.PopAccountRequest popAccount);
 }

@@ -7,6 +7,10 @@ import "google/protobuf/wrappers.proto";
 import "tcnapi/exile/core/v2/entities.proto";
 import "tcnapi/exile/gate/v2/entities.proto";
 
+/**
+ * The GateService provides a set of RPCs for the Exile Gate service.
+ * The service requires mTLS authentication.
+ */
 service GateService {
   // Initial configuration retrieval for client setup
   rpc GetClientConfiguration(GetClientConfigurationRequest) returns (GetClientConfigurationResponse);
@@ -15,28 +19,39 @@ service GateService {
   rpc GetOrganizationInfo(GetOrganizationInfoRequest) returns (GetOrganizationInfoResponse);
 
   // Periodic event polling (up to 4MB)
+  // This is the primary method for receiving events from the Operator platform
+  // The events are ExileTelephonyResult, ExileAgentCall, and ExileAgentResponse
   rpc PollEvents(PollEventsRequest) returns (PollEventsResponse);
 
-  // Job streaming connection
+  // Job streaming connection, this connection is used to receive requests (jobs) from the Operator platform.
+  // The connection should have the keep alive set to 10 seconds
   rpc StreamJobs(StreamJobsRequest) returns (stream StreamJobsResponse);
 
-  // Job results submission (max 2MB)
+  // Job results submission (max 2MB), this method should be used to submit results for jobs received via StreamJobs
+  // the method could be used multiple times for the same job_id until end_of_transmission is set to true
   rpc SubmitJobResults(SubmitJobResultsRequest) returns (SubmitJobResultsResponse);
 
-  // Agent state management
+  // Get Agent status
   rpc GetAgentStatus(GetAgentStatusRequest) returns (GetAgentStatusResponse);
+  // Update Agent status
   rpc UpdateAgentStatus(UpdateAgentStatusRequest) returns (UpdateAgentStatusResponse);
+  // List Agents
   rpc ListAgents(ListAgentsRequest) returns (stream ListAgentsResponse);
+  // Agent management
   rpc UpsertAgent(UpsertAgentRequest) returns (UpsertAgentResponse);
+  // Get Agent by ID
   rpc GetAgentById(GetAgentByIdRequest) returns (GetAgentByIdResponse);
+  // Get Agent by Partner ID
   rpc GetAgentByPartnerId(GetAgentByPartnerIdRequest) returns (GetAgentByPartnerIdResponse);
 
-  // Telephony operations
+  // Dial a phone number
   rpc Dial(DialRequest) returns (DialResponse);
 
   // Recording controls
   rpc StartCallRecording(StartCallRecordingRequest) returns (StartCallRecordingResponse);
+  // Stop recording
   rpc StopCallRecording(StopCallRecordingRequest) returns (StopCallRecordingResponse);
+  // Get recording status
   rpc GetRecordingStatus(GetRecordingStatusRequest) returns (GetRecordingStatusResponse);
 
   // Scrub list management
@@ -67,46 +82,46 @@ message StreamJobsResponse {
     SetRecordFieldsRequest set_record_fields = 15;
     CreatePaymentRequest create_payment = 16;
     PopAccountRequest pop_account = 17;
+    ExecuteLogicRequest execute_logic = 18;
     InfoRequest info = 100;
     SeppukuRequest shutdown = 101;
     LogRequest log = 102;
   }
 
   message ListPoolsRequest {
-    string job_id = 10;
   }
 
   message GetPoolStatusRequest {
     string pool_id = 2;
-    string job_id = 10;
   }
 
   message GetPoolRecordsRequest {
     string pool_id = 2;
-    string job_id = 10;
   }
 
   message SearchRecordsRequest {
-    string aip160_filter = 2;
-    string job_id = 10;
     string lookup_type = 11;
     string lookup_value = 12;
-    google.protobuf.StringValue parent_id = 13;
-    // TBD
+    repeated tcnapi.exile.core.v2.Filter filters = 13;
   }
 
   message GetRecordFieldsRequest {
     string pool_id = 2;
     string record_id = 3;
     repeated string field_names = 4;
-    string job_id = 10;
+    repeated tcnapi.exile.core.v2.Filter filters = 5; // here we optionally add table_id for finvi (for ex.)
   }
 
   message SetRecordFieldsRequest {
     string pool_id = 2;
     string record_id = 3;
     repeated tcnapi.exile.core.v2.Field fields = 4;
-    string job_id = 10;
+    repeated tcnapi.exile.core.v2.Filter filters = 5; // here we optionally add table_id for finvi (for ex.)
+  }
+
+  message ExecuteLogicRequest {
+    string logic_block_id = 2;
+    string logic_block_params = 3; // json serialized params
   }
 
   message CreatePaymentRequest {
@@ -116,56 +131,52 @@ message StreamJobsResponse {
     string payment_type = 5;
     string payment_amount = 6;
     google.protobuf.Timestamp payment_date = 7;
-    string job_id = 10;
   }
 
   message PopAccountRequest {
+    string partner_agent_id = 1;
     string pool_id = 2;
     string record_id = 3;
     string call_sid = 4;
     string call_type = 5;
-    string job_id = 10;
   }
 
-  message SendAgentCallRequest {
-    string pool_id = 2;
-    string record_id = 3;
-    string agent_id = 4;
-    string call_sid = 5;
-    string call_type = 6;
-    string job_id = 10;
-    // TBD
-  }
-
-  message SendTelephonyResultsRequest {
-    string pool_id = 2;
-    string record_id = 3;
-    string call_sid = 4;
-    string call_type = 5;
-    string job_id = 10;
-    // TBD
-  }
-
-  message SendAgentResponseRequest {
-    string pool_id = 2;
-    string record_id = 3;
-    string agent_id = 4;
-    string call_sid = 5;
-    string call_type = 6;
-    string job_id = 10;
-    // TBD
-  }
+//  message SendAgentCallRequest {
+//    string pool_id = 2;
+//    string record_id = 3;
+//    string agent_id = 4;
+//    string call_sid = 5;
+//    string call_type = 6;
+//    string job_id = 10;
+//    // TBD
+//  }
+//
+//  message SendTelephonyResultsRequest {
+//    string pool_id = 2;
+//    string record_id = 3;
+//    string call_sid = 4;
+//    string call_type = 5;
+//    string job_id = 10;
+//    // TBD
+//  }
+//
+//  message SendAgentResponseRequest {
+//    string pool_id = 2;
+//    string record_id = 3;
+//    string agent_id = 4;
+//    string call_sid = 5;
+//    string call_type = 6;
+//    string job_id = 10;
+//    // TBD
+//  }
 
   message InfoRequest {
-    string job_id = 2;
   }
 
   message SeppukuRequest {
-    string job_id = 2;
   }
 
   message LogRequest {
-    string job_id = 2;
   }
 }
 
@@ -182,12 +193,16 @@ message SubmitJobResultsRequest {
     SetRecordFieldsResult set_record_fields_result = 15;
     CreatePaymentResult create_payment_result = 16;
     PopAccountResult pop_account_result = 17;
+    ExecuteLogicResult execute_logic_result = 18;
     ErrorResult error_result = 21;
     InfoResult info_result = 22;
     SeppukuResult shutdown_result = 23;
     LogResult log_result = 24;
   }
 
+  message ExecuteLogicResult {
+    string result = 1;
+  }
   message ListPoolsResult {
     repeated tcnapi.exile.core.v2.Pool pools = 1;
   }
@@ -260,6 +275,7 @@ message ListScrubListsRequest {}
 message ListScrubListsResponse {
   repeated ScrubList scrub_lists = 1;
 }
+
 
 message ScrubList {
   string scrub_list_id = 1;

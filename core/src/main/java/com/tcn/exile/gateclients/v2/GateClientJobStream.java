@@ -18,134 +18,98 @@ import tcnapi.exile.gate.v2.Public.StreamJobsResponse;
 
 @Singleton
 public class GateClientJobStream extends GateClientAbstract
-        implements StreamObserver<tcnapi.exile.gate.v2.Public.StreamJobsResponse> {
-    protected static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GateClientJobStream.class);
+    implements StreamObserver<tcnapi.exile.gate.v2.Public.StreamJobsResponse> {
+  protected static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GateClientJobStream.class);
 
-    @Inject
-    PluginInterface plugin;
+  @Inject
+  PluginInterface plugin;
 
-    @Override
-    @Scheduled(fixedDelay = "10s")
-    public void start() {
-        if (isUnconfigured()) {
-            log.trace("The configuration was not set, we will not start the job stream");
-            return;
-        }
-        if (!plugin.isRunning()) {
-            log.trace("The plugin is not running, we will not start the job stream");
-            return;
-        }
-        log.debug("start()");
-        try {
-            if (!isRunning()) {
-                shutdown();
-                channel = this.getChannel();
-                var client = GateServiceGrpc.newStub(channel)
-                        .withDeadlineAfter(30, TimeUnit.SECONDS)
-                        .withWaitForReady();
-
-                client.streamJobs(StreamJobsRequest.newBuilder().build(), this);
-            }
-        } catch (UnconfiguredException e) {
-            log.error("Error while starting job stream {}", e.getMessage());
-        }
+  @Override
+  @Scheduled(fixedDelay = "10s")
+  public void start() {
+    if (isUnconfigured()) {
+      log.trace("The configuration was not set, we will not start the job stream");
+      return;
     }
-
-    public boolean isRunning() {
-        if (channel == null) {
-            return false;
-        }
-        if (channel.isTerminated()) {
-            return false;
-        }
-        if (channel.isShutdown()) {
-            return false;
-        }
-        return true;
+    if (!plugin.isRunning()) {
+      log.trace("The plugin is not running, we will not start the job stream");
+      return;
     }
+    log.debug("start()");
+    try {
+      if (!isRunning()) {
+        shutdown();
+        channel = this.getChannel();
+      }
+      var client = GateServiceGrpc.newStub(channel)
+          .withDeadlineAfter(30, TimeUnit.SECONDS)
+          .withWaitForReady();
 
-    @Override
-    public void onNext(StreamJobsResponse value) {
-        log.debug("Received {} job", value.getJobId());
-        try {
-            if (value.hasListPools()) {
-
-                plugin.listPools(value.getListPools().getJobId());
-            } else if (value.hasGetPoolStatus()) {
-                plugin.getPoolStatus(
-                    value.getGetPoolStatus().getJobId(),
-                    value.getGetPoolStatus().getPoolId());
-            } else if (value.hasGetPoolRecords()) {
-                plugin.getPoolRecords(value.getGetPoolRecords().getJobId(), value.getGetPoolRecords().getPoolId());
-            } else if (value.hasSearchRecords()) {
-                String satiParentId = null;
-                if (value.getSearchRecords().hasParentId()) {
-                    satiParentId = value.getSearchRecords().getParentId().getValue();
-                }
-                plugin.searchRecords(
-                        value.getSearchRecords().getJobId(),
-                        LookupType.valueOf(value.getSearchRecords().getLookupType().toUpperCase().strip()),
-                        value.getSearchRecords().getLookupValue(),
-                        satiParentId
-                );
-            } else if (value.hasGetRecordFields()) {
-                plugin.readFields(
-                        value.getGetRecordFields().getJobId(),
-                        value.getGetRecordFields().getPoolId(),
-                        value.getGetRecordFields().getFieldNamesList().toArray(new String[0])
-                );
-                // plugin.readFields(value.getJobId(), value.getGetRecordFields().getRecordId(),
-                // value.getGetRecordFields().getFieldsList().toArray(new String[0]));
-            } else if (value.hasSetRecordFields()) {
-                Map<String, String> fieldsMap = new HashMap<>();
-                for (var f : value.getSetRecordFields().getFieldsList()) {
-                  fieldsMap.put(f.getFieldName(), f.getFieldValue());
-                }
-                plugin.writeFields(
-                        value.getSetRecordFields().getJobId(),
-                        value.getSetRecordFields().getRecordId(),
-                        fieldsMap
-                );
-            } else if (value.hasCreatePayment()) {
-                plugin.createPayment(
-                        value.getCreatePayment().getJobId(),
-                        value.getCreatePayment().getRecordId(),
-                        Map.of("paymentId", value.getCreatePayment().getPaymentId().toString(),
-                                "paymentAmount", value.getCreatePayment().getPaymentAmount().toString(),
-                                "paymentType", value.getCreatePayment().getPaymentType().toString(),
-                                "paymentDate", value.getCreatePayment().getPaymentDate().toString())
-                );
-            } else if (value.hasPopAccount()) {
-                plugin.popAccount(
-                        value.getPopAccount().getJobId(),
-                        value.getPopAccount().getRecordId(),
-                        null,
-                        value.getPopAccount().getCallSid(),
-                        value.getPopAccount().getCallType()
-                );
-            } else if (value.hasInfo()) {
-            } else if (value.hasShutdown()) {
-            } else if (value.hasLog()) {
-            } else {
-                log.error("Unknown job type {}", value.getUnknownFields());
-            }
-
-        } catch (UnconfiguredException e) {
-            log.error("Error while handling job {}", value.getJobId());
-        }
+      client.streamJobs(StreamJobsRequest.newBuilder().build(), this);
+    } catch (
+        UnconfiguredException e) {
+      log.error("Error while starting job stream {}", e.getMessage());
     }
+  }
 
-    @Override
-    public void onError(Throwable t) {
-        log.error("Error while handling job stream", t);
-        this.shutdown();
-        this.start();
+  public boolean isRunning() {
+    if (channel == null) {
+      return false;
     }
+    if (channel.isTerminated()) {
+      return false;
+    }
+    if (channel.isShutdown()) {
+      return false;
+    }
+    return true;
+  }
 
-    @Override
-    public void onCompleted() {
-        this.shutdown();
-        this.start();
+  @Override
+  public void onNext(StreamJobsResponse value) {
+    log.debug("Received {} job", value.getJobId());
+    try {
+      if (value.hasListPools()) {
+        plugin.listPools(value.getJobId(), value.getListPools());
+      } else if (value.hasGetPoolStatus()) {
+        plugin.getPoolStatus(value.getJobId(), value.getGetPoolStatus());
+      } else if (value.hasGetPoolRecords()) {
+        plugin.getPoolRecords(value.getJobId(), value.getGetPoolRecords());
+      } else if (value.hasSearchRecords()) {
+        plugin.searchRecords(value.getJobId(), value.getSearchRecords());
+      } else if (value.hasGetRecordFields()) {
+        plugin.readFields(value.getJobId(), value.getGetRecordFields());
+        // plugin.readFields(value.getJobId(), value.getGetRecordFields().getRecordId(),
+        // value.getGetRecordFields().getFieldsList().toArray(new String[0]));
+      } else if (value.hasSetRecordFields()) {
+        plugin.writeFields(value.getJobId(), value.getSetRecordFields());
+      } else if (value.hasCreatePayment()) {
+        plugin.createPayment(value.getJobId(), value.getCreatePayment());
+      } else if (value.hasPopAccount()) {
+        plugin.popAccount(value.getJobId(), value.getPopAccount());
+      } else if (value.hasInfo()) {
+      } else if (value.hasShutdown()) {
+      } else if (value.hasLog()) {
+      } else {
+        log.error("Unknown job type {}", value.getUnknownFields());
+      }
+
+    } catch (UnconfiguredException e) {
+      log.error("Error while handling job {}", value.getJobId());
     }
+  }
+
+  @Override
+  public void onError(Throwable t) {
+    log.error("Error while handling job stream", t);
+    this.shutdown();
+    this.start();
+  }
+
+  @Override
+  public void onCompleted() {
+    this.shutdown();
+    this.start();
+  }
 
 }
