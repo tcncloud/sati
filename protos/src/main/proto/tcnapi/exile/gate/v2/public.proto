@@ -1,3 +1,13 @@
+/**
+ * tcnapi/exile/gate/v2/public.proto
+ *
+ * Defines the public-facing API for the Exile Gate service, which serves as the
+ * interface between client applications and the Operator platform.
+ *
+ * This proto file contains the definitions for services, messages, and enums
+ * that make up the communication protocol for the Exile system.
+ */
+
 syntax = "proto3";
 
 package tcnapi.exile.gate.v2;
@@ -9,7 +19,15 @@ import "tcnapi/exile/gate/v2/entities.proto";
 
 /**
  * The GateService provides a set of RPCs for the Exile Gate service.
- * The service requires mTLS authentication.
+ * The service requires mTLS authentication for secure client-server communications.
+ *
+ * Key responsibilities include:
+ * - Client configuration and organization management
+ * - Event handling for telephony, agent calls, and responses
+ * - Job streaming and result submission
+ * - Agent management and status tracking
+ * - Call control operations (dialing, recording)
+ * - Scrub list management for blocking specific content
  */
 service GateService {
   // Initial configuration retrieval for client setup
@@ -18,386 +36,645 @@ service GateService {
   // Organization details retrieval
   rpc GetOrganizationInfo(GetOrganizationInfoRequest) returns (GetOrganizationInfoResponse);
 
-  // Periodic event polling (up to 4MB)
-  // This is the primary method for receiving events from the Operator platform
-  // The events are ExileTelephonyResult, ExileAgentCall, and ExileAgentResponse
+  /**
+   * Periodic event polling (up to 4MB)
+   * This is the primary method for receiving events from the Operator platform
+   * The events are ExileTelephonyResult, ExileAgentCall, and ExileAgentResponse
+   */
   rpc PollEvents(PollEventsRequest) returns (PollEventsResponse);
 
-  // Job streaming connection, this connection is used to receive requests (jobs) from the Operator platform.
-  // The connection should have the keep alive set to 10 seconds
+  /**
+   * Job streaming connection for receiving requests (jobs) from the Operator platform.
+   * The connection should have the keep alive set to 10 seconds.
+   * Provides a continuous stream of jobs that clients need to process.
+   */
   rpc StreamJobs(StreamJobsRequest) returns (stream StreamJobsResponse);
 
-  // Job results submission (max 2MB), this method should be used to submit results for jobs received via StreamJobs
-  // the method could be used multiple times for the same job_id until end_of_transmission is set to true
+  /**
+   * Job results submission (max 2MB)
+   * Used to submit results for jobs received via StreamJobs.
+   * The method can be called multiple times for the same job_id until end_of_transmission is set to true.
+   */
   rpc SubmitJobResults(SubmitJobResultsRequest) returns (SubmitJobResultsResponse);
 
-  // Get Agent status
+  /**
+   * Agent management operations
+   * These methods allow for retrieval and modification of agent information and status.
+   */
+  // Get Agent status - retrieves the current state of an agent
   rpc GetAgentStatus(GetAgentStatusRequest) returns (GetAgentStatusResponse);
-  // Update Agent status
+
+  // Update Agent status - modifies an agent's availability state
   rpc UpdateAgentStatus(UpdateAgentStatusRequest) returns (UpdateAgentStatusResponse);
-  // List Agents
+
+  // List Agents - retrieves all agents in the organization as a stream
   rpc ListAgents(ListAgentsRequest) returns (stream ListAgentsResponse);
-  // Agent management
+
+  // Agent management - creates or updates agent information
   rpc UpsertAgent(UpsertAgentRequest) returns (UpsertAgentResponse);
-  // Get Agent by ID
+
+  // Get Agent by ID - retrieves agent details using internal ID
   rpc GetAgentById(GetAgentByIdRequest) returns (GetAgentByIdResponse);
-  // Get Agent by Partner ID
+
+  // Get Agent by Partner ID - retrieves agent details using partner's ID system
   rpc GetAgentByPartnerId(GetAgentByPartnerIdRequest) returns (GetAgentByPartnerIdResponse);
 
-  // Dial a phone number
+  /**
+   * Call control operations
+   * These methods provide telephony functionality for making and managing calls.
+   */
+  // Dial a phone number - initiates an outbound call
   rpc Dial(DialRequest) returns (DialResponse);
 
-  // Recording controls
+  /**
+   * Recording control operations
+   * These methods manage call recording functionality.
+   */
+  // Start recording a call
   rpc StartCallRecording(StartCallRecordingRequest) returns (StartCallRecordingResponse);
-  // Stop recording
+
+  // Stop recording a call
   rpc StopCallRecording(StopCallRecordingRequest) returns (StopCallRecordingResponse);
-  // Get recording status
+
+  // Get recording status - checks if a call is currently being recorded
   rpc GetRecordingStatus(GetRecordingStatusRequest) returns (GetRecordingStatusResponse);
 
-  // Scrub list management
+  /**
+   * Scrub list management operations
+   * These methods handle blocked content (phone numbers, emails, etc.)
+   */
+  // List all available scrub lists
   rpc ListScrubLists(ListScrubListsRequest) returns (ListScrubListsResponse);
+
+  // Add entries to a scrub list
   rpc AddScrubListEntries(AddScrubListEntriesRequest) returns (AddScrubListEntriesResponse);
+
+  // Update an existing scrub list entry
   rpc UpdateScrubListEntry(UpdateScrubListEntryRequest) returns (UpdateScrubListEntryResponse);
+
+  // Remove entries from a scrub list
   rpc RemoveScrubListEntries(RemoveScrubListEntriesRequest) returns (RemoveScrubListEntriesResponse);
 }
 
+/**
+ * Request message for polling events from the system.
+ * Used to retrieve telephony results, agent calls, and agent responses.
+ */
 message PollEventsRequest {
-  int32 event_count = 10; // Default 100 if 0
+  int32 event_count = 10; // Maximum number of events to retrieve (default 100 if 0)
 }
 
+/**
+ * Response message containing events retrieved from the system.
+ */
 message PollEventsResponse {
-  repeated Event events = 1;
+  repeated Event events = 1; // List of events (telephony results, agent calls, agent responses)
 }
 
+/**
+ * Request message for initiating a job stream.
+ * This is a simple message with no fields as the stream is initiated without parameters.
+ */
 message StreamJobsRequest {}
 
+/**
+ * Response message for the job stream.
+ * Contains various job types that clients need to process.
+ */
 message StreamJobsResponse {
-  string job_id = 1;
+  string job_id = 1; // Unique identifier for the job
+
+  // Different task types that can be requested
   oneof task {
-    ListPoolsRequest list_pools = 10;
-    GetPoolStatusRequest get_pool_status = 11;
-    GetPoolRecordsRequest get_pool_records = 12;
-    SearchRecordsRequest search_records = 13;
-    GetRecordFieldsRequest get_record_fields = 14;
-    SetRecordFieldsRequest set_record_fields = 15;
-    CreatePaymentRequest create_payment = 16;
-    PopAccountRequest pop_account = 17;
-    ExecuteLogicRequest execute_logic = 18;
-    InfoRequest info = 100;
-    SeppukuRequest shutdown = 101;
-    LogRequest log = 102;
+    ListPoolsRequest list_pools = 10; // Request to list available pools
+    GetPoolStatusRequest get_pool_status = 11; // Request to get status of a specific pool
+    GetPoolRecordsRequest get_pool_records = 12; // Request to get records from a pool
+    SearchRecordsRequest search_records = 13; // Request to search for records
+    GetRecordFieldsRequest get_record_fields = 14; // Request to get field values from a record
+    SetRecordFieldsRequest set_record_fields = 15; // Request to update field values in a record
+    CreatePaymentRequest create_payment = 16; // Request to create a payment
+    PopAccountRequest pop_account = 17; // Request to pop an account for an agent
+    ExecuteLogicRequest execute_logic = 18; // Request to execute a logic block
+    InfoRequest info = 100; // Request for system information
+    SeppukuRequest shutdown = 101; // Request to shut down the client
+    LogRequest log = 102; // Request related to logging
   }
 
+  /**
+   * Request message for listing all available pools.
+   */
   message ListPoolsRequest {
   }
 
+  /**
+   * Request message for retrieving the status of a specific pool.
+   */
   message GetPoolStatusRequest {
-    string pool_id = 2;
+    string pool_id = 2; // ID of the pool to check
   }
 
+  /**
+   * Request message for retrieving records from a specific pool.
+   */
   message GetPoolRecordsRequest {
-    string pool_id = 2;
+    string pool_id = 2; // ID of the pool to get records from
   }
 
+  /**
+   * Request message for searching records based on lookup criteria and filters.
+   */
   message SearchRecordsRequest {
-    string lookup_type = 11;
-    string lookup_value = 12;
-    repeated tcnapi.exile.core.v2.Filter filters = 13;
+    string lookup_type = 11; // Type of lookup to perform
+    string lookup_value = 12; // Value to search for
+    repeated tcnapi.exile.core.v2.Filter filters = 13; // Additional filters to apply
   }
 
+  /**
+   * Request message for retrieving field values from a specific record.
+   */
   message GetRecordFieldsRequest {
-    string pool_id = 2;
-    string record_id = 3;
-    repeated string field_names = 4;
-    repeated tcnapi.exile.core.v2.Filter filters = 5; // here we optionally add table_id for finvi (for ex.)
+    string pool_id = 2; // ID of the pool containing the record
+    string record_id = 3; // ID of the record to retrieve fields from
+    repeated string field_names = 4; // Names of the fields to retrieve
+    repeated tcnapi.exile.core.v2.Filter filters = 5; // Additional filters (e.g., table_id for finvi)
   }
 
+  /**
+   * Request message for updating field values in a specific record.
+   */
   message SetRecordFieldsRequest {
-    string pool_id = 2;
-    string record_id = 3;
-    repeated tcnapi.exile.core.v2.Field fields = 4;
-    repeated tcnapi.exile.core.v2.Filter filters = 5; // here we optionally add table_id for finvi (for ex.)
+    string pool_id = 2; // ID of the pool containing the record
+    string record_id = 3; // ID of the record to update
+    repeated tcnapi.exile.core.v2.Field fields = 4; // Fields to update with new values
+    repeated tcnapi.exile.core.v2.Filter filters = 5; // Additional filters (e.g., table_id for finvi)
   }
 
+  /**
+   * Request message for executing a logic block with parameters.
+   */
   message ExecuteLogicRequest {
-    string logic_block_id = 2;
-    string logic_block_params = 3; // json serialized params
+    string logic_block_id = 2; // ID of the logic block to execute
+    string logic_block_params = 3; // JSON serialized parameters for the logic block
   }
 
+  /**
+   * Request message for creating a payment for a record.
+   */
   message CreatePaymentRequest {
-    string pool_id = 2;
-    string record_id = 3;
-    string payment_id = 4;
-    string payment_type = 5;
-    string payment_amount = 6;
-    google.protobuf.Timestamp payment_date = 7;
+    string pool_id = 2; // ID of the pool containing the record
+    string record_id = 3; // ID of the record to create payment for
+    string payment_id = 4; // Unique identifier for the payment
+    string payment_type = 5; // Type of payment (e.g., credit card, ACH)
+    string payment_amount = 6; // Amount of the payment
+    google.protobuf.Timestamp payment_date = 7; // Date when the payment was made
   }
 
+  /**
+   * Request message for popping an account for an agent.
+   */
   message PopAccountRequest {
-    string partner_agent_id = 1;
-    string pool_id = 2;
-    string record_id = 3;
-    string call_sid = 4;
-    string call_type = 5;
+    string partner_agent_id = 1; // ID of the agent in the partner's system
+    string pool_id = 2; // ID of the pool containing the record
+    string record_id = 3; // ID of the record to pop
+    string call_sid = 4; // Session ID of the call
+    string call_type = 5; // Type of call (inbound, outbound)
   }
 
-//  message SendAgentCallRequest {
-//    string pool_id = 2;
-//    string record_id = 3;
-//    string agent_id = 4;
-//    string call_sid = 5;
-//    string call_type = 6;
-//    string job_id = 10;
-//    // TBD
-//  }
-//
-//  message SendTelephonyResultsRequest {
-//    string pool_id = 2;
-//    string record_id = 3;
-//    string call_sid = 4;
-//    string call_type = 5;
-//    string job_id = 10;
-//    // TBD
-//  }
-//
-//  message SendAgentResponseRequest {
-//    string pool_id = 2;
-//    string record_id = 3;
-//    string agent_id = 4;
-//    string call_sid = 5;
-//    string call_type = 6;
-//    string job_id = 10;
-//    // TBD
-//  }
-
+  /**
+   * Request message for retrieving system information.
+   */
   message InfoRequest {
   }
 
+  /**
+   * Request message for shutting down the client.
+   */
   message SeppukuRequest {
   }
 
+  /**
+   * Request message related to logging.
+   */
   message LogRequest {
   }
 }
 
+/**
+ * Request message for submitting job results back to the system.
+ * Used to respond to jobs received via StreamJobs.
+ */
 message SubmitJobResultsRequest {
-  string job_id = 2;
-  bool end_of_transmission = 3;
+  string job_id = 2; // ID of the job being responded to
+  bool end_of_transmission = 3; // Whether this is the final response for this job
 
+  // Different result types that can be returned
   oneof result {
-    ListPoolsResult list_pool_result = 10;
-    GetPoolStatusResult get_pool_status_result = 11;
-    GetPoolRecordsResult get_pool_records_result = 12;
-    SearchRecordResult search_record_result = 13;
-    GetRecordFieldsResult get_record_fields_result = 14;
-    SetRecordFieldsResult set_record_fields_result = 15;
-    CreatePaymentResult create_payment_result = 16;
-    PopAccountResult pop_account_result = 17;
-    ExecuteLogicResult execute_logic_result = 18;
-    ErrorResult error_result = 21;
-    InfoResult info_result = 22;
-    SeppukuResult shutdown_result = 23;
-    LogResult log_result = 24;
+    ListPoolsResult list_pool_result = 10; // Result of listing pools
+    GetPoolStatusResult get_pool_status_result = 11; // Result of getting pool status
+    GetPoolRecordsResult get_pool_records_result = 12; // Result of getting pool records
+    SearchRecordResult search_record_result = 13; // Result of searching records
+    GetRecordFieldsResult get_record_fields_result = 14; // Result of getting record fields
+    SetRecordFieldsResult set_record_fields_result = 15; // Result of setting record fields
+    CreatePaymentResult create_payment_result = 16; // Result of creating a payment
+    PopAccountResult pop_account_result = 17; // Result of popping an account
+    ExecuteLogicResult execute_logic_result = 18; // Result of executing logic
+    ErrorResult error_result = 21; // Error information if the job failed
+    InfoResult info_result = 22; // System information result
+    SeppukuResult shutdown_result = 23; // Result of shutdown request
+    LogResult log_result = 24; // Result of logging request
   }
 
+  /**
+   * Result message for executing a logic block.
+   */
   message ExecuteLogicResult {
-    string result = 1;
+    string result = 1; // Result of the logic execution
   }
+
+  /**
+   * Result message for listing pools.
+   */
   message ListPoolsResult {
-    repeated tcnapi.exile.core.v2.Pool pools = 1;
+    repeated tcnapi.exile.core.v2.Pool pools = 1; // List of available pools
   }
+
+  /**
+   * Result message for getting pool status.
+   */
   message GetPoolStatusResult {
-    tcnapi.exile.core.v2.Pool pool = 1;
+    tcnapi.exile.core.v2.Pool pool = 1; // Pool with status information
   }
+
+  /**
+   * Result message for getting pool records.
+   */
   message GetPoolRecordsResult {
-    repeated tcnapi.exile.core.v2.Record records = 1;
+    repeated tcnapi.exile.core.v2.Record records = 1; // Records from the requested pool
   }
+
+  /**
+   * Result message for searching records.
+   */
   message SearchRecordResult {
-    repeated tcnapi.exile.core.v2.Record records = 1;
+    repeated tcnapi.exile.core.v2.Record records = 1; // Records matching the search criteria
   }
+
+  /**
+   * Result message for getting record fields.
+   */
   message GetRecordFieldsResult {
-    repeated tcnapi.exile.core.v2.Field fields = 1;
+    repeated tcnapi.exile.core.v2.Field fields = 1; // Fields retrieved from the record
   }
+
+  /**
+   * Result message for setting record fields.
+   * Empty response indicates success.
+   */
   message SetRecordFieldsResult {}
+
+  /**
+   * Result message for creating a payment.
+   * Empty response indicates success.
+   */
   message CreatePaymentResult {}
+
+  /**
+   * Result message for popping an account.
+   * Empty response indicates success.
+   */
   message PopAccountResult {}
+
+  /**
+   * Result message for reporting an error.
+   */
   message ErrorResult {
-    string message = 1;
+    string message = 1; // Error message describing what went wrong
   }
+
+  /**
+   * Result message for system information.
+   * Empty response with information typically in headers.
+   */
   message InfoResult {}
+
+  /**
+   * Result message for shutdown request.
+   * Empty response indicates successful shutdown initiation.
+   */
   message SeppukuResult {}
+
+  /**
+   * Result message for logging request.
+   * Empty response indicates successful log processing.
+   */
   message LogResult {}
 }
 
+/**
+ * Response message for submitting job results.
+ * Empty message indicates successful receipt of the results.
+ */
 message SubmitJobResultsResponse {}
 
+/**
+ * Message representing an event from the system.
+ * Events can be agent calls, telephony results, or agent responses.
+ */
 message Event {
-  //   string job_id = 1;
   oneof entity {
-    ExileAgentCall agent_call = 10;
-    ExileTelephonyResult telephony_result = 11;
-    ExileAgentResponse agent_response = 12;
+    ExileAgentCall agent_call = 10; // Event related to an agent call
+    ExileTelephonyResult telephony_result = 11; // Event related to telephony results
+    ExileAgentResponse agent_response = 12; // Event related to an agent response
   }
 }
 
+/**
+ * Request message for removing entries from a scrub list.
+ */
 message RemoveScrubListEntriesRequest {
-  string scrub_list_id = 1;
-  repeated string entries = 2;
+  string scrub_list_id = 1; // ID of the scrub list to modify
+  repeated string entries = 2; // Content entries to remove
 }
 
+/**
+ * Response message for removing scrub list entries.
+ * Empty message indicates successful removal.
+ */
 message RemoveScrubListEntriesResponse {}
 
+/**
+ * Request message for updating a scrub list entry.
+ */
 message UpdateScrubListEntryRequest {
-  string scrub_list_id = 1;
-  google.protobuf.StringValue notes = 10;
-  string content = 11;
-  google.protobuf.Timestamp expiration = 12;
-  google.protobuf.StringValue country_code = 13;
+  string scrub_list_id = 1; // ID of the scrub list containing the entry
+  google.protobuf.StringValue notes = 10; // Optional notes about the entry
+  string content = 11; // Content to be blocked (phone number, email, etc.)
+  google.protobuf.Timestamp expiration = 12; // When the entry should expire
+  google.protobuf.StringValue country_code = 13; // Optional country code for phone numbers
 }
 
+/**
+ * Response message for updating a scrub list entry.
+ * Empty message indicates successful update.
+ */
 message UpdateScrubListEntryResponse {}
 
+/**
+ * Request message for adding entries to a scrub list.
+ */
 message AddScrubListEntriesRequest {
-  string scrub_list_id = 1;
-  repeated Entry entries = 10;
-  string country_code = 11;
+  string scrub_list_id = 1; // ID of the scrub list to add entries to
+  repeated Entry entries = 10; // Entries to add to the scrub list
+  string country_code = 11; // Default country code for all entries if applicable
 
+  /**
+   * Message representing a single scrub list entry.
+   */
   message Entry {
-    string content = 1;
-    google.protobuf.Timestamp expiration = 2;
-    google.protobuf.StringValue notes = 3;
+    string content = 1; // Content to be blocked (phone number, email, etc.)
+    google.protobuf.Timestamp expiration = 2; // When the entry should expire
+    google.protobuf.StringValue notes = 3; // Optional notes about the entry
   }
 }
 
+/**
+ * Response message for adding scrub list entries.
+ * Empty message indicates successful addition.
+ */
 message AddScrubListEntriesResponse {}
 
+/**
+ * Request message for listing available scrub lists.
+ * Empty message as no parameters are needed.
+ */
 message ListScrubListsRequest {}
+
+/**
+ * Response message for listing scrub lists.
+ */
 message ListScrubListsResponse {
-  repeated ScrubList scrub_lists = 1;
+  repeated ScrubList scrub_lists = 1; // List of available scrub lists
 }
 
-
+/**
+ * Message representing a scrub list for blocking specific content.
+ */
 message ScrubList {
-  string scrub_list_id = 1;
-  bool read_only = 2;
-  ContentType content_type = 3;
+  string scrub_list_id = 1; // Unique identifier for the scrub list
+  bool read_only = 2; // Whether the list can be modified
+  ContentType content_type = 3; // Type of content this list blocks
+
+  /**
+   * Enumeration of content types that can be blocked by scrub lists.
+   */
   enum ContentType {
-    PHONE_NUMBER = 0;
-    EMAIL = 1;
-    SMS = 2;
-    OTHER = 3;
-    ACCOUNT_NUMBER = 4;
-    WHATSAPP = 5;
+    PHONE_NUMBER = 0; // Blocks phone numbers
+    EMAIL = 1; // Blocks email addresses
+    SMS = 2; // Blocks SMS numbers/content
+    OTHER = 3; // Blocks other content types
+    ACCOUNT_NUMBER = 4; // Blocks account numbers
+    WHATSAPP = 5; // Blocks WhatsApp numbers/accounts
   }
 }
 
+/**
+ * Request message for retrieving client configuration.
+ * Empty message as no parameters are needed.
+ */
 message GetClientConfigurationRequest {}
 
+/**
+ * Response message containing client configuration information.
+ */
 message GetClientConfigurationResponse {
-  string org_id = 1;
-  string org_name = 2;
-  string config_name = 6;
-  string config_payload = 7;
+  string org_id = 1; // Organization identifier
+  string org_name = 2; // Organization name
+  string config_name = 6; // Name of the configuration
+  string config_payload = 7; // Configuration data payload
 }
 
+/**
+ * Request message for retrieving organization information.
+ * Empty message as no parameters are needed.
+ */
 message GetOrganizationInfoRequest {}
+
+/**
+ * Response message containing organization information.
+ */
 message GetOrganizationInfoResponse {
-  string org_name = 2;
+  string org_name = 2; // Organization name
 }
 
+/**
+ * Request message for retrieving call recording status.
+ */
 message GetRecordingStatusRequest {
-  string user_id = 1;
+  string user_id = 1; // ID of the user/agent to check recording status for
 }
 
+/**
+ * Response message containing call recording status.
+ */
 message GetRecordingStatusResponse {
-  bool is_recording = 1;
+  bool is_recording = 1; // Whether the call is currently being recorded
 }
 
+/**
+ * Request message for creating or updating an agent.
+ */
 message UpsertAgentRequest {
-  string username = 1;
-  string partner_agent_id = 2;
-  string first_name = 3;
-  string last_name = 4;
-  string password = 5;
+  string username = 1; // Username for the agent
+  string partner_agent_id = 2; // ID of the agent in the partner's system
+  string first_name = 3; // Agent's first name
+  string last_name = 4; // Agent's last name
+  string password = 5; // Agent's password
 }
 
+/**
+ * Response message for creating or updating an agent.
+ */
 message UpsertAgentResponse {
-  Agent agent = 1;
+  Agent agent = 1; // The created or updated agent information
 }
 
+/**
+ * Request message for retrieving an agent by partner ID.
+ */
 message GetAgentByPartnerIdRequest {
-  string partner_agent_id = 1;
+  string partner_agent_id = 1; // ID of the agent in the partner's system
 }
 
+/**
+ * Response message containing agent information by partner ID.
+ */
 message GetAgentByPartnerIdResponse {
-  Agent agent = 1;
+  Agent agent = 1; // Agent information
 }
 
+/**
+ * Request message for retrieving an agent by internal ID.
+ */
 message GetAgentByIdRequest {
-  string user_id = 1;
+  string user_id = 1; // Internal ID of the agent
 }
 
+/**
+ * Response message containing agent information by internal ID.
+ */
 message GetAgentByIdResponse {
-  Agent agent = 1;
+  Agent agent = 1; // Agent information
 }
 
+/**
+ * Request message for stopping call recording.
+ */
 message StopCallRecordingRequest {
-  string user_id = 1;
+  string user_id = 1; // ID of the user/agent to stop recording for
 }
+
+/**
+ * Response message for stopping call recording.
+ * Empty message indicates successful stop.
+ */
 message StopCallRecordingResponse {}
 
+/**
+ * Request message for starting call recording.
+ */
 message StartCallRecordingRequest {
-  string user_id = 1;
+  string user_id = 1; // ID of the user/agent to start recording for
 }
+
+/**
+ * Response message for starting call recording.
+ * Empty message indicates successful start.
+ */
 message StartCallRecordingResponse {}
 
+/**
+ * Request message for dialing a phone number.
+ */
 message DialRequest {
-  string user_id = 1;
-  string phone_number = 2;
-  string caller_id = 3;
+  string user_id = 1; // ID of the user/agent making the call
+  string phone_number = 2; // Phone number to dial
+  string caller_id = 3; // Caller ID to display
 }
 
+/**
+ * Response message for dialing a phone number.
+ */
 message DialResponse {
-  string phone_number = 1;
-  string caller_id = 2;
-  int64 call_sid = 3;
-  CallType call_type = 4;
-  string org_id = 5;
-  string partner_agent_id = 6;
+  string phone_number = 1; // Phone number that was dialed
+  string caller_id = 2; // Caller ID that was used
+  int64 call_sid = 3; // Session ID for the call
+  CallType call_type = 4; // Type of call (inbound, outbound)
+  string org_id = 5; // Organization ID making the call
+  string partner_agent_id = 6; // Partner agent ID making the call
 }
 
+/**
+ * Request message for retrieving agent status.
+ */
 message GetAgentStatusRequest {
-  string user_id = 1;
+  string user_id = 1; // ID of the agent to check status
 }
+
+/**
+ * Response message containing agent status information.
+ */
 message GetAgentStatusResponse {
-  string user_id = 1;
-  AgentState agent_state = 10;
-  int64 current_session_id = 11;
-  ConnectedParty connected_party = 12;
+  string user_id = 1; // ID of the agent
+  AgentState agent_state = 10; // Current state of the agent
+  int64 current_session_id = 11; // Current session ID if applicable
+  ConnectedParty connected_party = 12; // Information about connected party if on call
 }
 
+/**
+ * Message representing a party connected to an agent.
+ */
 message ConnectedParty {
-  int64 call_sid = 1;
-  CallType call_type = 2;
-  bool is_inbound = 3;
+  int64 call_sid = 1; // Session ID of the call
+  CallType call_type = 2; // Type of call (inbound, outbound)
+  bool is_inbound = 3; // Whether this is an inbound call
 }
 
+/**
+ * Request message for updating agent status.
+ */
 message UpdateAgentStatusRequest {
-  string user_id = 1;
-  AgentState new_state = 2;
+  string user_id = 1; // ID of the agent to update
+  AgentState new_state = 2; // New state to set for the agent
 }
+
+/**
+ * Response message for updating agent status.
+ * Empty message indicates successful update.
+ */
 message UpdateAgentStatusResponse {}
 
+/**
+ * Request message for listing agents.
+ * Empty message as no parameters are needed.
+ */
 message ListAgentsRequest {}
+
+/**
+ * Response message for listing agents (streamed).
+ * Each response contains a single agent.
+ */
 message ListAgentsResponse {
-  Agent agent = 1;
+  Agent agent = 1; // Single agent information
 }
 
+/**
+ * Message representing agent information.
+ */
 message Agent {
-  string user_id = 1;
-  string org_id = 2;
-  string first_name = 3;
-  string last_name = 4;
-  string username = 5;
-  string partner_agent_id = 6;
+  string user_id = 1; // Internal ID of the agent
+  string org_id = 2; // Organization ID the agent belongs to
+  string first_name = 3; // Agent's first name
+  string last_name = 4; // Agent's last name
+  string username = 5; // Agent's username
+  string partner_agent_id = 6; // ID of the agent in the partner's system
 }
