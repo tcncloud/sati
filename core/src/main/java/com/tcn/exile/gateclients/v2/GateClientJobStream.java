@@ -1,11 +1,8 @@
 package com.tcn.exile.gateclients.v2;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import com.tcn.exile.gateclients.UnconfiguredException;
-import com.tcn.exile.models.LookupType;
 import com.tcn.exile.plugin.PluginInterface;
 
 import io.grpc.Status;
@@ -60,10 +57,7 @@ public class GateClientJobStream extends GateClientAbstract
     if (channel.isTerminated()) {
       return false;
     }
-    if (channel.isShutdown()) {
-      return false;
-    }
-    return true;
+    return !channel.isShutdown();
   }
 
   @Override
@@ -115,13 +109,10 @@ public class GateClientJobStream extends GateClientAbstract
           }
         }
     }
-//    this.start();
   }
 
   @Override
   public void onCompleted() {
-    this.shutdown();
-//    this.start();
   }
 
 }
