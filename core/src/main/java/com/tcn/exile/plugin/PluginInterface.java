@@ -69,7 +69,6 @@ public interface PluginInterface {
     /**
      * Handle agent call
      * 
-     * @param jobId
      * @param exileAgentCall
      */
     void handleAgentCall(ExileAgentCall exileAgentCall);
@@ -77,7 +76,6 @@ public interface PluginInterface {
     /**
      * Handle telephony result
      * 
-     * @param jobId
      * @param exileTelephonyResult
      */
     void handleTelephonyResult(ExileTelephonyResult exileTelephonyResult);
@@ -85,7 +83,6 @@ public interface PluginInterface {
     /**
      * Handle agent response
      * 
-     * @param jobId
      * @param exileAgentResponse
      */
     void handleAgentResponse(ExileAgentResponse exileAgentResponse);
@@ -101,6 +98,7 @@ public interface PluginInterface {
     void popAccount(String jobId, Public.StreamJobsResponse.PopAccountRequest popAccount);
 
     void info(String jobId, Public.StreamJobsResponse.InfoRequest info);
+    Public.SubmitJobResultsRequest.InfoResult info();
 
     void shutdown(String jobId, Public.StreamJobsResponse.SeppukuRequest shutdown);
 

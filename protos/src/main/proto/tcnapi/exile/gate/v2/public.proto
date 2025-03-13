@@ -356,12 +356,10 @@ message SubmitJobResultsRequest {
    * Empty response with information typically in headers.
    */
   message InfoResult {
-    string server_version = 1; // Version of the server
+    string core_version = 1; // Version of the server
     string server_name = 2; // Name of the server
-    string server_id = 3; // ID of the server
-    string plugin_version = 4; // Version of the plugin
-    string plugin_name = 5; // Name of the plugin
-    string plugin_id = 6; // ID of the plugin
+    string plugin_version = 3; // Version of the plugin
+    string plugin_name = 4; // Name of the plugin
   }
 
   /**

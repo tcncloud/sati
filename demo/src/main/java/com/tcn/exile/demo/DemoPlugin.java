@@ -1,6 +1,7 @@
 package com.tcn.exile.demo;
 
 import com.tcn.exile.gateclients.UnconfiguredException;
+import com.tcn.exile.gateclients.v2.BuildVersion;
 import com.tcn.exile.plugin.PluginInterface;
 import com.tcn.exile.plugin.PluginStatus;
 
@@ -17,6 +18,7 @@ import jakarta.inject.Inject;
 import io.micronaut.context.event.ApplicationEventListener;
 import tcnapi.exile.gate.v2.Public;
 
+import java.net.InetAddress;
 import java.util.HashMap;
 
 @Singleton
@@ -176,15 +178,41 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
         .build());
   }
 
+  private String getServerName() {
+    try {
+      return InetAddress.getLocalHost().getHostName();
+    } catch (Exception e) {
+      return "Unknown";
+    }
+  }
+
+  private String getVersion() {
+    var ret = this.getClass().getPackage().getImplementationVersion();
+    return ret == null ? "Unknown" : ret;
+
+  }
   @Override
   public void info(String jobId, Public.StreamJobsResponse.InfoRequest info) {
     log.info("Info for job {}", jobId);
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
         .setJobId(jobId)
         .setEndOfTransmission(true)
-        .setInfoResult(Public.SubmitJobResultsRequest.InfoResult.newBuilder().build())
+        .setInfoResult(Public.SubmitJobResultsRequest.InfoResult.newBuilder()
+            .setServerName(getServerName())
+            .setCoreVersion(com.tcn.exile.gateclients.v2.BuildVersion.getBuildVersion())
+            .setPluginName("DemoPlugin")
+            .setPluginVersion(getVersion())
+            .build())
         .build());
+  }
 
+  public Public.SubmitJobResultsRequest.InfoResult info() {
+    return Public.SubmitJobResultsRequest.InfoResult.newBuilder()
+        .setServerName(getServerName())
+        .setCoreVersion(com.tcn.exile.gateclients.v2.BuildVersion.getBuildVersion())
+        .setPluginName("DemoPlugin")
+        .setPluginVersion(getVersion())
+        .build();
   }
 
   @Override

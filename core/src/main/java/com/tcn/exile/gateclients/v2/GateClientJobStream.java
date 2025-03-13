@@ -100,18 +100,6 @@ public class GateClientJobStream extends GateClientAbstract
   @Override
   public void onError(Throwable t) {
     Context.current().withCancellation().cancel(t);
-//    if (t instanceof io.grpc.StatusRuntimeException) {
-//        var status = io.grpc.Status.fromThrowable(t);
-//        if (status.getCode() == Status.Code.DEADLINE_EXCEEDED) {
-//          try {
-//            var chan = this.channel;
-//            boolean b = chan.shutdownNow().awaitTermination(30, TimeUnit.SECONDS);
-//            log.debug("Channel shutdown {} - {}", chan, b);
-//          } catch (InterruptedException e) {
-//            log.error("Channel shutdown exception {}", channel, e);
-//          }
-//        }
-//    }
   }
 
   @Override
