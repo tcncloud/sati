@@ -5,6 +5,7 @@ import java.util.concurrent.TimeUnit;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.plugin.PluginInterface;
 
+import io.grpc.Context;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import io.micronaut.scheduling.annotation.Scheduled;
@@ -40,6 +41,8 @@ public class GateClientJobStream extends GateClientAbstract
         channel = this.getChannel();
       }
       var client = GateServiceGrpc.newStub(channel)
+          // multiple of 10 seconds so the deatline will be triggered in the next iteration
+          // of the scheduled start() method
           .withDeadlineAfter(30, TimeUnit.SECONDS)
           .withWaitForReady();
 
@@ -97,18 +100,19 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onError(Throwable t) {
-    if (t instanceof io.grpc.StatusRuntimeException) {
-        var status = io.grpc.Status.fromThrowable(t);
-        if (status.getCode() == Status.Code.DEADLINE_EXCEEDED) {
-          try {
-            var chan = this.channel;
-            boolean b = chan.shutdownNow().awaitTermination(30, TimeUnit.SECONDS);
-            log.debug("Channel shutdown {} - {}", chan, b);
-          } catch (InterruptedException e) {
-            log.error("Channel shutdown exception {}", channel, e);
-          }
-        }
-    }
+    Context.current().withCancellation().cancel(t);
+//    if (t instanceof io.grpc.StatusRuntimeException) {
+//        var status = io.grpc.Status.fromThrowable(t);
+//        if (status.getCode() == Status.Code.DEADLINE_EXCEEDED) {
+//          try {
+//            var chan = this.channel;
+//            boolean b = chan.shutdownNow().awaitTermination(30, TimeUnit.SECONDS);
+//            log.debug("Channel shutdown {} - {}", chan, b);
+//          } catch (InterruptedException e) {
+//            log.error("Channel shutdown exception {}", channel, e);
+//          }
+//        }
+//    }
   }
 
   @Override
