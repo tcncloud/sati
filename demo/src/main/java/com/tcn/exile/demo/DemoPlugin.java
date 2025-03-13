@@ -65,7 +65,7 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
         .setJobId(jobId)
         .setEndOfTransmission(true)
-        .setPoolListResult(Public.SubmitJobResultsRequest.PoolListResult.newBuilder()
+        .setListPoolResult(Public.SubmitJobResultsRequest.ListPoolsResult.newBuilder()
             .addPools(tcnapi.exile.core.v2.Entities.Pool.newBuilder()
                 .setPoolId("A")
                 .setDescription("Pool with id A")
@@ -80,52 +80,52 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
   public void getPoolStatus(String jobId, String satiPoolId) throws UnconfiguredException {
     log.info("Getting pool status for job={} and pool={}", jobId, satiPoolId);
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
-            .setJobId(jobId)
-            .setEndOfTransmission(true)
-            .setPoolStatusResult(Public.SubmitJobResultsRequest.PoolStatusResult.newBuilder()
-                    .setPool(tcnapi.exile.core.v2.Entities.Pool.newBuilder()
-                            .setPoolId(satiPoolId)
-                            .setStatus(tcnapi.exile.core.v2.Entities.Pool.PoolStatus.READY)
-                            .build())
-                    .build())
-            .build());
+        .setJobId(jobId)
+        .setEndOfTransmission(true)
+        .setGetPoolStatusResult(Public.SubmitJobResultsRequest.GetPoolStatusResult.newBuilder()
+            .setPool(tcnapi.exile.core.v2.Entities.Pool.newBuilder()
+                .setPoolId(satiPoolId)
+                .setStatus(tcnapi.exile.core.v2.Entities.Pool.PoolStatus.READY)
+                .build())
+            .build())
+        .build());
   }
 
   @Override
   public void getPoolRecords(String jobId, String satiPoolId) throws UnconfiguredException {
     log.info("Getting pool records for job {} and pool {}", jobId, satiPoolId);
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
-            .setJobId(jobId)
-            .setEndOfTransmission(true)
-                    .setPoolRecordsResult(Public.SubmitJobResultsRequest.PoolRecordsResult.newBuilder()
-                            .addRecords(tcnapi.exile.core.v2.Entities.Record.newBuilder()
-                                    .setPoolId(satiPoolId)
-                                    .setRecordId("blue")
-                                    .setJsonRecordPayload("{\"f1\": \"foo\"}")
-                                    .build())
-                            .addRecords(tcnapi.exile.core.v2.Entities.Record.newBuilder()
-                                    .setPoolId(satiPoolId)
-                                    .setRecordId("red")
-                                    .setJsonRecordPayload("{\"f2\": \"bar\"}")
-                                    .build())
+        .setJobId(jobId)
+        .setEndOfTransmission(true)
+        .setGetPoolRecordsResult(Public.SubmitJobResultsRequest.GetPoolRecordsResult.newBuilder()
+            .addRecords(tcnapi.exile.core.v2.Entities.Record.newBuilder()
+                .setPoolId(satiPoolId)
+                .setRecordId("blue")
+                .setJsonRecordPayload("{\"f1\": \"foo\"}")
+                .build())
+            .addRecords(tcnapi.exile.core.v2.Entities.Record.newBuilder()
+                .setPoolId(satiPoolId)
+                .setRecordId("red")
+                .setJsonRecordPayload("{\"f2\": \"bar\"}")
+                .build())
 
-                            .build())
-            .build());
+            .build())
+        .build());
   }
 
   @Override
   public void searchRecords(String jobId, LookupType lookupType, String lookupValue, @Nullable String satiParentId) throws UnconfiguredException {
     log.info("Searching records for job {} with type {} and value {}", jobId, lookupType, lookupValue);
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
-            .setJobId(jobId)
-            .setEndOfTransmission(true)
-            .setRecordSearchResult(Public.SubmitJobResultsRequest.RecordSearchResult.newBuilder()
-                    .addRecords(tcnapi.exile.core.v2.Entities.Record.newBuilder()
-                            .setRecordId("blue")
-                            .setJsonRecordPayload("{\"foo\": \"bar\"}")
-                            .build())
-                    .build())
-            .build());
+        .setJobId(jobId)
+        .setEndOfTransmission(true)
+        .setSearchRecordResult(Public.SubmitJobResultsRequest.SearchRecordResult.newBuilder()
+            .addRecords(tcnapi.exile.core.v2.Entities.Record.newBuilder()
+                .setRecordId("blue")
+                .setJsonRecordPayload("{\"foo\": \"bar\"}")
+                .build())
+            .build())
+        .build());
   }
 
   @Override
@@ -133,55 +133,55 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
     log.info("Reading {} fields for job {} and record {}", fields.length, jobId, recordId);
 
     String[] values = {"foo", "bar", "baz"};
-    var res = Public.SubmitJobResultsRequest.RecordFieldsResult.newBuilder();
-    var fieldsList =  new ArrayList<tcnapi.exile.core.v2.Entities.Field>();
+    var res = Public.SubmitJobResultsRequest.GetRecordFieldsResult.newBuilder();
+    var fieldsList = new ArrayList<tcnapi.exile.core.v2.Entities.Field>();
 
-    for (int i = 0; i < fields.length; i++){
+    for (int i = 0; i < fields.length; i++) {
       fieldsList.add(tcnapi.exile.core.v2.Entities.Field.newBuilder()
-              .setFieldName(fields[i])
-              .setFieldValue(values[i%3])
-              .setRecordId(recordId)
-              .build());
+          .setFieldName(fields[i])
+          .setFieldValue(values[i % 3])
+          .setRecordId(recordId)
+          .build());
     }
-    log.info("sending fields[{}] {}",fieldsList.size(), fieldsList);
+    log.info("sending fields[{}] {}", fieldsList.size(), fieldsList);
 
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
-            .setJobId(jobId)
-            .setEndOfTransmission(true)
-            .setRecordFieldsResult(Public.SubmitJobResultsRequest.RecordFieldsResult.newBuilder()
-                    .addAllFields(fieldsList)
-                    .build())
-            .build());
+        .setJobId(jobId)
+        .setEndOfTransmission(true)
+        .setGetRecordFieldsResult(Public.SubmitJobResultsRequest.GetRecordFieldsResult.newBuilder()
+            .addAllFields(fieldsList)
+            .build())
+        .build());
   }
 
   @Override
   public void writeFields(String jobId, String recordId, Map<String, String> fields) throws UnconfiguredException {
     log.info("Writing fields for job {} and record {} fields {}", jobId, recordId, fields);
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
-            .setJobId(jobId)
-            .setEndOfTransmission(true)
-            .setRecordFieldsResult(Public.SubmitJobResultsRequest.RecordFieldsResult.newBuilder().build())
-            .build());
+        .setJobId(jobId)
+        .setEndOfTransmission(true)
+        .setSetRecordFieldsResult(Public.SubmitJobResultsRequest.SetRecordFieldsResult.newBuilder().build())
+        .build());
   }
 
   @Override
   public void createPayment(String jobId, String recordId, Map<String, String> fields) throws UnconfiguredException {
     log.info("Creating payment for job {} and record {}, fields {}", jobId, recordId, fields);
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
-            .setJobId(jobId)
-            .setEndOfTransmission(true)
-            .setPaymentCreationResult(Public.SubmitJobResultsRequest.PaymentCreationResult.newBuilder().build())
-            .build());
+        .setJobId(jobId)
+        .setEndOfTransmission(true)
+        .setCreatePaymentResult(Public.SubmitJobResultsRequest.CreatePaymentResult.newBuilder().build())
+        .build());
   }
 
   @Override
   public void popAccount(String jobId, String recordId, String partnerUserId, String callId, String callType) throws UnconfiguredException {
     log.info("Popping account for job {} and record {}", jobId, recordId);
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
-            .setJobId(jobId)
-            .setEndOfTransmission(true)
-            .setAccountPopResult(Public.SubmitJobResultsRequest.AccountPopResult.newBuilder().build())
-            .build());
+        .setJobId(jobId)
+        .setEndOfTransmission(true)
+        .setPopAccountResult(Public.SubmitJobResultsRequest.PopAccountResult.newBuilder().build())
+        .build());
   }
 
   @Override

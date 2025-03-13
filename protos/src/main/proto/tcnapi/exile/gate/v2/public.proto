@@ -47,16 +47,14 @@ service GateService {
 }
 
 message PollEventsRequest {
-  int32 event_count = 10;  // Default 100 if 0
+  int32 event_count = 10; // Default 100 if 0
 }
 
 message PollEventsResponse {
   repeated Event events = 1;
 }
 
-
-message StreamJobsRequest {
-}
+message StreamJobsRequest {}
 
 message StreamJobsResponse {
   string job_id = 1;
@@ -73,64 +71,159 @@ message StreamJobsResponse {
     SeppukuRequest shutdown = 101;
     LogRequest log = 102;
   }
+
+  message ListPoolsRequest {
+    string job_id = 10;
+  }
+
+  message GetPoolStatusRequest {
+    string pool_id = 2;
+    string job_id = 10;
+  }
+
+  message GetPoolRecordsRequest {
+    string pool_id = 2;
+    string job_id = 10;
+  }
+
+  message SearchRecordsRequest {
+    string aip160_filter = 2;
+    string job_id = 10;
+    string lookup_type = 11;
+    string lookup_value = 12;
+    google.protobuf.StringValue parent_id = 13;
+    // TBD
+  }
+
+  message GetRecordFieldsRequest {
+    string pool_id = 2;
+    string record_id = 3;
+    repeated string field_names = 4;
+    string job_id = 10;
+  }
+
+  message SetRecordFieldsRequest {
+    string pool_id = 2;
+    string record_id = 3;
+    repeated tcnapi.exile.core.v2.Field fields = 4;
+    string job_id = 10;
+  }
+
+  message CreatePaymentRequest {
+    string pool_id = 2;
+    string record_id = 3;
+    string payment_id = 4;
+    string payment_type = 5;
+    string payment_amount = 6;
+    google.protobuf.Timestamp payment_date = 7;
+    string job_id = 10;
+  }
+
+  message PopAccountRequest {
+    string pool_id = 2;
+    string record_id = 3;
+    string call_sid = 4;
+    string call_type = 5;
+    string job_id = 10;
+  }
+
+  message SendAgentCallRequest {
+    string pool_id = 2;
+    string record_id = 3;
+    string agent_id = 4;
+    string call_sid = 5;
+    string call_type = 6;
+    string job_id = 10;
+    // TBD
+  }
+
+  message SendTelephonyResultsRequest {
+    string pool_id = 2;
+    string record_id = 3;
+    string call_sid = 4;
+    string call_type = 5;
+    string job_id = 10;
+    // TBD
+  }
+
+  message SendAgentResponseRequest {
+    string pool_id = 2;
+    string record_id = 3;
+    string agent_id = 4;
+    string call_sid = 5;
+    string call_type = 6;
+    string job_id = 10;
+    // TBD
+  }
+
+  message InfoRequest {
+    string job_id = 2;
+  }
+
+  message SeppukuRequest {
+    string job_id = 2;
+  }
+
+  message LogRequest {
+    string job_id = 2;
+  }
 }
 
 message SubmitJobResultsRequest {
   string job_id = 2;
   bool end_of_transmission = 3;
-  
+
   oneof result {
-    PoolListResult pool_list_result = 10;
-    PoolStatusResult pool_status_result = 11;
-    PoolRecordsResult pool_records_result = 12;
-    RecordSearchResult record_search_result = 13;
-    RecordFieldsResult record_fields_result = 14;
-    RecordFieldsUpdateResult record_fields_update_result = 15;
-    PaymentCreationResult payment_creation_result = 16;
-    AccountPopResult account_pop_result = 17;
+    ListPoolsResult list_pool_result = 10;
+    GetPoolStatusResult get_pool_status_result = 11;
+    GetPoolRecordsResult get_pool_records_result = 12;
+    SearchRecordResult search_record_result = 13;
+    GetRecordFieldsResult get_record_fields_result = 14;
+    SetRecordFieldsResult set_record_fields_result = 15;
+    CreatePaymentResult create_payment_result = 16;
+    PopAccountResult pop_account_result = 17;
     ErrorResult error_result = 21;
     InfoResult info_result = 22;
-    ShutdownResult shutdown_result = 23;
+    SeppukuResult shutdown_result = 23;
     LogResult log_result = 24;
   }
-  
-  message PoolListResult {
+
+  message ListPoolsResult {
     repeated tcnapi.exile.core.v2.Pool pools = 1;
   }
-  message PoolStatusResult {
+  message GetPoolStatusResult {
     tcnapi.exile.core.v2.Pool pool = 1;
   }
-  message PoolRecordsResult {
+  message GetPoolRecordsResult {
     repeated tcnapi.exile.core.v2.Record records = 1;
   }
-  message RecordSearchResult {
+  message SearchRecordResult {
     repeated tcnapi.exile.core.v2.Record records = 1;
   }
-  message RecordFieldsResult {
+  message GetRecordFieldsResult {
     repeated tcnapi.exile.core.v2.Field fields = 1;
   }
-  message RecordFieldsUpdateResult {}
-  message PaymentCreationResult {}
-  message AccountPopResult {}
+  message SetRecordFieldsResult {}
+  message CreatePaymentResult {}
+  message PopAccountResult {}
   message ErrorResult {
     string message = 1;
   }
   message InfoResult {}
-  message ShutdownResult {}
+  message SeppukuResult {}
   message LogResult {}
 }
 
 message SubmitJobResultsResponse {}
 
 message Event {
-//   string job_id = 1;
+  //   string job_id = 1;
   oneof entity {
     ExileAgentCall agent_call = 10;
     ExileTelephonyResult telephony_result = 11;
     ExileAgentResponse agent_response = 12;
   }
 }
-
 
 message RemoveScrubListEntriesRequest {
   string scrub_list_id = 1;
@@ -153,7 +246,7 @@ message AddScrubListEntriesRequest {
   string scrub_list_id = 1;
   repeated Entry entries = 10;
   string country_code = 11;
-  
+
   message Entry {
     string content = 1;
     google.protobuf.Timestamp expiration = 2;
@@ -182,8 +275,7 @@ message ScrubList {
   }
 }
 
-message GetClientConfigurationRequest {
-}
+message GetClientConfigurationRequest {}
 
 message GetClientConfigurationResponse {
   string org_id = 1;
@@ -293,6 +385,3 @@ message Agent {
   string username = 5;
   string partner_agent_id = 6;
 }
-
-
-

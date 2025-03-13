@@ -14,8 +14,8 @@ message Pool {
 }
 
 message Record {
-  string pool_id = 1; 
-  string record_id = 2; 
+  string pool_id = 1;
+  string record_id = 2;
   string json_record_payload = 3; // json serialized record
 }
 
