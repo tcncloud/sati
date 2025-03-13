@@ -19,7 +19,7 @@ public class GateClientPollEvents extends GateClientAbstract {
     PluginInterface plugin;
 
     @Override
-    // @Scheduled(fixedDelay = "10s")
+    @Scheduled(fixedDelay = "10s")
     public void start() {
         try {
             if (isUnconfigured()) {
