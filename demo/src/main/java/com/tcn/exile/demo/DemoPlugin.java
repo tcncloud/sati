@@ -20,7 +20,9 @@ import jakarta.inject.Inject;
 import io.micronaut.context.event.ApplicationEventListener;
 import tcnapi.exile.gate.v2.Public;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Singleton
@@ -117,27 +119,38 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
             .setJobId(jobId)
             .setEndOfTransmission(true)
+            .setRecordSearchResult(Public.SubmitJobResultsRequest.RecordSearchResult.newBuilder()
+                    .addRecords(tcnapi.exile.core.v2.Entities.Record.newBuilder()
+                            .setRecordId("blue")
+                            .setJsonRecordPayload("{\"foo\": \"bar\"}")
+                            .build())
+                    .build())
             .build());
   }
 
   @Override
   public void readFields(String jobId, String recordId, String[] fields) throws UnconfiguredException {
-    log.info("Reading fields for job {} and record {}", jobId, recordId);
+    log.info("Reading {} fields for job {} and record {}", fields.length, jobId, recordId);
 
     String[] values = {"foo", "bar", "baz"};
     var res = Public.SubmitJobResultsRequest.RecordFieldsResult.newBuilder();
+    var fieldsList =  new ArrayList<tcnapi.exile.core.v2.Entities.Field>();
+
     for (int i = 0; i < fields.length; i++){
-      res.addFields(tcnapi.exile.core.v2.Entities.Field.newBuilder()
+      fieldsList.add(tcnapi.exile.core.v2.Entities.Field.newBuilder()
               .setFieldName(fields[i])
               .setFieldValue(values[i%3])
               .setRecordId(recordId)
               .build());
     }
+    log.info("sending fields[{}] {}",fieldsList.size(), fieldsList);
 
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
             .setJobId(jobId)
             .setEndOfTransmission(true)
-            .setRecordFieldsResult(res.build())
+            .setRecordFieldsResult(Public.SubmitJobResultsRequest.RecordFieldsResult.newBuilder()
+                    .addAllFields(fieldsList)
+                    .build())
             .build());
   }
 
@@ -147,6 +160,7 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
             .setJobId(jobId)
             .setEndOfTransmission(true)
+            .setRecordFieldsResult(Public.SubmitJobResultsRequest.RecordFieldsResult.newBuilder().build())
             .build());
   }
 
@@ -156,6 +170,7 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
             .setJobId(jobId)
             .setEndOfTransmission(true)
+            .setPaymentCreationResult(Public.SubmitJobResultsRequest.PaymentCreationResult.newBuilder().build())
             .build());
   }
 
@@ -165,6 +180,7 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
             .setJobId(jobId)
             .setEndOfTransmission(true)
+            .setAccountPopResult(Public.SubmitJobResultsRequest.AccountPopResult.newBuilder().build())
             .build());
   }
 

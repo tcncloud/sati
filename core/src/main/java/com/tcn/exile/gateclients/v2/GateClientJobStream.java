@@ -89,9 +89,10 @@ public class GateClientJobStream extends GateClientAbstract
                         satiParentId
                 );
             } else if (value.hasGetRecordFields()) {
-                plugin.getPoolRecords(
-                        value.getGetPoolRecords().getJobId(),
-                        value.getGetPoolRecords().getPoolId()
+                plugin.readFields(
+                        value.getGetRecordFields().getJobId(),
+                        value.getGetRecordFields().getPoolId(),
+                        value.getGetRecordFields().getFieldNamesList().toArray(new String[0])
                 );
                 // plugin.readFields(value.getJobId(), value.getGetRecordFields().getRecordId(),
                 // value.getGetRecordFields().getFieldsList().toArray(new String[0]));
