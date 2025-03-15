@@ -136,4 +136,8 @@ public class GateClient extends GateClientAbstract {
     public Public.RemoveScrubListEntriesResponse removeScrubListEntries(Public.RemoveScrubListEntriesRequest request) {
         return executeRequest("removeScrubListEntries", client -> client.removeScrubListEntries(request));
     }
+
+    public Public.LogResponse log(Public.LogRequest request) {
+        return executeRequest("log", client -> client.log(request));
+    }
 }

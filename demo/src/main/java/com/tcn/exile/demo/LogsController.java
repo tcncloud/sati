@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 
+import ch.qos.logback.classic.LoggerContext;
 import com.tcn.memlogger.MemoryAppender;
 import com.tcn.memlogger.MemoryAppenderInstance;
 
@@ -18,6 +19,8 @@ import io.micronaut.http.annotation.Produces;
 import io.micronaut.http.annotation.Put;
 import io.micronaut.serde.ObjectMapper;
 import jakarta.inject.Inject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Controller("/logs")
 @Requires(bean = Environment.class)
@@ -25,6 +28,7 @@ public class LogsController {
 
     static final String LOGGER_PROPERTY_PREFIX = "logger";
     static final String LOGGER_LEVELS_PROPERTY_PREFIX = LOGGER_PROPERTY_PREFIX + ".levels";
+    private static final Logger log = LoggerFactory.getLogger(LogsController.class);
 
     @Inject
     ObjectMapper objectMapper;
@@ -55,18 +59,31 @@ public class LogsController {
     }
 
     @Get("/loggers")
-    public Map<String, Object> loggers() {
-        
-                // Using raw keys here allows configuring log levels for camelCase package names in application.yml
-        final Map<String, Object> rawProperties = environment.getProperties(LOGGER_LEVELS_PROPERTY_PREFIX, StringConvention.RAW);
-        // Adding the generated properties allows environment variables and system properties to override names in application.yaml
-        final Map<String, Object> generatedProperties = environment.getProperties(LOGGER_LEVELS_PROPERTY_PREFIX);
+    public Map<String, String> loggers() {
+        LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+        Map<String, String> loggers = new HashMap<>();
+        for (var logger : loggerContext.getLoggerList()) {
 
-        final Map<String, Object> properties = new HashMap<>(generatedProperties.size() + rawProperties.size(), 1f);
-        properties.putAll(rawProperties);
-        properties.putAll(generatedProperties);
-        // properties.forEach(this::configureLogLevelForPrefix);
-        return properties;
+            if (logger.getLevel() == null) {
+                loggers.put(logger.getName(), "null");
+                continue;
+            }
+            loggers.put(logger.getName(), logger.getLevel().levelStr);
+        }
+        return loggers;
+    }
+
+    @Get("/loggers/{logger}/level/{level}")
+    public String setLoggerLevel(String logger, String level) {
+        LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+        var loggers = loggerContext.getLoggerList();
+        for (var l : loggers) {
+            if (l.getName().equals(logger)) {
+                l.setLevel(ch.qos.logback.classic.Level.toLevel(level));
+                return "OK";
+            }
+        }
+        return "Logger not found";
     }
 
 

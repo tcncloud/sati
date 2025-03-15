@@ -6,6 +6,8 @@ import com.tcn.exile.gateclients.v2.BuildVersion;
 import com.tcn.exile.plugin.PluginInterface;
 import com.tcn.exile.plugin.PluginStatus;
 
+import com.tcn.memlogger.LogShipper;
+import com.tcn.memlogger.MemoryAppenderInstance;
 import io.micronaut.context.env.Environment;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
@@ -24,7 +26,7 @@ import java.net.InetAddress;
 import java.util.HashMap;
 
 @Singleton
-public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, PluginInterface {
+public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, PluginInterface, LogShipper {
   private static final Logger log = LoggerFactory.getLogger(DemoPlugin.class);
   private boolean running = false;
 
@@ -65,7 +67,7 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
         .setJobId(jobId)
         .setEndOfTransmission(true)
-        .setListPoolResult(Public.SubmitJobResultsRequest.ListPoolsResult.newBuilder()
+        .setListPoolsResult(Public.SubmitJobResultsRequest.ListPoolsResult.newBuilder()
             .addPools(tcnapi.exile.core.v2.Entities.Pool.newBuilder()
                 .setPoolId("A")
                 .setDescription("Pool with id A")
@@ -112,8 +114,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
             .build())
         .build());
   }
-
-
 
 
   @Override
@@ -195,6 +195,7 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
     return ret == null ? "Unknown" : ret;
 
   }
+
   @Override
   public void info(String jobId, Public.StreamJobsResponse.InfoRequest info) {
     log.info("Info for job {}", jobId);
@@ -225,16 +226,34 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
   }
 
   @Override
-  public void logger(String jobId, Public.StreamJobsResponse.LogRequest logRequest) {
+  public void logger(String jobId, Public.StreamJobsResponse.LoggingRequest logRequest) {
     log.debug("Received log request {} stream {} payload: {}", jobId, logRequest.getStreamLogs(), logRequest.getLoggerLevelsList());
     LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
 
     for (var logger : logRequest.getLoggerLevelsList()) {
+      log.debug("Setting logger {} to level {}", logger.getLoggerName(), logger.getLoggerLevel());
       var v = loggerContext.getLogger(logger.getLoggerName());
       if (v != null) {
-        v.setLevel(ch.qos.logback.classic.Level.toLevel(logger.getLoggerLevel().name()));
+        if (logger.getLoggerLevel() == Public.StreamJobsResponse.LoggingRequest.LoggerLevel.Level.DISABLED) {
+          v.setLevel(ch.qos.logback.classic.Level.OFF);
+        } else {
+          v.setLevel(ch.qos.logback.classic.Level.toLevel(logger.getLoggerLevel().name()));
+        }
+      } else {
+        log.warn("Logger {} not found", logger.getLoggerName());
       }
     }
+    if (logRequest.getStreamLogs()) {
+      MemoryAppenderInstance.getInstance().enableLogShipper(this);
+    } else {
+      MemoryAppenderInstance.getInstance().disableLogShipper();
+    }
+
+    gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
+        .setJobId(jobId)
+        .setEndOfTransmission(true)
+        .setLoggingResult(Public.SubmitJobResultsRequest.LoggingResult.newBuilder().build())
+        .build());
   }
 
   @Override
@@ -247,4 +266,17 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
       running = true;
     }
   }
-} 
+
+  @Override
+  public void shipLogs(String payload) {
+    log.info("Ship logs");
+    gateClient.log(Public.LogRequest.newBuilder().setPayload(payload).build());
+  }
+
+  @Override
+  public void stop() {
+    log.info("Stopping shipping logs plugin");
+    MemoryAppenderInstance.getInstance().disableLogShipper();
+
+  }
+}
