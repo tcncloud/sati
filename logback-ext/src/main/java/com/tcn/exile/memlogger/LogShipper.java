@@ -1,4 +1,4 @@
-package com.tcn.memlogger;
+package com.tcn.exile.memlogger;
 
 public interface LogShipper {
   void shipLogs(String payload);

@@ -5,18 +5,16 @@ import java.util.HashMap;
 import java.util.Map;
 
 import ch.qos.logback.classic.LoggerContext;
-import com.tcn.memlogger.MemoryAppender;
-import com.tcn.memlogger.MemoryAppenderInstance;
+import com.tcn.exile.memlogger.MemoryAppender;
+import com.tcn.exile.memlogger.MemoryAppenderInstance;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.env.Environment;
-import io.micronaut.core.naming.conventions.StringConvention;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.Controller;
 import io.micronaut.http.annotation.Get;
 import io.micronaut.http.annotation.Produces;
-import io.micronaut.http.annotation.Put;
 import io.micronaut.serde.ObjectMapper;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;

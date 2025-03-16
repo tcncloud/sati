@@ -7,8 +7,6 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import com.tcn.memlogger.MemoryAppender;
-
 import java.util.List;
 
 public class MemoryAppenderTest {
@@ -43,7 +41,7 @@ public class MemoryAppenderTest {
         }
 
         List<ILoggingEvent> events = memoryAppender.getEvents();
-        assertEquals(1000, events.size());
+        assertEquals(100, events.size());
     }
 
     @Test

@@ -1,4 +1,4 @@
-package com.tcn.memlogger;
+package com.tcn.exile.memlogger;
 
 public final class MemoryAppenderInstance {
 

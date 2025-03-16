@@ -1,4 +1,4 @@
-package com.tcn.memlogger;
+package com.tcn.exile.memlogger;
 
 import java.util.ArrayList;
 import java.util.LinkedList;

@@ -8,7 +8,7 @@
             </pattern>
         </encoder>
     </appender>
-    <appender name="IN-MEMORY" class="com.tcn.memlogger.MemoryAppender">
+    <appender name="IN-MEMORY" class="com.tcn.exile.memlogger.MemoryAppender">
         <!-- <encoder>
             <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
             <outputPatternAsHeader>true</outputPatternAsHeader>

@@ -2,12 +2,11 @@ package com.tcn.exile.demo;
 
 import ch.qos.logback.classic.LoggerContext;
 import com.tcn.exile.gateclients.UnconfiguredException;
-import com.tcn.exile.gateclients.v2.BuildVersion;
 import com.tcn.exile.plugin.PluginInterface;
 import com.tcn.exile.plugin.PluginStatus;
 
-import com.tcn.memlogger.LogShipper;
-import com.tcn.memlogger.MemoryAppenderInstance;
+import com.tcn.exile.memlogger.LogShipper;
+import com.tcn.exile.memlogger.MemoryAppenderInstance;
 import io.micronaut.context.env.Environment;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
