@@ -1,0 +1,31 @@
+micronaut:
+  control-panel:
+    enabled: true
+    allowed-environments: dev
+  application:
+    name: sati
+  views:
+    dir: views
+  router:
+    static-resources:
+      enabled: true
+      css:
+        mapping: /css/*.css
+        paths: classpath:static/css
+      images:
+        mapping: /images/**
+        paths: classpath:static/images
+      swagger:
+        paths: classpath:META-INF/swagger
+        mapping: /swagger/**
+      swagger-ui:
+        paths: classpath:META-INF/swagger/views/swagger-ui
+        mapping: /swagger-ui/**
+logger:
+  levels:
+    com.tcn.exile: TRACE 
+    com.zaxxer.hikari: DEBUG
+    io.micronaut.http.client: TRACE
+grpc:
+  server:
+    enabled: false

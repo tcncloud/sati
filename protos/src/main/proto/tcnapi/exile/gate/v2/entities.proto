@@ -1,8 +1,10 @@
 syntax = "proto3";
 
-package tcnapi.exile.gate.v1;
+package tcnapi.exile.gate.v2;
 
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
+import "tcnapi/exile/core/v2/entities.proto";
 
 message ExileAgentCall {
   int64 agent_call_sid = 1;
@@ -26,9 +28,7 @@ message ExileAgentCall {
   string internal_key = 19;
   repeated string task_data_keys = 20;
   repeated string task_data_values = 21;
-
   string partner_agent_id = 100;
-
 }
 
 message ExileTelephonyResult {

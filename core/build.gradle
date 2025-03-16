@@ -20,7 +20,7 @@ dependencies {
     implementation("jakarta.annotation:jakarta.annotation-api")
     implementation("jakarta.validation:jakarta.validation-api")
 
-    runtimeOnly("ch.qos.logback:logback-classic")
+    implementation("ch.qos.logback:logback-classic")
 
     implementation(project(":protos"))
 
@@ -40,6 +40,7 @@ dependencies {
 
 
     testImplementation("io.micronaut:micronaut-http-client")
+    testImplementation("org.mockito:mockito-core:5.15.2")
 }
 
 java {
@@ -54,7 +55,7 @@ micronaut {
     testRuntime("junit5")
     processing {
         incremental(true)
-        annotations("com.tcn.*")
+        annotations("com.tcn.exile.*")
     }
     aot {
         // Please review carefully the optimizations enabled below
@@ -70,6 +71,11 @@ micronaut {
     }
 }
 
+jar {
+   manifest {
+       attributes 'Implementation-Version': project.version
+   }
+}
 
 publishing {
     publications {

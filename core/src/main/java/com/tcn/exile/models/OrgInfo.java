@@ -17,6 +17,14 @@
 package com.tcn.exile.models;
 
 import jakarta.validation.constraints.NotEmpty;
+import tcnapi.exile.gate.v2.Public;
 
 public record OrgInfo(@NotEmpty String orgId, String orgName) {
+    public OrgInfo(Public.GetOrganizationInfoResponse response) {
+        this(response.getOrgName(), response.getOrgName());
+    }
+
+    public String getName() {
+        return orgName;
+    }
 }

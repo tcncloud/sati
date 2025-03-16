@@ -8,15 +8,15 @@
             </pattern>
         </encoder>
     </appender>
-    <!-- <appender name="IN-MEMORY" class="com.tcn.exile.memlogger.MemoryAppender">
-        <encoder>
-            <pattern>%cyan(%d{HH:mm:ss.SSS}) %gray([%thread]) %highlight(%-5level) %magenta(%logger{36}) - %msg%n
-            </pattern>
-        </encoder>
-    </appender> -->
+    <appender name="IN-MEMORY" class="com.tcn.exile.memlogger.MemoryAppender">
+        <!-- <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <outputPatternAsHeader>true</outputPatternAsHeader>
+        </encoder> -->
+    </appender>
 
     <root level="info">
         <appender-ref ref="STDOUT"/>
-        <!-- <appender-ref ref="IN-MEMORY"/> -->
+        <appender-ref ref="IN-MEMORY"/>
     </root>
 </configuration>
