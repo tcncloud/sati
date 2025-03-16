@@ -22,8 +22,7 @@ import jakarta.validation.constraints.NotEmpty;
 
 @Serdeable
 public record AgentUpsertRequest(
-    @NotEmpty String userId,
-    @Nullable String username,
+    @NotEmpty String username,
     @Nullable String firstName,
     @Nullable String lastName,
     @Nullable String partnerAgentId,

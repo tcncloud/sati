@@ -632,7 +632,10 @@ message StartCallRecordingResponse {}
 message DialRequest {
   string user_id = 1; // ID of the user/agent making the call
   string phone_number = 2; // Phone number to dial
-  string caller_id = 3; // Caller ID to display
+  google.protobuf.StringValue caller_id = 3; // Caller ID to display
+  google.protobuf.StringValue pool_id = 4; // Pool ID for the call
+  google.protobuf.StringValue record_id = 5; // Record ID for the call
+
 }
 
 /**
