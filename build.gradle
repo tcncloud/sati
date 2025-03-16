@@ -13,6 +13,7 @@ repositories {
 
 allprojects{
     apply plugin: 'java'
+    apply plugin: 'maven-publish'
 
     repositories {
         mavenCentral()
@@ -46,7 +47,11 @@ allprojects{
             }
         }
     }
-
+    jar {
+        manifest {
+            attributes 'Implementation-Version': project.version
+        }
+    }
 }
 
 publishing {
