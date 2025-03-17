@@ -1,5 +1,6 @@
 package com.tcn.exile.gateclients.v2;
 
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import com.tcn.exile.gateclients.UnconfiguredException;
@@ -51,7 +52,6 @@ public class GateClientJobStream extends GateClientAbstract
       log.error("Error while starting job stream {}", e.getMessage());
     }
   }
-
   public boolean isRunning() {
     if (channel == null) {
       return false;

@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public abstract class GateClientAbstract implements ApplicationEventListener<ConfigEvent> {
@@ -35,6 +36,28 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
             // start(); <- this is b/c all of the 3 beans have the start() method invoked thru @Scheduled annotation
         }
     }
+
+
+    public Map<String,Object> getStatus() {
+        if (isUnconfigured()) {
+            return Map.of(
+                "running", false,
+                "configured", !isUnconfigured()
+            );
+        } else {
+            return Map.of(
+                "running", true,
+                "configured", !isUnconfigured(),
+                "api_endpoint", event.getApiEndpoint(),
+                "org", this.event.getOrg(),
+                "expiration_date", event.getExpirationDate(),
+                "certificate_expiration_date", event.getExpirationDate(),
+                "certificate_description", event.getCertificateDescription()
+                );
+        }
+    }
+
+
 
     protected boolean isUnconfigured() {
         if ((event == null) || event.isUnconfigured()) {
