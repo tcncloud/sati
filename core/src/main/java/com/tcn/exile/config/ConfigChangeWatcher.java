@@ -54,7 +54,7 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
   public ConfigChangeWatcher() throws IOException {
     log.info("creating watcher");
     watchList = new ArrayList<Path>();
-    for (var dir : List.of("./workdir/config", "/workdir/config")) {
+    for (var dir : List.of("workdir/config", "/workdir/config")) {
       var path = Path.of(dir);
       if (path.toFile().exists()) {
         watchList.add(path);

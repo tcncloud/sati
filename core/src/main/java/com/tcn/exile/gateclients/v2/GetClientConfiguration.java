@@ -61,7 +61,7 @@ public class GetClientConfiguration extends GateClientAbstract {
             }
             return;
         } catch (UnconfiguredException e) {
-            log.error("Error while getting client configuration {}", e.getMessage());
+            log.error("Error while getting client configuration: {}", e.getMessage());
         } catch (StatusRuntimeException e) {
             log.error("Error while trying to connect {}", e.getMessage());
         }
