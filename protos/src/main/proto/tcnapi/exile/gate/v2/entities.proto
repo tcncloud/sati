@@ -4,6 +4,7 @@ package tcnapi.exile.gate.v2;
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
+import "google/protobuf/struct.proto";
 import "tcnapi/exile/core/v2/entities.proto";
 
 message ExileAgentCall {
@@ -26,9 +27,13 @@ message ExileAgentCall {
   string org_id = 17;
   string user_id = 18;
   string internal_key = 19;
-  repeated google.protobuf.StringValue task_data_keys = 20;
-  repeated google.protobuf.StringValue task_data_values = 21;
+  repeated google.protobuf.Value task_data_keys = 20;
+  repeated google.protobuf.Value task_data_values = 21;
   string partner_agent_id = 100;
+}
+
+message StringField {
+    optional string value = 1;
 }
 
 message ExileTelephonyResult {
@@ -50,8 +55,8 @@ message ExileTelephonyResult {
   string org_id = 16;
   string internal_key = 17;
   //   string partner_agent_id = 100;
-  repeated google.protobuf.StringValue task_data_keys = 20;
-  repeated google.protobuf.StringValue task_data_values = 21;
+  repeated google.protobuf.Value task_data_keys = 20;
+  repeated google.protobuf.Value task_data_values = 21;
   enum Result {
     RESULT_UNKNOWN = 0;
     PENDING = 1000;
