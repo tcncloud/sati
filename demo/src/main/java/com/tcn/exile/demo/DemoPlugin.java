@@ -256,6 +256,11 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
   }
 
   @Override
+  public void executeLogic(String jobId, Public.StreamJobsResponse.ExecuteLogicRequest executeLogic) {
+
+  }
+
+  @Override
   public void onApplicationEvent(PluginConfigEvent event) {
     if (event.isUnconfigured()) {
       log.info("Received unconfigured event");

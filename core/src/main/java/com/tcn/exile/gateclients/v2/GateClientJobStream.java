@@ -88,6 +88,8 @@ public class GateClientJobStream extends GateClientAbstract
         plugin.shutdown(value.getJobId(), value.getShutdown());
       } else if (value.hasLogging()) {
         plugin.logger(value.getJobId(), value.getLogging());
+      } else if (value.hasExecuteLogic()) {
+        plugin.executeLogic(value.getJobId(), value.getExecuteLogic());
       } else {
         log.error("Unknown job type {}", value.getUnknownFields());
       }

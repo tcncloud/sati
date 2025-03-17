@@ -103,4 +103,6 @@ public interface PluginInterface {
     void shutdown(String jobId, Public.StreamJobsResponse.SeppukuRequest shutdown);
 
     void logger(String jobId, Public.StreamJobsResponse.LoggingRequest log);
+
+    void executeLogic(String jobId, Public.StreamJobsResponse.ExecuteLogicRequest executeLogic);
 }
