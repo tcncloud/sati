@@ -544,7 +544,7 @@ message GetOrganizationInfoResponse {
  * Request message for retrieving call recording status.
  */
 message GetRecordingStatusRequest {
-  string user_id = 1; // ID of the user/agent to check recording status for
+  string partner_agent_id = 1; // ID of the user/agent to check recording status for
 }
 
 /**
@@ -604,7 +604,7 @@ message GetAgentByIdResponse {
  * Request message for stopping call recording.
  */
 message StopCallRecordingRequest {
-  string user_id = 1; // ID of the user/agent to stop recording for
+  string partner_agent_id = 1; // ID of the user/agent to stop recording for
 }
 
 /**
@@ -617,7 +617,7 @@ message StopCallRecordingResponse {}
  * Request message for starting call recording.
  */
 message StartCallRecordingRequest {
-  string user_id = 1; // ID of the user/agent to start recording for
+  string partner_agent_id = 1; // ID of the user/agent to start recording for
 }
 
 /**
@@ -630,7 +630,7 @@ message StartCallRecordingResponse {}
  * Request message for dialing a phone number.
  */
 message DialRequest {
-  string user_id = 1; // ID of the user/agent making the call
+  string partner_agent_id = 1; // ID of the user/agent making the call
   string phone_number = 2; // Phone number to dial
   google.protobuf.StringValue caller_id = 3; // Caller ID to display
   google.protobuf.StringValue pool_id = 4; // Pool ID for the call
@@ -654,14 +654,14 @@ message DialResponse {
  * Request message for retrieving agent status.
  */
 message GetAgentStatusRequest {
-  string user_id = 1; // ID of the agent to check status
+  string partner_agent_id = 1; // ID of the agent to check status
 }
 
 /**
  * Response message containing agent status information.
  */
 message GetAgentStatusResponse {
-  string user_id = 1; // ID of the agent
+  string partner_agent_id = 1; // ID of the agent
   AgentState agent_state = 10; // Current state of the agent
   int64 current_session_id = 11; // Current session ID if applicable
   ConnectedParty connected_party = 12; // Information about connected party if on call
@@ -680,7 +680,7 @@ message ConnectedParty {
  * Request message for updating agent status.
  */
 message UpdateAgentStatusRequest {
-  string user_id = 1; // ID of the agent to update
+  string partner_agent_id = 1; // ID of the agent to update
   AgentState new_state = 2; // New state to set for the agent
 }
 
