@@ -140,4 +140,8 @@ public class GateClient extends GateClientAbstract {
     public Public.LogResponse log(Public.LogRequest request) {
         return executeRequest("log", client -> client.log(request));
     }
+
+    public Public.SaveAgentCallResponseResponse saveAgentCallResponse(Public.SaveAgentCallResponseRequest request) {
+        return executeRequest("saveAgentCallResponse", client -> client.saveAgentCallResponse(request));
+    }
 }
