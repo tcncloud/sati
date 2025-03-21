@@ -69,6 +69,10 @@ public enum AgentState {
     value = 1;
   }
 
+  public static AgentState forNumber(int value) {
+    return AgentState.values()[value];
+  }
+
   public int getValue() {
     return value;
   }
