@@ -1,14 +1,15 @@
 package com.tcn.exile.demo;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import ch.qos.logback.classic.LoggerContext;
 import com.tcn.exile.memlogger.MemoryAppender;
 import com.tcn.exile.memlogger.MemoryAppenderInstance;
 
-import ch.qos.logback.classic.spi.ILoggingEvent;
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.env.Environment;
 import io.micronaut.http.MediaType;
@@ -35,25 +36,14 @@ public class LogsController {
     Environment environment;
 
     @Get
-    @Produces(MediaType.TEXT_PLAIN)  
-    public String index() throws IOException {
+    @Produces(MediaType.APPLICATION_JSON)  
+    public List<String> index() throws IOException {
         MemoryAppender instance = MemoryAppenderInstance.getInstance();
         if (instance == null) {
-            return "";
+            return new ArrayList<>();
         }
+        return instance.getEvents();
 
-        StringBuilder sb = new StringBuilder();
-        for (ILoggingEvent e : instance.getEvents()) {
-            sb.append(String.format(
-                "%s %s [%s] %s - %s%n",
-                e.getInstant(),
-                e.getLevel(),
-                e.getThreadName(),
-                e.getLoggerName(),
-                e.getFormattedMessage()
-                ));
-        }
-        return sb.toString();
     }
 
     @Get("/loggers")
