@@ -23,6 +23,7 @@ import tcnapi.exile.gate.v2.Public;
 
 import java.net.InetAddress;
 import java.util.HashMap;
+import java.util.List;
 
 @Singleton
 public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, PluginInterface, LogShipper {
@@ -272,9 +273,13 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
   }
 
   @Override
-  public void shipLogs(String payload) {
+  public void shipLogs(List<String> payload) {
     log.info("Ship logs");
-    gateClient.log(Public.LogRequest.newBuilder().setPayload(payload).build());
+    if (payload == null || payload.isEmpty()) {
+      return;
+    }
+    String combinedPayload = String.join("\n", payload);
+    gateClient.log(Public.LogRequest.newBuilder().setPayload(combinedPayload).build());
   }
 
   @Override

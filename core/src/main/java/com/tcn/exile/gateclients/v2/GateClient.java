@@ -11,6 +11,7 @@ import tcnapi.exile.gate.v2.Public;
 
 import java.util.concurrent.TimeUnit;
 import java.util.Iterator;
+import io.grpc.StatusRuntimeException;
 
 @Singleton
 public class GateClient extends GateClientAbstract {
@@ -39,6 +40,13 @@ public class GateClient extends GateClientAbstract {
         } catch (UnconfiguredException e) {
             log.error("Failed to execute {} operation: {}", operationName, e.getMessage());
             throw new RuntimeException(e);
+        } catch (StatusRuntimeException e) {
+            if (handleStatusRuntimeException(e)) {
+                log.warn("Connection issue during {} operation, channel reset: {}", operationName, e.getMessage());
+                throw new RuntimeException("Connection issue during " + operationName + ", please retry", e);
+            }
+            log.error("gRPC error during {} operation: {} ({})", operationName, e.getMessage(), e.getStatus().getCode());
+            throw new RuntimeException("Failed to execute " + operationName, e);
         } catch (Exception e) {
             log.error("Unexpected error during {} operation: {}", operationName, e.getMessage());
             throw new RuntimeException("Failed to execute " + operationName, e);

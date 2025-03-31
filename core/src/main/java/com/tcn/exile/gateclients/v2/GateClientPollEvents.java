@@ -5,6 +5,8 @@ import java.util.concurrent.TimeUnit;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.plugin.PluginInterface;
 
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import io.micronaut.scheduling.annotation.Scheduled;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
@@ -23,11 +25,11 @@ public class GateClientPollEvents extends GateClientAbstract {
     public void start() {
         try {
             if (isUnconfigured()) {
-                log.trace("The configuration was not set, we will not start the job stream");
+                log.debug("Configuration not set, skipping poll events");
                 return;
             }
             if (!plugin.isRunning()) {
-                log.trace("The plugin is not running, we will not start the job stream");
+                log.debug("Plugin is not running (possibly due to database disconnection), skipping poll events");
                 return;
             }
             var client = GateServiceGrpc.newBlockingStub(getChannel())
@@ -35,7 +37,7 @@ public class GateClientPollEvents extends GateClientAbstract {
                     .withWaitForReady();
             var response = client.pollEvents(PollEventsRequest.newBuilder().build());
             if (response.getEventsCount() == 0) {
-                log.debug("No events received");
+                log.debug("Poll events request completed successfully but no events were received");
                 return;
             }
             response.getEventsList().forEach(event -> {
@@ -53,9 +55,16 @@ public class GateClientPollEvents extends GateClientAbstract {
                     plugin.handleTelephonyResult(event.getTelephonyResult());
                 }
             });
+        } catch (StatusRuntimeException e) {
+            if (handleStatusRuntimeException(e)) {
+                // Already handled in parent class method
+            } else {
+                log.error("Error in poll events: {}", e.getMessage());
+            }
         } catch (UnconfiguredException e) {
             log.error("Error while getting client configuration {}", e.getMessage());
+        } catch (Exception e) {
+            log.error("Unexpected error in poll events", e);
         }
     }
-
 }

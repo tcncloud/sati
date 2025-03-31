@@ -14,6 +14,7 @@ import jakarta.inject.Singleton;
 import tcnapi.exile.gate.v2.GateServiceGrpc;
 import tcnapi.exile.gate.v2.Public.StreamJobsRequest;
 import tcnapi.exile.gate.v2.Public.StreamJobsResponse;
+import io.grpc.StatusRuntimeException;
 
 @Singleton
 public class GateClientJobStream extends GateClientAbstract
@@ -27,14 +28,14 @@ public class GateClientJobStream extends GateClientAbstract
   @Scheduled(fixedDelay = "10s")
   public void start() {
     if (isUnconfigured()) {
-      log.trace("The configuration was not set, we will not start the job stream");
+      log.debug("Configuration not set, skipping job stream");
       return;
     }
     if (!plugin.isRunning()) {
-      log.trace("The plugin is not running, we will not start the job stream");
+      log.debug("Plugin is not running (possibly due to database disconnection), skipping job stream");
       return;
     }
-    log.debug("start()");
+    log.debug("Starting job stream");
     try {
       if (!isRunning()) {
         shutdown();
@@ -47,9 +48,16 @@ public class GateClientJobStream extends GateClientAbstract
           .withWaitForReady();
 
       client.streamJobs(StreamJobsRequest.newBuilder().build(), this);
-    } catch (
-        UnconfiguredException e) {
+    } catch (StatusRuntimeException e) {
+      if (handleStatusRuntimeException(e)) {
+        log.warn("Connection unavailable in job stream, channel reset");
+      } else {
+        log.error("Error in job stream: {} ({})", e.getMessage(), e.getStatus().getCode());
+      }
+    } catch (UnconfiguredException e) {
       log.error("Error while starting job stream {}", e.getMessage());
+    } catch (Exception e) {
+      log.error("Unexpected error in job stream", e);
     }
   }
   public boolean isRunning() {
@@ -101,6 +109,10 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onError(Throwable t) {
+    log.error("Stream error: {}", t.getMessage());
+    if (t instanceof StatusRuntimeException) {
+      handleStatusRuntimeException((StatusRuntimeException) t);
+    }
     Context.current().withCancellation().cancel(t);
   }
 

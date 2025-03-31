@@ -5,6 +5,8 @@ import com.tcn.exile.gateclients.UnconfiguredException;
 
 import io.grpc.Grpc;
 import io.grpc.ManagedChannel;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
 import io.grpc.TlsChannelCredentials;
 import io.micronaut.context.event.ApplicationEventListener;
 import org.slf4j.Logger;
@@ -168,4 +170,40 @@ public abstract class GateClientAbstract implements ApplicationEventListener<Con
     // public abstract Public.ScrubListEntriesAddRequest addScrubListEntries(Public.ScrubListEntriesAddRequest request);
     // public abstract Public.ScrubListEntryUpdateResponse updateScrubListEntry(Public.ScrubListEntryUpdateRequest request);
     // public abstract Public.ScrubListEntriesRemoveResponse removeScrubListEntries(Public.ScrubListEntriesRemoveRequest request);
+
+    /**
+     * Resets the gRPC channel after a connection failure
+     */
+    protected void resetChannel() {
+        try {
+            log.info("Resetting gRPC channel after connection failure");
+            if (channel != null) {
+                log.debug("Shutting down existing channel");
+                channel.shutdown();
+                boolean terminated = channel.awaitTermination(5, TimeUnit.SECONDS);
+                if (!terminated) {
+                    log.warn("Channel did not terminate gracefully, forcing shutdown");
+                    channel.shutdownNow();
+                }
+                // Force creation of a new channel on next access
+                channel = null;
+            }
+        } catch (Exception e) {
+            log.error("Error resetting channel", e);
+        }
+    }
+    
+    /**
+     * Helper method to handle StatusRuntimeException
+     * @param e The exception to handle
+     * @return true if the exception was handled
+     */
+    protected boolean handleStatusRuntimeException(StatusRuntimeException e) {
+        if (e.getStatus().getCode() == Status.Code.UNAVAILABLE) {
+            log.warn("Connection unavailable, resetting channel: {}", e.getMessage());
+            resetChannel();
+            return true;
+        }
+        return false;
+    }
 }
