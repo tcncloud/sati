@@ -23,3 +23,5 @@ workdir/config/*
 pems/*
 
 demo/workdir/config/*
+
+.settings/*
