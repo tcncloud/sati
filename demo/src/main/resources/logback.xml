@@ -9,10 +9,10 @@
         </encoder>
     </appender>
     <appender name="IN-MEMORY" class="com.tcn.exile.memlogger.MemoryAppender">
-        <!-- <encoder>
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
             <outputPatternAsHeader>true</outputPatternAsHeader>
-        </encoder> -->
+        </encoder>
     </appender>
 
     <root level="info">

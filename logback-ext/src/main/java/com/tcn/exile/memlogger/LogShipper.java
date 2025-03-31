@@ -1,7 +1,9 @@
 package com.tcn.exile.memlogger;
 
+import java.util.List;
+
 public interface LogShipper {
-  void shipLogs(String payload);
+  void shipLogs(List<String> payload);
 
   void stop();
 }
