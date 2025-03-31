@@ -15,6 +15,7 @@ import tcnapi.exile.gate.v2.GateServiceGrpc;
 import tcnapi.exile.gate.v2.Public.StreamJobsRequest;
 import tcnapi.exile.gate.v2.Public.StreamJobsResponse;
 import io.grpc.StatusRuntimeException;
+import io.grpc.Status;
 
 @Singleton
 public class GateClientJobStream extends GateClientAbstract
@@ -23,6 +24,9 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Inject
   PluginInterface plugin;
+
+  private int reconnectAttempt = 0;
+  private static final int MAX_RECONNECT_DELAY_SECONDS = 60;
 
   @Override
   @Scheduled(fixedDelay = "10s")
@@ -109,11 +113,62 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onError(Throwable t) {
-    log.error("Stream error: {}", t.getMessage());
     if (t instanceof StatusRuntimeException) {
-      handleStatusRuntimeException((StatusRuntimeException) t);
+        StatusRuntimeException statusEx = (StatusRuntimeException) t;
+        if (statusEx.getStatus().getCode() == Status.Code.CANCELLED) {
+            log.warn("Stream cancelled, attempting to reconnect: {}", statusEx.getMessage());
+            // Add a delay to prevent immediate reconnection flooding
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            // Implement reconnection logic here
+            reconnectStream();
+        } else {
+            log.error("Stream error: {}: {}", statusEx.getStatus(), statusEx.getMessage());
+        }
+    } else {
+        log.error("Stream error", t);
     }
-    Context.current().withCancellation().cancel(t);
+  }
+
+  private void reconnectStream() {
+    log.info("Attempting to reconnect job stream");
+    try {
+        // Reset channel first
+        resetChannel();
+        // Then attempt to start a new stream connection
+        start();
+        // Reset reconnect attempt counter on success
+        reconnectAttempt = 0;
+    } catch (Exception e) {
+        log.error("Failed to reconnect job stream", e);
+        // Schedule retry with exponential backoff
+        scheduleReconnectWithBackoff();
+    }
+  }
+  
+  private void scheduleReconnectWithBackoff() {
+    reconnectAttempt++;
+    // Exponential backoff with a maximum delay
+    int delaySeconds = Math.min(
+        (int) Math.pow(2, reconnectAttempt), 
+        MAX_RECONNECT_DELAY_SECONDS
+    );
+    
+    log.info("Scheduling reconnection attempt {} in {} seconds", reconnectAttempt, delaySeconds);
+    
+    // Schedule reconnection using a separate thread
+    new Thread(() -> {
+        try {
+            Thread.sleep(delaySeconds * 1000);
+            reconnectStream();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Reconnection thread interrupted");
+        }
+    }).start();
   }
 
   @Override
