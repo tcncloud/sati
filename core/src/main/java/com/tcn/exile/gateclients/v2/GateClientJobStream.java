@@ -28,6 +28,9 @@ public class GateClientJobStream extends GateClientAbstract
   private int reconnectAttempt = 0;
   private static final int MAX_RECONNECT_DELAY_SECONDS = 60;
 
+  private volatile boolean activeStreamExists = false;
+  private final Object streamLock = new Object();
+
   @Override
   @Scheduled(fixedDelay = "10s")
   public void start() {
@@ -39,29 +42,40 @@ public class GateClientJobStream extends GateClientAbstract
       log.debug("Plugin is not running (possibly due to database disconnection), skipping job stream");
       return;
     }
-    log.debug("Starting job stream");
-    try {
-      if (!isRunning()) {
-        shutdown();
-        channel = this.getChannel();
+    
+    // Check if we already have an active stream
+    synchronized(streamLock) {
+      if (activeStreamExists) {
+        log.debug("Job stream already active, skipping stream creation");
+        return;
       }
-      var client = GateServiceGrpc.newStub(channel)
-          // multiple of 10 seconds so the deatline will be triggered in the next iteration
-          // of the scheduled start() method
-          .withDeadlineAfter(30, TimeUnit.SECONDS)
-          .withWaitForReady();
+      
+      log.debug("Starting job stream");
+      try {
+        if (!isRunning()) {
+          shutdown();
+          channel = this.getChannel();
+        }
+        var client = GateServiceGrpc.newStub(channel)
+            .withDeadlineAfter(30, TimeUnit.SECONDS)
+            .withWaitForReady();
 
-      client.streamJobs(StreamJobsRequest.newBuilder().build(), this);
-    } catch (StatusRuntimeException e) {
-      if (handleStatusRuntimeException(e)) {
-        log.warn("Connection unavailable in job stream, channel reset");
-      } else {
-        log.error("Error in job stream: {} ({})", e.getMessage(), e.getStatus().getCode());
+        client.streamJobs(StreamJobsRequest.newBuilder().build(), this);
+        activeStreamExists = true;
+      } catch (StatusRuntimeException e) {
+        if (handleStatusRuntimeException(e)) {
+          log.warn("Connection unavailable in job stream, channel reset");
+        } else {
+          log.error("Error in job stream: {} ({})", e.getMessage(), e.getStatus().getCode());
+        }
+        activeStreamExists = false;
+      } catch (UnconfiguredException e) {
+        log.error("Error while starting job stream {}", e.getMessage());
+        activeStreamExists = false;
+      } catch (Exception e) {
+        log.error("Unexpected error in job stream", e);
+        activeStreamExists = false;
       }
-    } catch (UnconfiguredException e) {
-      log.error("Error while starting job stream {}", e.getMessage());
-    } catch (Exception e) {
-      log.error("Unexpected error in job stream", e);
     }
   }
   public boolean isRunning() {
@@ -113,6 +127,9 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onError(Throwable t) {
+    synchronized(streamLock) {
+      activeStreamExists = false;
+    }
     if (t instanceof StatusRuntimeException) {
         StatusRuntimeException statusEx = (StatusRuntimeException) t;
         if (statusEx.getStatus().getCode() == Status.Code.CANCELLED) {
@@ -173,6 +190,9 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onCompleted() {
+    synchronized(streamLock) {
+      activeStreamExists = false;
+    }
   }
 
 }
