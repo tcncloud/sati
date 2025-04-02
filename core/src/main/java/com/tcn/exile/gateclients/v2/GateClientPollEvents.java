@@ -21,15 +21,15 @@ public class GateClientPollEvents extends GateClientAbstract {
     PluginInterface plugin;
 
     @Override
-    @Scheduled(fixedDelay = "10s")
+    @Scheduled(fixedDelay = "1s")
     public void start() {
         try {
             if (isUnconfigured()) {
-                log.debug("Configuration not set, skipping poll events");
+                log.debug("System is unconfigured, skipping poll events");
                 return;
             }
             if (!plugin.isRunning()) {
-                log.debug("Plugin is not running (possibly due to database disconnection), skipping poll events");
+                log.trace("Plugin is not running (possibly due to database disconnection), skipping poll events");
                 return;
             }
             var client = GateServiceGrpc.newBlockingStub(getChannel())
