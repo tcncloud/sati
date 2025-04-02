@@ -32,7 +32,7 @@ public class GateClientJobStream extends GateClientAbstract
   private final Object streamLock = new Object();
 
   @Override
-  @Scheduled(fixedDelay = "10s")
+  @Scheduled(fixedDelay = "1s")
   public void start() {
     if (isUnconfigured()) {
       log.debug("Configuration not set, skipping job stream");
@@ -46,7 +46,7 @@ public class GateClientJobStream extends GateClientAbstract
     // Check if we already have an active stream
     synchronized(streamLock) {
       if (activeStreamExists) {
-        log.debug("Job stream already active, skipping stream creation");
+        log.trace("Job stream already active, skipping stream creation");
         return;
       }
       
@@ -127,6 +127,7 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onError(Throwable t) {
+    log.error("Job stream error", t);
     synchronized(streamLock) {
       activeStreamExists = false;
     }
@@ -190,6 +191,7 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onCompleted() {
+    log.debug("Job stream completed");
     synchronized(streamLock) {
       activeStreamExists = false;
     }

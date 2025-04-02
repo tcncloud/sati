@@ -23,7 +23,7 @@ micronaut:
         mapping: /swagger-ui/**
 logger:
   levels:
-    com.tcn.exile: TRACE 
+    com.tcn.exile: DEBUG 
     com.zaxxer.hikari: DEBUG
     io.micronaut.http.client: TRACE
 grpc:
