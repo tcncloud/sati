@@ -104,6 +104,16 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
       log.info("Config file found: {}", configFile);
       // read the config file
       ConfigEvent evt = readConfig(configFile);
+      if (evt == null) {
+        log.error("Error reading config file: {}", configFile);
+        return;
+      }
+
+      if (evt.getExpirationDate().before(new java.util.Date())) {
+        log.error("Config file expired at {} {}", evt.getExpirationDate(), configFile);
+        System.exit(-1);
+        return;
+      }
       // and publish an event
       eventPublisher.publishEvent(evt);
     } else {
