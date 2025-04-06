@@ -1,0 +1,30 @@
+micronaut:
+  application:
+    name: sati
+  server:
+    port: 8080
+
+# Disable both health checks and the gRPC server
+endpoints:
+  health:
+    enabled: true
+    details-visible: ANONYMOUS
+    grpc:
+      enabled: false
+    disk-space:
+      enabled: true
+    jdbc:
+      enabled: false
+
+# Ensure gRPC server is disabled  
+grpc:
+  server:
+    enabled: false
+  health:
+    enabled: false
+
+# For health monitoring
+jackson:
+  serialization:
+    indentOutput: true
+    writeDatesAsTimestamps: false 

@@ -13,28 +13,26 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
+package com.tcn.exile.singletenant;
 
-package com.tcn.exile.config;
-
-import io.micronaut.context.event.ApplicationEventListener;
+import com.tcn.exile.gateclients.v2.GateClientPollEvents;
+import com.tcn.exile.plugin.PluginInterface;
 import io.micronaut.context.annotation.Requires;
-import org.slf4j.Logger;
+import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-
+import io.micronaut.scheduling.annotation.Scheduled;
 
 @Singleton
 @Requires(property = "sati.tenant.type", value = "single")
-public class ConfigChangeEventListener implements ApplicationEventListener<ConfigEvent> {
+public class SingleTenantGateClientPollEvents extends GateClientPollEvents {
+    protected static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(SingleTenantGateClientPollEvents.class);
 
-    private static final Logger log = org.slf4j.LoggerFactory.getLogger(ConfigChangeEventListener.class);
+    @Inject
+    PluginInterface plugin;
 
     @Override
-    public void onApplicationEvent(ConfigEvent event) {
-        log.info("Config change event: {}", event);
-        // throw new UnsupportedOperationException("Unimplemented method 'onApplicationEvent'");
+    @Scheduled(fixedDelay = "10s")
+    public void start() {
+        super.start();
     }
-    // @EventListener
-    // public void onConfigChange(ConfigChangeEvent changeEvent) {
-    //     log.info("Config change event: {}", changeEvent);
-    // }
 } 

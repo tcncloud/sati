@@ -18,13 +18,11 @@ package com.tcn.exile.plugin;
 
 import com.tcn.exile.gateclients.UnconfiguredException;
 
-import jakarta.inject.Singleton;
 import tcnapi.exile.gate.v2.Entities.ExileAgentCall;
 import tcnapi.exile.gate.v2.Entities.ExileAgentResponse;
 import tcnapi.exile.gate.v2.Entities.ExileTelephonyResult;
 import tcnapi.exile.gate.v2.Public;
 
-@Singleton
 public interface PluginInterface {
     String getName();
 

@@ -13,10 +13,36 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package com.tcn.exile.gateclients.v2;
+package com.tcn.exile.gateclients;
 
-public class BuildVersion {
-  public static String getBuildVersion() {
-    return BuildVersion.class.getPackage().getImplementationVersion();
-  }
-}
+import java.util.Date;
+
+/**
+ * Interface for configuration events in the system.
+ * Used to communicate configuration changes to various components.
+ */
+public interface ConfigEventInterface {
+
+    /**
+     * Gets the configuration interface.
+     * 
+     * @return The configuration
+     */
+    ConfigInterface getConfig();
+
+    /**
+     * Event type enumeration.
+     */
+    enum EventType {
+        CREATE,
+        UPDATE,
+        DELETE
+    }
+
+    /**
+     * Gets the event type.
+     * 
+     * @return The event type
+     */
+    EventType getEventType();
+} 

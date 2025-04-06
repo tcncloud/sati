@@ -16,12 +16,15 @@
 
 package com.tcn.exile.config;
 
+import com.tcn.exile.gateclients.ConfigEventInterface;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import io.methvin.watcher.DirectoryWatcher;
+import io.methvin.watcher.DirectoryChangeEvent;
 import io.micronaut.context.event.ApplicationEventListener;
 import io.micronaut.context.event.ApplicationEventPublisher;
 import io.micronaut.context.event.StartupEvent;
 import io.micronaut.serde.ObjectMapper;
+import io.micronaut.context.annotation.Requires;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
@@ -38,6 +41,7 @@ import java.util.HashMap;
 import java.util.List;
 
 @Singleton
+@Requires(property = "sati.tenant.type", value = "single")
 public class ConfigChangeWatcher implements ApplicationEventListener<StartupEvent> {
   @Inject
   ApplicationEventPublisher<ConfigEvent> eventPublisher;
@@ -51,6 +55,8 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
 
   private ArrayList<Path> watchList;
 
+  private String org = null;
+
   public ConfigChangeWatcher() throws IOException {
     log.info("creating watcher");
     watchList = new ArrayList<Path>();
@@ -61,13 +67,14 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
       }
     }
     if (watchList.isEmpty()) {
-        var f = new File("/workdir/config");
-        if (!f.mkdirs()){
-            f = new File("./workdir/config");
-            if (!f.mkdirs()){
-                throw new IOException("No valid config directory found, and we don't have permissions to create one! Please create one in ./workdir/config or /workdir/config");
-            }
+      var f = new File("/workdir/config");
+      if (!f.mkdirs()) {
+        f = new File("./workdir/config");
+        if (!f.mkdirs()) {
+          throw new IOException(
+              "No valid config directory found, and we don't have permissions to create one! Please create one in ./workdir/config or /workdir/config");
         }
+      }
     }
     this.watcher = DirectoryWatcher.builder()
         .paths(watchList)
@@ -76,16 +83,39 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
           if (!event.path().getFileName().toString().equals(CONFIG_FILE_NAME)) {
             return;
           }
+          Config changedConfig = null;
+
           switch (event.eventType()) {
             case CREATE:
             case MODIFY:
-              loadConfig();
+              changedConfig = loadConfig();
+              if (changedConfig != null) {
+                  log.info("Watcher detected config change, loaded config for org: {}", changedConfig.getOrg());
+                  // Publish an event with the loaded config
+                  ConfigEventInterface.EventType eventType = (event.eventType() == DirectoryChangeEvent.EventType.CREATE) ? 
+                                                             ConfigEventInterface.EventType.CREATE : 
+                                                             ConfigEventInterface.EventType.UPDATE;
+                  eventPublisher.publishEvent(new ConfigEvent(this, changedConfig, eventType));
+              } else {
+                  log.warn("Watcher detected config change, but loading failed.");
+                  // Optionally publish an unconfigured event
+                  // eventPublisher.publishEvent(new ConfigEvent(this)); 
+              }
               break;
             case DELETE:
-              // emit ConfigEvent with unconfigured settings
+              // Keep existing logic: emit ConfigEvent with unconfigured settings
               log.info("File {} event: {}", event.path(), event.eventType());
-              var ev = ConfigEvent.builder().withUnconfigured(true).withSourceObject(this).build();
-              eventPublisher.publishEvent(ev);
+              // Use the public constructor which creates a default unconfigured internal
+              // Config
+              // if (this.org != null) {
+              //   log.info("Unconfiguring org {}", this.org);
+              //   eventPublisher.publishEvent(ConfigEvent.builder().withConfig(Config.builder()));
+              // }
+              var unconfiguredEvent = new ConfigEvent(this);
+              // Optionally set the event type specifically to DELETE if needed by listeners
+              // unconfiguredEvent.setEventType(ConfigEventInterface.EventType.DELETE); //
+              // Need setter or Builder update if immutability is strict
+              eventPublisher.publishEvent(unconfiguredEvent);
               break;
             default:
               log.info("Unexpected event: {}", event.eventType());
@@ -98,26 +128,37 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
     // this.watcher.watch();
   }
 
-  private void loadConfig() {
+  private Config loadConfig() {
     var configFile = findConfigFile();
     if (configFile != null) {
       log.info("Config file found: {}", configFile);
       // read the config file
-      ConfigEvent evt = readConfig(configFile);
-      if (evt == null) {
+      Config config = readConfig(configFile);
+      if (config == null) {
         log.error("Error reading config file: {}", configFile);
-        return;
+        return null; // Return null if reading failed
       }
 
-      if (evt.getExpirationDate().before(new java.util.Date())) {
-        log.error("Config file expired at {} {}", evt.getExpirationDate(), configFile);
-        System.exit(-1);
-        return;
+      // Use Config object directly for expiration check
+      var expirationDate = config.getExpirationDate();
+      if (expirationDate == null) {
+        log.error("Could not determine expiration date from config: {}", configFile);
+        // Decide how to handle this - maybe exit, maybe allow if it's just missing?
+        // For now, let's exit to be safe, as before.
+        System.exit(-1); // Or return null based on desired behavior
+        return null;
       }
-      // and publish an event
-      eventPublisher.publishEvent(evt);
+
+      if (expirationDate.before(new java.util.Date())) {
+        log.error("Config file expired at {} {}", expirationDate, configFile);
+        System.exit(-1); // Or return null based on desired behavior
+        return null;
+      }
+      // Removed event publishing
+      return config; // Return the valid Config object
     } else {
       log.info("Config file not found");
+      return null; // Return null if no file found
     }
   }
 
@@ -143,7 +184,8 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
     if (findConfigFile() == null) {
       Path writeDir = findSuitableConfigDir();
       if (writeDir == null) {
-        throw new UnconfiguredException(String.format("Can't find a suitable location for the config file, looked in {}", watchList.toString()));
+        throw new UnconfiguredException(
+            String.format("Can't find a suitable location for the config file, looked in {}", watchList.toString()));
       }
 
       var cfgFile = Path.of(writeDir.toFile().getAbsolutePath(), CONFIG_FILE_NAME);
@@ -166,7 +208,7 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
     }
   }
 
-  private ConfigEvent readConfig(Path configFile) {
+  private Config readConfig(Path configFile) {
     if (!configFile.toFile().canRead()) {
       log.error("Cannot read config file: {}", configFile);
       throw new RuntimeException("Cannot read config file: " + configFile);
@@ -183,28 +225,38 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
     }
   }
 
-  private ConfigEvent parseConfig(char[] payload) throws IOException {
+  private Config parseConfig(char[] payload) throws IOException {
     var buf = Base64.getDecoder().decode(new String(payload).trim());
     var map = (HashMap<String, String>) objectMapper.readValue(buf, HashMap.class);
-//        log.debug("Config: {}", map);
-    return ConfigEvent
-        .builder()
-        .withSourceObject(this)
-        .withUnconfigured(false)
-        .withRootCert(map.get("ca_certificate"))
-        .withPublicCert(map.get("certificate"))
-        .withPrivateKey(map.get("private_key"))
-        .withFingerprintSha256(map.get("fingerprint_sha256"))
-        .withFingerprintSha256String(map.get("fingerprint_sha256_string"))
-        .withApiEndpoint(map.get("api_endpoint"))
-        .withCertificateName(map.get("certificate_name"))
-        .withCertificateDescription(map.get("certificate_description"))
-        .build();
+
+    // Create and populate a Config object directly
+    Config config = new Config();
+    config.setRootCert(map.get("ca_certificate"));
+    config.setPublicCert(map.get("certificate"));
+    config.setPrivateKey(map.get("private_key"));
+    config.setFingerprintSha256(map.get("fingerprint_sha256"));
+    config.setFingerprintSha256String(map.get("fingerprint_sha256_string"));
+    config.setApiEndpoint(map.get("api_endpoint"));
+    config.setCertificateName(map.get("certificate_name"));
+    config.setCertificateDescription(map.get("certificate_description"));
+    config.setUnconfigured(false); // Mark as configured since we parsed it
+
+    return config; // Return the Config object
   }
 
   @Override
   public void onApplicationEvent(StartupEvent event) {
-    loadConfig();
+    Config loadedConfig = loadConfig(); // Capture the returned Config
+    if (loadedConfig != null) {
+        log.info("Successfully loaded initial config for org: {}", loadedConfig.getOrg());
+        // Publish initial configuration event on startup
+        eventPublisher.publishEvent(new ConfigEvent(this, loadedConfig, ConfigEventInterface.EventType.CREATE));
+    } else {
+        log.warn("Initial config load failed or file not found.");
+        // Optionally publish an unconfigured event on startup if needed
+        // eventPublisher.publishEvent(new ConfigEvent(this));
+    }
+
     // when the application starts, start watching the config directory
     watcher.watchAsync();
   }
