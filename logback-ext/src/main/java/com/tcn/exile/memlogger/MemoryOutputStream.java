@@ -1,7 +1,7 @@
 package com.tcn.exile.memlogger;
 
-import java.io.OutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;      
 

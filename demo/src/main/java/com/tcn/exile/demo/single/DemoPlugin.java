@@ -2,23 +2,17 @@ package com.tcn.exile.demo.single;
 
 import ch.qos.logback.classic.LoggerContext;
 import com.tcn.exile.gateclients.UnconfiguredException;
-import com.tcn.exile.plugin.PluginInterface;
-import com.tcn.exile.plugin.PluginStatus;
-
+import com.tcn.exile.gateclients.v2.GateClient;
 import com.tcn.exile.memlogger.LogShipper;
 import com.tcn.exile.memlogger.MemoryAppenderInstance;
-import io.micronaut.context.env.Environment;
-import jakarta.inject.Singleton;
+import com.tcn.exile.models.PluginConfigEvent;
+import com.tcn.exile.plugin.PluginInterface;
+import com.tcn.exile.plugin.PluginStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tcnapi.exile.gate.v2.Entities.ExileAgentCall;
 import tcnapi.exile.gate.v2.Entities.ExileAgentResponse;
 import tcnapi.exile.gate.v2.Entities.ExileTelephonyResult;
-
-import com.tcn.exile.models.PluginConfigEvent;
-import com.tcn.exile.gateclients.v2.GateClient;
-import jakarta.inject.Inject;
-import io.micronaut.context.event.ApplicationEventListener;
 import tcnapi.exile.gate.v2.Public;
 
 import java.net.InetAddress;

@@ -1,11 +1,11 @@
 package com.tcn.exile.memlogger;
 
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.OutputStreamAppender;
+
 import java.io.OutputStream;
 import java.util.LinkedList;
 import java.util.List;
-
-import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.OutputStreamAppender;
 
 public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     private static final int MAX_SIZE = 100;

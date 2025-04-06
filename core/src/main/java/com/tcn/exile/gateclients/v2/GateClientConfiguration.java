@@ -15,17 +15,12 @@
  */
 package com.tcn.exile.gateclients.v2;
 
-import com.sun.source.util.Plugin;
 import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.models.PluginConfigEvent;
 import com.tcn.exile.plugin.PluginInterface;
 import io.grpc.StatusRuntimeException;
-import io.micronaut.context.annotation.Requires;
-import io.micronaut.context.event.ApplicationEventPublisher;
 import io.micronaut.scheduling.annotation.Scheduled;
-import jakarta.inject.Inject;
-import jakarta.inject.Singleton;
 import tcnapi.exile.gate.v2.GateServiceGrpc;
 import tcnapi.exile.gate.v2.Public.GetClientConfigurationRequest;
 import tcnapi.exile.gate.v2.Public.GetClientConfigurationResponse;

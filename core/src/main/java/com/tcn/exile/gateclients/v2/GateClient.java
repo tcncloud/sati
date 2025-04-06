@@ -19,8 +19,6 @@ import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.models.OrgInfo;
 import io.grpc.StatusRuntimeException;
-import io.micronaut.context.annotation.Requires;
-import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tcnapi.exile.gate.v2.GateServiceGrpc;

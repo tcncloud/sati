@@ -22,15 +22,14 @@ import com.tcn.exile.gateclients.v2.GateClientConfiguration;
 import com.tcn.exile.gateclients.v2.GateClientJobStream;
 import com.tcn.exile.gateclients.v2.GateClientPollEvents;
 import io.methvin.watcher.DirectoryWatcher;
+import io.micronaut.context.ApplicationContext;
+import io.micronaut.context.env.Environment;
 import io.micronaut.context.event.ApplicationEventListener;
 import io.micronaut.context.event.StartupEvent;
 import io.micronaut.core.type.Argument;
 import io.micronaut.inject.qualifiers.Qualifiers;
 import io.micronaut.scheduling.TaskScheduler;
 import io.micronaut.serde.ObjectMapper;
-import io.micronaut.context.ApplicationContext;
-import io.micronaut.context.annotation.Requires;
-import io.micronaut.context.env.Environment;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.slf4j.Logger;
@@ -40,7 +39,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 
 @Singleton
 public class ConfigChangeWatcher implements ApplicationEventListener<StartupEvent> {

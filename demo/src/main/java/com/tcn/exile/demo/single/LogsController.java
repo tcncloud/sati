@@ -1,15 +1,8 @@
 package com.tcn.exile.demo.single;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 import ch.qos.logback.classic.LoggerContext;
 import com.tcn.exile.memlogger.MemoryAppender;
 import com.tcn.exile.memlogger.MemoryAppenderInstance;
-
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.env.Environment;
 import io.micronaut.http.MediaType;
@@ -20,6 +13,12 @@ import io.micronaut.serde.ObjectMapper;
 import jakarta.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 @Controller("/logs")
 @Requires(bean = Environment.class)
