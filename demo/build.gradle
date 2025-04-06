@@ -9,37 +9,59 @@ repositories {
 }
 
 dependencies {
-    
     annotationProcessor("io.micronaut:micronaut-http-validation")
     annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
     annotationProcessor("io.micronaut.validation:micronaut-validation-processor")
-    
-    implementation("io.micronaut.grpc:micronaut-grpc-runtime")
-    implementation("io.micronaut.grpc:micronaut-protobuff-support")
-    implementation("io.micronaut.serde:micronaut-serde-jackson")
-    implementation("javax.annotation:javax.annotation-api")
 
+    implementation("io.micronaut.serde:micronaut-serde-jackson")
     implementation("io.micronaut:micronaut-http-client")
-    implementation("io.micronaut:micronaut-jackson-databind")
+    implementation("io.micronaut:micronaut-http-server-netty")
     implementation("io.micronaut.validation:micronaut-validation")
-    implementation("io.micronaut.serde:micronaut-serde-jackson")
-    implementation("jakarta.annotation:jakarta.annotation-api:2.1.1")
 
+
+    implementation("io.grpc:grpc-core:${grpcVersion}")
+    implementation("io.grpc:grpc-protobuf:${grpcVersion}")
+    implementation("io.grpc:grpc-services:${grpcVersion}")
+//    implementation("io.grpc:grpc-services:${grpcVersion}")
+    // Management and monitoring
+    implementation("io.micronaut:micronaut-management")
+    implementation("io.micronaut.micrometer:micronaut-micrometer-core")
+
+    implementation 'ch.qos.logback:logback-classic:1.5.17'
+    implementation 'ch.qos.logback:logback-core:1.5.17'
+    implementation 'org.slf4j:slf4j-api:2.0.17'
+
+    // Import multitenant module
     implementation(project(":core"))
     implementation(project(":protos"))
     implementation(project(":logback-ext"))
 
-    runtimeOnly("ch.qos.logback:logback-classic")
-    runtimeOnly("org.slf4j:slf4j-simple")
+    // Reactor for reactive streams
+    implementation("io.projectreactor:reactor-core:3.5.12")
+
+    implementation("jakarta.annotation:jakarta.annotation-api")
+    implementation("jakarta.validation:jakarta.validation-api")
+
+    implementation("ch.qos.logback:logback-classic")
+
+    // Add jansi for colored console logging
+    implementation("org.fusesource.jansi:jansi:2.4.1")
+
+    // Add directory watcher dependency
+    implementation("io.methvin:directory-watcher")
+
+    // Add snakeyaml for YAML configuration parsing
     runtimeOnly("org.yaml:snakeyaml")
 
     testImplementation("io.micronaut:micronaut-http-client")
-    testImplementation("org.junit.jupiter:junit-jupiter-api")
-    testImplementation("org.junit.jupiter:junit-jupiter-engine")
+    testImplementation("org.mockito:mockito-core:5.15.2")
+
+    developmentOnly("io.micronaut.controlpanel:micronaut-control-panel-management")
+    developmentOnly("io.micronaut.controlpanel:micronaut-control-panel-ui")
 }
 
 application {
-    mainClass.set("com.tcn.exile.demo.Application")
+    mainClass.set("com.tcn.exile.demo.single.Application")
 }
 
 java {
@@ -74,6 +96,7 @@ micronaut {
         replaceLogbackXml = true
     }
 }
+
 jar {
     manifest {
         attributes 'Implementation-Version': project.version

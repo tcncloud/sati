@@ -1,40 +1,36 @@
-package com.tcn.exile.demo;
+package com.tcn.exile.demo.single;
 
 import ch.qos.logback.classic.LoggerContext;
 import com.tcn.exile.gateclients.UnconfiguredException;
-import com.tcn.exile.plugin.PluginInterface;
-import com.tcn.exile.plugin.PluginStatus;
-
+import com.tcn.exile.gateclients.v2.GateClient;
 import com.tcn.exile.memlogger.LogShipper;
 import com.tcn.exile.memlogger.MemoryAppenderInstance;
-import io.micronaut.context.env.Environment;
-import jakarta.inject.Singleton;
+import com.tcn.exile.models.PluginConfigEvent;
+import com.tcn.exile.plugin.PluginInterface;
+import com.tcn.exile.plugin.PluginStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tcnapi.exile.gate.v2.Entities.ExileAgentCall;
 import tcnapi.exile.gate.v2.Entities.ExileAgentResponse;
 import tcnapi.exile.gate.v2.Entities.ExileTelephonyResult;
-
-import com.tcn.exile.models.PluginConfigEvent;
-import com.tcn.exile.gateclients.v2.GateClient;
-import jakarta.inject.Inject;
-import io.micronaut.context.event.ApplicationEventListener;
 import tcnapi.exile.gate.v2.Public;
 
 import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.List;
 
-@Singleton
-public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, PluginInterface, LogShipper {
+public class DemoPlugin implements PluginInterface, LogShipper {
   private static final Logger log = LoggerFactory.getLogger(DemoPlugin.class);
   private boolean running = false;
 
-  @Inject
   GateClient gateClient;
+  private PluginConfigEvent pluginConfig;
 
-  @Inject
-  Environment environment;
+  public DemoPlugin(GateClient gateClient) {
+    this.gateClient = gateClient;
+    this.running = true;
+  }
+
 
   @Override
   public String getName() {
@@ -43,7 +39,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
 
   @Override
   public boolean isRunning() {
-
     return running;
   }
 
@@ -60,7 +55,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
     );
   }
 
-
   @Override
   public void listPools(String jobId, Public.StreamJobsResponse.ListPoolsRequest listPools) throws UnconfiguredException {
     log.info("Listing pools for job {}", jobId);
@@ -75,7 +69,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
                 .build())
             .build())
         .build());
-
   }
 
   @Override
@@ -110,11 +103,9 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
                 .setRecordId("red")
                 .setJsonRecordPayload("{\"f2\": \"bar\"}")
                 .build())
-
             .build())
         .build());
   }
-
 
   @Override
   public void handleAgentCall(ExileAgentCall exileAgentCall) {
@@ -133,7 +124,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
 
   @Override
   public void searchRecords(String jobId, Public.StreamJobsResponse.SearchRecordsRequest searchRecords) {
-
   }
 
   @Override
@@ -193,7 +183,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
   private String getVersion() {
     var ret = this.getClass().getPackage().getImplementationVersion();
     return ret == null ? "Unknown" : ret;
-
   }
 
   @Override
@@ -222,7 +211,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
 
   @Override
   public void shutdown(String jobId, Public.StreamJobsResponse.SeppukuRequest shutdown) {
-
   }
 
   @Override
@@ -258,19 +246,20 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
 
   @Override
   public void executeLogic(String jobId, Public.StreamJobsResponse.ExecuteLogicRequest executeLogic) {
-
   }
 
   @Override
-  public void onApplicationEvent(PluginConfigEvent event) {
-    if (event.isUnconfigured()) {
-      log.info("Received unconfigured event");
-      running = false;
-    } else {
-      log.info("Received configured event");
-      running = true;
+  public void setConfig(PluginConfigEvent config) {
+    this.pluginConfig = config;
+    if (this.pluginConfig == null) {
+      this.running = false;
     }
+    if (config.isUnconfigured()) {
+      running = false;
+    }
+    running = true;
   }
+
 
   @Override
   public void shipLogs(List<String> payload) {
@@ -286,6 +275,5 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
   public void stop() {
     log.info("Stopping shipping logs plugin");
     MemoryAppenderInstance.getInstance().disableLogShipper();
-
   }
-}
+} 
