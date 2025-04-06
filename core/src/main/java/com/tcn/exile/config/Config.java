@@ -16,11 +16,12 @@
 
 package com.tcn.exile.config;
 
-import com.tcn.exile.gateclients.ConfigInterface;
 import com.tcn.exile.gateclients.UnconfiguredException;
+import io.micronaut.core.type.Argument;
 import io.micronaut.serde.ObjectMapper;
 import io.micronaut.serde.annotation.Serdeable;
-import jakarta.validation.constraints.NotEmpty; // Needed for builder methods
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,16 +32,16 @@ import java.net.URL;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
-import java.util.Base64;
-import java.util.Date;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * Concrete implementation of ConfigInterface that stores configuration data.
  */
 @Serdeable
-public class Config implements ConfigInterface {
+public class Config {
+    private static final List<String> fieldNames = List.of("ca_certificate", "certificate", "private_key",
+            "fingerprint_sha256","fingerprint_sha256_string", "api_endpoint",
+            "certificate_name", "certificate_description");
     private static final Logger log = LoggerFactory.getLogger(Config.class);
     
     private boolean unconfigured;
@@ -65,7 +66,7 @@ public class Config implements ConfigInterface {
      * 
      * @param source The source config to copy from
      */
-    public Config(ConfigInterface source) {
+    public Config(Config source) {
         if (source != null) {
             this.unconfigured = source.isUnconfigured();
             this.rootCert = source.getRootCert();
@@ -79,6 +80,35 @@ public class Config implements ConfigInterface {
         }
     }
 
+
+
+    public static Optional<Config> of(@NotNull byte[] data, @NotNull ObjectMapper objectMapper) {
+        try {
+            var map = objectMapper.readValue(Base64.getDecoder().decode(data), Argument.mapOf(String.class, String.class));
+            if (!map.keySet().containsAll(fieldNames)) {
+                log.error("Invalid certificate data format");
+                return Optional.empty();
+            }
+            var ret = Optional.of(Config.builder()
+                    .rootCert(map.get("ca_certificate"))
+                    .publicCert(map.get("certificate"))
+                    .privateKey(map.get("private_key"))
+                    .fingerprintSha256(map.get("fingerprint_sha256"))
+                    .fingerprintSha256String(map.get("fingerprint_sha256_string"))
+                    .apiEndpoint(map.get("api_endpoint"))
+                    .certificateName(map.get("certificate_name"))
+                    .certificateDescription(map.get("certificate_description"))
+                    .build());
+            if (ret.get().getOrg() == null){
+                log.error("Parsing certificate failed");
+                return Optional.empty();
+            }
+            return ret;
+        } catch (IOException e) {
+            log.debug("Parsing error", e);
+            return Optional.empty();
+        }
+    }
     /**
      * Constructor that takes a base64 encoded JSON string and parses it.
      * 
@@ -141,7 +171,7 @@ public class Config implements ConfigInterface {
     public static Config fromBase64Json(String base64EncodedJson, ObjectMapper objectMapper) throws UnconfiguredException {
         return new Config(base64EncodedJson, objectMapper);
     }
-    
+
     /**
      * Static factory method to get a new Builder instance.
      * @return A new Builder instance.
@@ -152,48 +182,38 @@ public class Config implements ConfigInterface {
 
     // --- Getters --- 
 
-    @Override
     public String getCertificateDescription() {
         return certificateDescription;
     }
 
-    @Override
     public String getCertificateName() {
         return certificateName;
     }
 
-    @Override
     public String getApiEndpoint() {
         return apiEndpoint;
     }
 
-    @Override
     public String getFingerprintSha256() {
         return fingerprintSha256;
     }
 
-    @Override
     public String getFingerprintSha256String() {
         return fingerprintSha256String;
     }
 
-    @Override
     public boolean isUnconfigured() {
-        // Consider adding checks for essential fields if needed
-        return unconfigured; 
+        return unconfigured;
     }
 
-    @Override
     public String getRootCert() {
         return rootCert;
     }
 
-    @Override
     public String getPublicCert() {
         return publicCert;
     }
 
-    @Override
     public String getPrivateKey() {
         return privateKey;
     }
@@ -240,7 +260,6 @@ public class Config implements ConfigInterface {
     
     // --- Derived Data Methods ---
 
-    @Override
     public String getOrg() {
         if (this.org != null) {
             return this.org;
@@ -253,11 +272,12 @@ public class Config implements ConfigInterface {
             ByteArrayInputStream bais = new ByteArrayInputStream(publicCert.getBytes());
             X509Certificate cert = (X509Certificate) cf.generateCertificate(bais);
             String dn = cert.getSubjectX500Principal().getName();
+            log.debug("Certificate Subject: " + dn);
            
             // Extract CN from DN
             for (String part : dn.split(",")) {
                 if (part.trim().startsWith("O=")) {
-                    this.org = part.substring(3).trim();
+                    this.org = part.substring(2).trim();
                     return this.org;
                 }
             }
@@ -271,7 +291,6 @@ public class Config implements ConfigInterface {
         }
     }
 
-    @Override
     public String getApiHostname() throws UnconfiguredException {
         if (apiEndpoint == null || apiEndpoint.isBlank()) {
             throw new UnconfiguredException("API endpoint is not set");
@@ -283,7 +302,6 @@ public class Config implements ConfigInterface {
         }
     }
 
-    @Override
     public int getApiPort() throws UnconfiguredException {
         if (apiEndpoint == null || apiEndpoint.isBlank()) {
             throw new UnconfiguredException("API endpoint is not set");
@@ -300,7 +318,6 @@ public class Config implements ConfigInterface {
         }
     }
 
-    @Override
     public Date getExpirationDate() {
         var certStr = this.getPublicCert();
         if (certStr == null || certStr.isBlank()) {
@@ -324,9 +341,9 @@ public class Config implements ConfigInterface {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (o == null || !(o instanceof ConfigInterface)) return false;
+        if (o == null || !(o instanceof Config)) return false;
         
-        ConfigInterface that = (ConfigInterface) o;
+        Config that = (Config) o;
         
         // Consider adding more fields for a more robust equality check if needed
         if (unconfigured != that.isUnconfigured()) return false;
@@ -347,7 +364,7 @@ public class Config implements ConfigInterface {
                 "unconfigured=" + unconfigured +
                 ", apiEndpoint='" + apiEndpoint + '\'' +
                 ", certificateName='" + certificateName + '\'' +
-                ", org='" + getOrg() + '\'' + // Be mindful of potential null from getOrg()
+                ", org='" + getOrg() + "',..." + // Be mindful of potential null from getOrg()
                 '}';
     }
     
@@ -356,56 +373,68 @@ public class Config implements ConfigInterface {
     public static class Builder {
         private boolean unconfigured = true; // Default to unconfigured
         private String rootCert;
+        private boolean rootCertSet = false;
         private String publicCert;
+        private boolean publicCertSet = false;
         private String privateKey;
+        private boolean privateKeySet = false;
         private String fingerprintSha256;
+        private boolean fingerprintSha256Set = false;
         private String fingerprintSha256String;
+        private boolean fingerprintSha256StringSet = false;
         private String apiEndpoint;
+        private boolean apiEndpointSet = false;
         private String certificateName;
+        private boolean certificateNameSet = false;
         private String certificateDescription;
+        private boolean certificateDescriptionSet = false;
         
-        public Builder unconfigured(boolean unconfigured) {
-            this.unconfigured = unconfigured;
-            return this;
-        }
-        
+
         public Builder rootCert(@NotEmpty String rootCert) {
             this.rootCert = rootCert;
+            this.rootCertSet = true;
             return this;
         }
         
         public Builder publicCert(@NotEmpty String publicCert) {
             this.publicCert = publicCert;
+            this.publicCertSet = true;
             return this;
         }
         
         public Builder privateKey(@NotEmpty String privateKey) {
             this.privateKey = privateKey;
+            this.privateKeySet = true;
             return this;
         }
         
         public Builder fingerprintSha256(@NotEmpty String fingerprintSha256) {
             this.fingerprintSha256 = fingerprintSha256;
+            this.fingerprintSha256Set = true;
             return this;
         }
         
         public Builder fingerprintSha256String(@NotEmpty String fingerprintSha256String) {
             this.fingerprintSha256String = fingerprintSha256String;
+            this.fingerprintSha256Set = true;
             return this;
         }
         
         public Builder apiEndpoint(@NotEmpty String apiEndpoint) {
             this.apiEndpoint = apiEndpoint;
+            this.apiEndpointSet = true;
             return this;
         }
         
         public Builder certificateName(@NotEmpty String certificateName) {
             this.certificateName = certificateName;
+            this.certificateNameSet = true;
             return this;
         }
         
         public Builder certificateDescription(String certificateDescription) {
             this.certificateDescription = certificateDescription; // Can be null or empty
+            this.certificateDescriptionSet = true;
             return this;
         }
         
@@ -416,6 +445,8 @@ public class Config implements ConfigInterface {
          * @return A new Config instance.
          */
         public Config build() {
+            this.unconfigured = !(this.rootCertSet && this.publicCertSet && this.privateKeySet && this.fingerprintSha256Set && this.fingerprintSha256StringSet && this.apiEndpointSet && this.certificateNameSet && this.certificateDescriptionSet);
+
             // Automatically mark as configured if key fields are provided
             if (this.unconfigured && apiEndpoint != null && publicCert != null) {
                  log.debug("Builder automatically marking config as configured based on provided fields.");

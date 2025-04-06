@@ -25,16 +25,18 @@ import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.List;
 
-@Singleton
-public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, PluginInterface, LogShipper {
+public class DemoPlugin implements PluginInterface, LogShipper {
   private static final Logger log = LoggerFactory.getLogger(DemoPlugin.class);
   private boolean running = false;
 
-  @Inject
   GateClient gateClient;
+  private PluginConfigEvent pluginConfig;
 
-  @Inject
-  Environment environment;
+  public DemoPlugin(GateClient gateClient) {
+    this.gateClient = gateClient;
+    this.running = true;
+  }
+
 
   @Override
   public String getName() {
@@ -253,15 +255,17 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
   }
 
   @Override
-  public void onApplicationEvent(PluginConfigEvent event) {
-    if (event.isUnconfigured()) {
-      log.info("Received unconfigured event");
-      running = false;
-    } else {
-      log.info("Received configured event");
-      running = true;
+  public void setConfig(PluginConfigEvent config) {
+    this.pluginConfig = config;
+    if (this.pluginConfig == null) {
+      this.running = false;
     }
+    if (config.isUnconfigured()) {
+      running = false;
+    }
+    running = true;
   }
+
 
   @Override
   public void shipLogs(List<String> payload) {

@@ -16,9 +16,9 @@
 
 package com.tcn.exile.models;
 
-import java.util.Objects;
-
 import tcnapi.exile.gate.v2.Public.DialResponse;
+
+import java.util.Objects;
 
 public record ManualDialResult(String phoneNumber, String callerId, long callSid, String callType, String orgId,
                                String partnerAgentId) {

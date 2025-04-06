@@ -38,11 +38,10 @@ logger:
     com.zaxxer.hikari: DEBUG
     io.micronaut.http.client: TRACE
 
-grpc:
+http:
   server:
-    enabled: false
-  client:
-    plaintext: false
+    enabled: true
+
 
 # Enable single tenant mode
 sati:

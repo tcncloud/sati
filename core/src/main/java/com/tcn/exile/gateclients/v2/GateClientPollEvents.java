@@ -15,27 +15,29 @@
  */
 package com.tcn.exile.gateclients.v2;
 
-import java.util.concurrent.TimeUnit;
-
+import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.plugin.PluginInterface;
-
-import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
+import io.micronaut.context.annotation.Requires;
 import io.micronaut.scheduling.annotation.Scheduled;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import io.micronaut.context.annotation.Requires;
 import tcnapi.exile.gate.v2.GateServiceGrpc;
 import tcnapi.exile.gate.v2.Public.PollEventsRequest;
 
-@Singleton
-@Requires(property = "sati.tenant.type", value = "never")
+import java.util.concurrent.TimeUnit;
+
 public class GateClientPollEvents extends GateClientAbstract {
     protected static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GateClientPollEvents.class);
 
-    @Inject
+
     PluginInterface plugin;
+
+    public GateClientPollEvents(Config currentConfig, PluginInterface plugin) {
+        super(currentConfig);
+        this.plugin = plugin;
+    }
 
     @Override
     @Scheduled(fixedDelay = "10s")

@@ -15,13 +15,9 @@
  */
 package com.tcn.exile.gateclients.v2;
 
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-
+import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.plugin.PluginInterface;
-
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
@@ -33,13 +29,14 @@ import tcnapi.exile.gate.v2.GateServiceGrpc;
 import tcnapi.exile.gate.v2.Public.StreamJobsRequest;
 import tcnapi.exile.gate.v2.Public.StreamJobsResponse;
 
-@Singleton
-@Requires(property = "sati.tenant.type", value = "never")
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
 public class GateClientJobStream extends GateClientAbstract
     implements StreamObserver<tcnapi.exile.gate.v2.Public.StreamJobsResponse> {
   protected static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GateClientJobStream.class);
 
-  @Inject
   PluginInterface plugin;
 
   private int reconnectAttempt = 0;
@@ -49,9 +46,15 @@ public class GateClientJobStream extends GateClientAbstract
 
   private GateServiceGrpc.GateServiceStub client;
 
+  public GateClientJobStream(Config currentConfig, PluginInterface plugin) {
+    super(currentConfig);
+    this.plugin = plugin;
+  }
+
   @Override
   @Scheduled(fixedDelay = "1s")
   public void start() {
+    log.trace("start");
     if (streamLock.tryLock()) {
       if (isUnconfigured()) {
         log.debug("Configuration not set, skipping job stream");

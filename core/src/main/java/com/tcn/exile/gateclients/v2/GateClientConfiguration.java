@@ -15,41 +15,36 @@
  */
 package com.tcn.exile.gateclients.v2;
 
-import java.util.concurrent.TimeUnit;
-
+import com.sun.source.util.Plugin;
+import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.models.PluginConfigEvent;
 import com.tcn.exile.plugin.PluginInterface;
-
 import io.grpc.StatusRuntimeException;
+import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.event.ApplicationEventPublisher;
 import io.micronaut.scheduling.annotation.Scheduled;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
-import io.micronaut.context.annotation.Requires;
 import tcnapi.exile.gate.v2.GateServiceGrpc;
 import tcnapi.exile.gate.v2.Public.GetClientConfigurationRequest;
 import tcnapi.exile.gate.v2.Public.GetClientConfigurationResponse;
 
-@Singleton
-@Requires(property = "sati.tenant.type", value = "never")
+import java.util.concurrent.TimeUnit;
+
 public class GateClientConfiguration extends GateClientAbstract {
     PluginConfigEvent event = null;
 
-    @Inject
     PluginInterface plugin;
 
-    @Inject
-    ApplicationEventPublisher<PluginConfigEvent> eventPublisher;
 
     protected static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GateClientConfiguration.class);
 
-    private void publishEvent(PluginConfigEvent event) {
-        if (event != null) {
-            log.debug("Publishing event {}", event);
-            eventPublisher.publishEvent(event);
-        }
+    public GateClientConfiguration(Config currentConfig, PluginInterface plugin) {
+        super(currentConfig);
+        this.plugin = plugin;
     }
+
 
     @Override
     @Scheduled(fixedDelay = "10s")
@@ -69,7 +64,7 @@ public class GateClientConfiguration extends GateClientAbstract {
                 log.debug("Received new configuration, we will emit an event");
                 log.trace("{}", newEvent);
                 event = newEvent;
-                publishEvent(event);
+                this.plugin.setConfig(event);
             }
         } catch (UnconfiguredException e) {
             log.debug("Configuration not set, skipping get client configuration");

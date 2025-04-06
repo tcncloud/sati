@@ -15,25 +15,27 @@
  */
 package com.tcn.exile.gateclients.v2;
 
+import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.models.OrgInfo;
-
+import io.grpc.StatusRuntimeException;
+import io.micronaut.context.annotation.Requires;
+import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tcnapi.exile.gate.v2.GateServiceGrpc;
 import tcnapi.exile.gate.v2.Public;
 
-import java.util.concurrent.TimeUnit;
 import java.util.Iterator;
-import io.grpc.StatusRuntimeException;
-import jakarta.inject.Singleton;
-import io.micronaut.context.annotation.Requires;
+import java.util.concurrent.TimeUnit;
 
-@Singleton
-@Requires(property = "sati.tenant.type", value = "never")
 public class GateClient extends GateClientAbstract {
     private static final Logger log = LoggerFactory.getLogger(GateClient.class);
     private static final int DEFAULT_TIMEOUT_SECONDS = 30;
+
+    public GateClient(Config currentConfig) {
+        super(currentConfig);
+    }
 
     @Override
     public void start() {

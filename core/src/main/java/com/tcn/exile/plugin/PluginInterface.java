@@ -17,7 +17,7 @@
 package com.tcn.exile.plugin;
 
 import com.tcn.exile.gateclients.UnconfiguredException;
-
+import com.tcn.exile.models.PluginConfigEvent;
 import tcnapi.exile.gate.v2.Entities.ExileAgentCall;
 import tcnapi.exile.gate.v2.Entities.ExileAgentResponse;
 import tcnapi.exile.gate.v2.Entities.ExileTelephonyResult;
@@ -103,4 +103,6 @@ public interface PluginInterface {
     void logger(String jobId, Public.StreamJobsResponse.LoggingRequest log);
 
     void executeLogic(String jobId, Public.StreamJobsResponse.ExecuteLogicRequest executeLogic);
+
+    void setConfig(PluginConfigEvent config);
 }
