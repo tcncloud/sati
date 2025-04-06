@@ -1,7 +1,5 @@
-package com.tcn.exile.demo;
+package com.tcn.exile.demo.single;
 
-import com.google.protobuf.Descriptors.*;
-//import com.google.protobuf.Descriptors.FileDescriptor;
 import com.tcn.exile.gateclients.v2.BuildVersion;
 import com.tcn.exile.plugin.PluginInterface;
 import io.micronaut.http.annotation.Controller;
@@ -24,6 +22,5 @@ public class VersionController {
         ver.getPluginVersion(),
         ver.getPluginName()
     );
-
   }
-}
+} 

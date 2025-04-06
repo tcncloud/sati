@@ -25,3 +25,4 @@ pems/*
 demo/workdir/config/*
 
 .settings/*
+com.tcn.exiles.*

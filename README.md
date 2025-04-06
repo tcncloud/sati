@@ -2,6 +2,14 @@
 
 ## Description
 
+There are 3 projects here:
+
+- protos - describe the interaction with TCN's exile gate service.
+- core - implement the core services needed to run a tenant.
+- demo - reference implementation of a single tenant client.
+- logback-ext - implement an in memory logger adapter for logback useful for implementing log shipping from a sati client to TCN's exile service.
+
+
 ## License
 
 ```text

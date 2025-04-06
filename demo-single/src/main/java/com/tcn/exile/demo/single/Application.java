@@ -1,4 +1,4 @@
-package com.tcn.exile.demo;
+package com.tcn.exile.demo.single;
 
 import io.micronaut.runtime.Micronaut;
 

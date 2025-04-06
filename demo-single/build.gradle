@@ -18,12 +18,18 @@ dependencies {
     implementation("io.micronaut.grpc:micronaut-protobuff-support")
     implementation("io.micronaut.serde:micronaut-serde-jackson")
     implementation("javax.annotation:javax.annotation-api")
+    implementation("io.micronaut:micronaut-context")
 
     implementation("io.micronaut:micronaut-http-client")
     implementation("io.micronaut:micronaut-jackson-databind")
     implementation("io.micronaut.validation:micronaut-validation")
     implementation("io.micronaut.serde:micronaut-serde-jackson")
     implementation("jakarta.annotation:jakarta.annotation-api:2.1.1")
+
+    developmentOnly("io.micronaut.controlpanel:micronaut-control-panel-ui")
+    developmentOnly("io.micronaut.controlpanel:micronaut-control-panel-management")
+
+
 
     implementation(project(":core"))
     implementation(project(":protos"))
@@ -39,7 +45,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("com.tcn.exile.demo.Application")
+    mainClass.set("com.tcn.exile.demo.single.Application")
 }
 
 java {
@@ -74,6 +80,7 @@ micronaut {
         replaceLogbackXml = true
     }
 }
+
 jar {
     manifest {
         attributes 'Implementation-Version': project.version

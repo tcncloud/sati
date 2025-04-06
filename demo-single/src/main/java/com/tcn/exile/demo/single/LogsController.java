@@ -1,4 +1,4 @@
-package com.tcn.exile.demo;
+package com.tcn.exile.demo.single;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -73,7 +73,4 @@ public class LogsController {
         }
         return "Logger not found";
     }
-
-
-
-}
+} 

@@ -1,4 +1,4 @@
-package com.tcn.exile.demo;
+package com.tcn.exile.demo.single;
 
 import ch.qos.logback.classic.LoggerContext;
 import com.tcn.exile.gateclients.UnconfiguredException;
@@ -43,7 +43,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
 
   @Override
   public boolean isRunning() {
-
     return running;
   }
 
@@ -60,7 +59,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
     );
   }
 
-
   @Override
   public void listPools(String jobId, Public.StreamJobsResponse.ListPoolsRequest listPools) throws UnconfiguredException {
     log.info("Listing pools for job {}", jobId);
@@ -75,7 +73,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
                 .build())
             .build())
         .build());
-
   }
 
   @Override
@@ -110,11 +107,9 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
                 .setRecordId("red")
                 .setJsonRecordPayload("{\"f2\": \"bar\"}")
                 .build())
-
             .build())
         .build());
   }
-
 
   @Override
   public void handleAgentCall(ExileAgentCall exileAgentCall) {
@@ -133,7 +128,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
 
   @Override
   public void searchRecords(String jobId, Public.StreamJobsResponse.SearchRecordsRequest searchRecords) {
-
   }
 
   @Override
@@ -193,7 +187,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
   private String getVersion() {
     var ret = this.getClass().getPackage().getImplementationVersion();
     return ret == null ? "Unknown" : ret;
-
   }
 
   @Override
@@ -222,7 +215,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
 
   @Override
   public void shutdown(String jobId, Public.StreamJobsResponse.SeppukuRequest shutdown) {
-
   }
 
   @Override
@@ -258,7 +250,6 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
 
   @Override
   public void executeLogic(String jobId, Public.StreamJobsResponse.ExecuteLogicRequest executeLogic) {
-
   }
 
   @Override
@@ -286,6 +277,5 @@ public class DemoPlugin implements ApplicationEventListener<PluginConfigEvent>, 
   public void stop() {
     log.info("Stopping shipping logs plugin");
     MemoryAppenderInstance.getInstance().disableLogShipper();
-
   }
-}
+} 

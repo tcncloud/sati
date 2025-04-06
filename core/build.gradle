@@ -3,6 +3,7 @@ plugins {
     id("io.micronaut.library")
     id("io.micronaut.aot")
     id("maven-publish")
+    id("jacoco")
 }
 
 repositories {
@@ -15,7 +16,13 @@ dependencies {
     annotationProcessor("io.micronaut.validation:micronaut-validation-processor")
 
     implementation("io.micronaut.serde:micronaut-serde-jackson")
-    compileOnly("io.micronaut:micronaut-http-client")
+    implementation("io.micronaut:micronaut-http-client")
+    implementation("io.micronaut:micronaut-http-server-netty")
+    implementation("io.micronaut.validation:micronaut-validation")
+    
+    
+    // Reactor for reactive streams
+    implementation("io.projectreactor:reactor-core:3.5.12")
 
     implementation("jakarta.annotation:jakarta.annotation-api")
     implementation("jakarta.validation:jakarta.validation-api")
@@ -29,15 +36,19 @@ dependencies {
 
     implementation("com.zaxxer:HikariCP:5.1.0")
 
+    // gRPC client dependencies only (no server)
     implementation("io.grpc:grpc-protobuf:${grpcVersion}")
-    implementation("io.grpc:grpc-services:${grpcVersion}")
+    implementation("io.grpc:grpc-services:${grpcVersion}") {
+        exclude group: "io.grpc", module: "grpc-health-service"
+    }
     implementation("io.grpc:grpc-stub:${grpcVersion}")
     compileOnly("org.apache.tomcat:annotations-api:6.0.53")
     runtimeOnly("io.grpc:grpc-netty-shaded:${grpcVersion}")
     implementation("com.google.protobuf:protobuf-java-util:${protobufVersion}")
     implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
 
-
+    // Add SnakeYAML for YAML configuration support
+    runtimeOnly("org.yaml:snakeyaml")
 
     testImplementation("io.micronaut:micronaut-http-client")
     testImplementation("org.mockito:mockito-core:5.15.2")
@@ -69,6 +80,37 @@ micronaut {
         optimizeNetty = true
         replaceLogbackXml = true
     }
+}
+
+// Configure JaCoCo for test coverage
+jacoco {
+    toolVersion = "0.8.11"
+}
+
+jacocoTestReport {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+    
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it, exclude: [
+                '**/*$Lambda$*/**',
+                '**/*$$*/**',
+                '**/*_Micronaut*/**',
+                '**/micronaut/**'
+            ])
+        }))
+    }
+}
+
+test {
+    finalizedBy jacocoTestReport
+}
+
+jacocoTestReport {
+    dependsOn test
 }
 
 

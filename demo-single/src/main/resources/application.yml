@@ -3,7 +3,7 @@ micronaut:
     enabled: true
     allowed-environments: dev
   application:
-    name: sati
+    name: sati-demo
   views:
     dir: views
   router:
@@ -21,11 +21,30 @@ micronaut:
       swagger-ui:
         paths: classpath:META-INF/swagger/views/swagger-ui
         mapping: /swagger-ui/**
+  server:
+    port: 8080
+
+# Disable gRPC server health check since we don't need an embedded gRPC server
+endpoints:
+  health:
+    enabled: true
+    details-visible: ANONYMOUS
+    grpc:
+      enabled: false
+
 logger:
   levels:
-    com.tcn.exile: DEBUG 
+    com.tcn.exile: DEBUG
     com.zaxxer.hikari: DEBUG
     io.micronaut.http.client: TRACE
+
 grpc:
   server:
     enabled: false
+  client:
+    plaintext: false
+
+# Enable single tenant mode
+sati:
+  tenant:
+    type: single
