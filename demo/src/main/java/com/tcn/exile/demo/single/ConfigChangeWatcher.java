@@ -23,7 +23,6 @@ import com.tcn.exile.gateclients.v2.GateClientJobStream;
 import com.tcn.exile.gateclients.v2.GateClientPollEvents;
 import io.methvin.watcher.DirectoryWatcher;
 import io.micronaut.context.ApplicationContext;
-import io.micronaut.context.env.Environment;
 import io.micronaut.context.event.ApplicationEventListener;
 import io.micronaut.context.event.StartupEvent;
 import io.micronaut.core.type.Argument;
@@ -50,19 +49,15 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
     ApplicationContext context;
 
     @Inject
-    Environment environment;
-
-    @Inject
     ObjectMapper objectMapper;
 
     private static final Logger log = LoggerFactory.getLogger(ConfigChangeWatcher.class);
 
     private static final String CONFIG_FILE_NAME = "com.tcn.exiles.sati.config.cfg";
-    private DirectoryWatcher watcher;
+    private final DirectoryWatcher watcher;
 
     private static final List<Path> watchList = List.of(Path.of("/workdir/config"), Path.of("workdir/config"));
 
-    private String org = null;
 
     private void findValidConfigDir() {
         Optional<Path> validDir = watchList.stream()
@@ -92,7 +87,6 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
                     var data = Files.readAllBytes(file);
 //                    var newConfig = Config.of(Arrays.copyOf(data, data.length-1), objectMapper);
                     var newConfig = Config.of(data, objectMapper);
-                    log.debug("New config: {}", newConfig);
                     if (newConfig.isPresent()) {
                         return newConfig;
                     }
