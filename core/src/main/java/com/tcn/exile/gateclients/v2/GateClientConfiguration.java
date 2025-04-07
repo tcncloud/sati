@@ -56,7 +56,7 @@ public class GateClientConfiguration extends GateClientAbstract {
                     .setOrgName(response.getOrgName())
                     .setUnconfigured(false);
             if (!newEvent.equals(event)) {
-                log.debug("Received new configuration, we will emit an event");
+                log.debug("Received new configuration, update plugin config");
                 log.trace("{}", newEvent);
                 event = newEvent;
                 this.plugin.setConfig(event);
