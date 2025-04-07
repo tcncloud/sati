@@ -24,6 +24,23 @@ import java.util.Objects;
 @Serdeable
 public class PluginConfigEvent extends ApplicationEvent {
     private String orgId;
+
+    public String getOrgId() {
+        return orgId;
+    }
+
+    public String getOrgName() {
+        return orgName;
+    }
+
+    public String getConfigurationName() {
+        return configurationName;
+    }
+
+    public String getConfigurationPayload() {
+        return configurationPayload;
+    }
+
     private String orgName;
     private String configurationName;
     private String configurationPayload;
