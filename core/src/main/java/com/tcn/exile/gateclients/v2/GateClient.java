@@ -166,7 +166,7 @@ public class GateClient extends GateClientAbstract {
         return executeRequest("log", client -> client.log(request));
     }
 
-    public Public.SaveAgentCallResponseResponse saveAgentCallResponse(Public.SaveAgentCallResponseRequest request) {
-        return executeRequest("saveAgentCallResponse", client -> client.saveAgentCallResponse(request));
+    public Public.AddAgentCallResponseResponse addAgentCallResponse(Public.AddAgentCallResponseRequest request) {
+        return executeRequest("addAgentCallResponse", client -> client.addAgentCallResponse(request));
     }
 }

@@ -78,8 +78,10 @@ service GateService {
 
   // Get Agent by Partner ID - retrieves agent details using partner's ID system
   rpc GetAgentByPartnerId(GetAgentByPartnerIdRequest) returns (GetAgentByPartnerIdResponse);
+  
+  // Save a key value pair for a call
+  rpc AddAgentCallResponse(AddAgentCallResponseRequest) returns (AddAgentCallResponseResponse);
 
-  rpc SaveAgentCallResponse(SaveAgentCallResponseRequest) returns (SaveAgentCallResponseResponse);
   /**
    * Call control operations
    * These methods provide telephony functionality for making and managing calls.
@@ -602,6 +604,21 @@ message GetAgentByIdResponse {
 }
 
 /**
+ * Request message for saving details on a call response
+ */
+ message AddAgentCallResponseRequest {
+  string partner_agent_id = 1;
+  string call_sid = 2;
+  string call_type = 3;
+  int64 current_session_id = 4;
+  // key value pair to save
+  string key = 6;
+  string value = 7;
+}
+
+message AddAgentCallResponseResponse {}
+
+/**
  * Request message for stopping call recording.
  */
 message StopCallRecordingRequest {
@@ -627,20 +644,6 @@ message StartCallRecordingRequest {
  */
 message StartCallRecordingResponse {}
 
-/**
- * Request message for saving details on a call response
- */
-message SaveAgentCallResponseRequest {
-  string partner_agennt_id = 1;
-  string call_sid = 2;
-  string call_type = 3;
-  int64 current_session_id = 4;
-  // key value pair to save
-  string key = 6;
-  string value = 7;
-}
-message SaveAgentCallResponseResponse {
-}
 /**
  * Request message for dialing a phone number.
  */
