@@ -31,8 +31,8 @@ public class GateClientPollEvents extends GateClientAbstract {
 
     PluginInterface plugin;
 
-    public GateClientPollEvents(Config currentConfig, PluginInterface plugin) {
-        super(currentConfig);
+    public GateClientPollEvents(String tenant, Config currentConfig, PluginInterface plugin) {
+        super(tenant, currentConfig);
         this.plugin = plugin;
     }
 
@@ -41,11 +41,11 @@ public class GateClientPollEvents extends GateClientAbstract {
     public void start() {
         try {
             if (isUnconfigured()) {
-                log.debug("Configuration not set, skipping poll events");
+                log.debug("Tenant: {} - Configuration not set, skipping poll events", tenant);
                 return;
             }
             if (!plugin.isRunning()) {
-                log.debug("Plugin is not running (possibly due to database disconnection), skipping poll events");
+                log.debug("Tenant: {} - Plugin is not running (possibly due to database disconnection), skipping poll events", tenant);
                 return;
             }
             var client = GateServiceGrpc.newBlockingStub(getChannel())
@@ -53,21 +53,21 @@ public class GateClientPollEvents extends GateClientAbstract {
                     .withWaitForReady();
             var response = client.pollEvents(PollEventsRequest.newBuilder().build());
             if (response.getEventsCount() == 0) {
-                log.debug("Poll events request completed successfully but no events were received");
+                log.debug("Tenant: {} - Poll events request completed successfully but no events were received", tenant);
                 return;
             }
             response.getEventsList().forEach(event -> {
                 if (event.hasAgentCall()) {
-                    log.debug("Received agent call event {} - {}", event.getAgentCall().getCallSid(), event.getAgentCall().getCallType());
+                    log.debug("Tenant: {} - Received agent call event {} - {}", tenant, event.getAgentCall().getCallSid(), event.getAgentCall().getCallType());
                     plugin.handleAgentCall(event.getAgentCall());
                 }
                 if (event.hasAgentResponse()) {
-                    log.debug("Received agent response event {}", event.getAgentResponse().getAgentCallResponseSid());
+                    log.debug("Tenant: {} - Received agent response event {}", tenant, event.getAgentResponse().getAgentCallResponseSid());
                     plugin.handleAgentResponse(event.getAgentResponse());
                 }
 
                 if (event.hasTelephonyResult()) {
-                    log.debug("Received telephony result event {} - {}", event.getTelephonyResult().getCallSid(), event.getTelephonyResult().getCallType());
+                    log.debug("Tenant: {} - Received telephony result event {} - {}", tenant, event.getTelephonyResult().getCallSid(), event.getTelephonyResult().getCallType());
                     plugin.handleTelephonyResult(event.getTelephonyResult());
                 }
             });
@@ -75,12 +75,12 @@ public class GateClientPollEvents extends GateClientAbstract {
             if (handleStatusRuntimeException(e)) {
                 // Already handled in parent class method
             } else {
-                log.error("Error in poll events: {}", e.getMessage());
+                log.error("Tenant: {} - Error in poll events: {}", tenant, e.getMessage());
             }
         } catch (UnconfiguredException e) {
-            log.error("Error while getting client configuration {}", e.getMessage());
+            log.error("Tenant: {} - Error while getting client configuration {}", tenant, e.getMessage());
         } catch (Exception e) {
-            log.error("Unexpected error in poll events", e);
+            log.error("Tenant: {} - Unexpected error in poll events", tenant, e);
         }
     }
 }

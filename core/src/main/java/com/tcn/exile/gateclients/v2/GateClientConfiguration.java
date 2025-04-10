@@ -35,8 +35,8 @@ public class GateClientConfiguration extends GateClientAbstract {
 
     protected static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GateClientConfiguration.class);
 
-    public GateClientConfiguration(Config currentConfig, PluginInterface plugin) {
-        super(currentConfig);
+    public GateClientConfiguration(String tenant, Config currentConfig, PluginInterface plugin) {
+        super(tenant, currentConfig);
         this.plugin = plugin;
     }
 
@@ -56,15 +56,14 @@ public class GateClientConfiguration extends GateClientAbstract {
                     .setOrgName(response.getOrgName())
                     .setUnconfigured(false);
             if (!newEvent.equals(event)) {
-                log.debug("Received new configuration, update plugin config");
-                log.trace("{}", newEvent);
+                log.debug("Tenant: {} - Received new configuration, update plugin config", tenant);
                 event = newEvent;
                 this.plugin.setConfig(event);
             }
         } catch (UnconfiguredException e) {
-            log.debug("Configuration not set, skipping get client configuration");
+            log.debug("Tenant: {} - Configuration not set, skipping get client configuration", tenant);
         } catch (StatusRuntimeException e) {
-            log.error("Failed to get client configuration: {}", e.getMessage());
+            log.error("Tenant: {} - Failed to get client configuration: {}", tenant, e.getMessage());
         }
     }
 }

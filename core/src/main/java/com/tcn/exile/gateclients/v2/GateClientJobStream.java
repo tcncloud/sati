@@ -43,37 +43,37 @@ public class GateClientJobStream extends GateClientAbstract
 
   private GateServiceGrpc.GateServiceStub client;
 
-  public GateClientJobStream(Config currentConfig, PluginInterface plugin) {
-    super(currentConfig);
+  public GateClientJobStream(String tenant, Config currentConfig, PluginInterface plugin) {
+    super(tenant,currentConfig);
     this.plugin = plugin;
   }
 
   @Override
   @Scheduled(fixedDelay = "1s")
   public void start() {
-    log.trace("start");
+    log.trace("Tenant: {} - start", tenant);
     if (streamLock.tryLock()) {
       if (isUnconfigured()) {
-        log.debug("Configuration not set, skipping job stream");
+        log.debug("Tenant: {} - Configuration not set, skipping job stream", tenant);
         streamLock.unlock();
         return;
       }
       if (!plugin.isRunning()) {
-        log.debug("Plugin is not running (possibly due to database disconnection), skipping job stream");
+        log.debug("Tenant: {} - Plugin is not running (possibly due to database disconnection), skipping job stream", tenant);
         streamLock.unlock();
         return;
       }
       if (isRunning()) {
-        log.trace("Job stream already running, skipping start");
+        log.trace("Tenant: {} - Job stream already running, skipping start", tenant);
         streamLock.unlock();
         return;
       }
 
       // Check if we already have an active stream
       // Log immediately after acquiring the lock
-      log.debug("Thread {} acquired streamLock.", Thread.currentThread().getName());
+      log.debug("Tenant: {} - Thread {} acquired streamLock.", tenant, Thread.currentThread().getName());
       try {
-        log.debug("Attempting to start job stream");
+        log.debug("Tenant: {} - Attempting to start job stream", tenant);
         if (!isRunning()) {
           shutdown(); // shutdown() acts on static channel
         }
@@ -84,19 +84,19 @@ public class GateClientJobStream extends GateClientAbstract
         this.client.streamJobs(StreamJobsRequest.newBuilder().build(), this);
       } catch (StatusRuntimeException e) {
         if (handleStatusRuntimeException(e)) {
-          log.warn("Connection unavailable in job stream, channel reset");
+          log.warn("Tenant: {} - Connection unavailable in job stream, channel reset", tenant);
         } else {
-          log.error("Error in job stream: {} ({})", e.getMessage(), e.getStatus().getCode());
+          log.error("Tenant: {} - Error in job stream: {} ({})", tenant, e.getMessage(), e.getStatus().getCode());
         }
       } catch (UnconfiguredException e) {
-        log.error("Error while starting job stream {}", e.getMessage());
+        log.error("Tenant: {} - Error while starting job stream {}", tenant, e.getMessage());
       } catch (Exception e) {
-        log.error("Unexpected error in job stream", e);
+        log.error("Tenant: {} - Unexpected error in job stream", tenant, e);
       } finally {
         streamLock.unlock();
       }
     } else {
-      log.debug("streamLock already locked, skipping start");
+      log.debug("Tenant: {} - streamLock already locked, skipping start", tenant);
     }
   }
 
@@ -106,7 +106,7 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onNext(StreamJobsResponse value) {
-    log.debug("Received {} job", value.getJobId());
+    log.debug("Tenant: {} - Received {} job", tenant, value.getJobId());
     try {
       if (value.hasListPools()) {
         plugin.listPools(value.getJobId(), value.getListPools());
@@ -133,11 +133,11 @@ public class GateClientJobStream extends GateClientAbstract
       } else if (value.hasExecuteLogic()) {
         plugin.executeLogic(value.getJobId(), value.getExecuteLogic());
       } else {
-        log.error("Unknown job type {}", value.getUnknownFields());
+        log.error("Tenant: {} - Unknown job type {}", tenant, value.getUnknownFields());
       }
 
     } catch (UnconfiguredException e) {
-      log.error("Error while handling job {}", value.getJobId());
+      log.error("Tenant: {} - Error while handling job {}", tenant, value.getJobId());
     }
   }
 
@@ -146,10 +146,10 @@ public class GateClientJobStream extends GateClientAbstract
     // Log the error *before* changing the state
     if (t instanceof StatusRuntimeException) {
       StatusRuntimeException statusEx = (StatusRuntimeException) t;
-      log.error("Job stream onError: Status={}, Message={}", statusEx.getStatus(), statusEx.getMessage(), statusEx);
+      log.error("Tenant: {} - Job stream onError: Status={}, Message={}", tenant, statusEx.getStatus(), statusEx.getMessage(), statusEx);
       // Resetting flag *only after logging*
       if (statusEx.getStatus().getCode() == Status.Code.CANCELLED) {
-        log.warn("Stream cancelled by server or network issue, attempting reconnect...");
+        log.warn("Tenant: {} - Stream cancelled by server or network issue, attempting reconnect...", tenant);
         // Add a delay to prevent immediate reconnection flooding
         try {
           Thread.sleep(2000);
@@ -158,7 +158,7 @@ public class GateClientJobStream extends GateClientAbstract
         }
         reconnectStream(); // Attempt reconnect
       } else if (statusEx.getStatus().getCode() == Status.Code.UNAVAILABLE) {
-        log.warn("Stream unavailable, likely network issue or server restart. Attempting reconnect...");
+        log.warn("Tenant: {} - Stream unavailable, likely network issue or server restart. Attempting reconnect...", tenant);
         // Add a delay
         try {
           Thread.sleep(2000);
@@ -167,19 +167,19 @@ public class GateClientJobStream extends GateClientAbstract
         }
         reconnectStream(); // Attempt reconnect (resetChannel is called within)
       } else {
-        log.error("Unhandled StatusRuntimeException in job stream. Status: {}, Message: {}", statusEx.getStatus(),
+        log.error("Tenant: {} - Unhandled StatusRuntimeException in job stream. Status: {}, Message: {}", tenant, statusEx.getStatus(),
             statusEx.getMessage());
         // Consider if reconnect should happen for other statuses
       }
     } else {
-      log.error("Job stream onError: Non-StatusRuntimeException", t);
+      log.error("Tenant: {} - Job stream onError: Non-StatusRuntimeException", tenant, t);
       // Resetting flag *only after logging*
     }
     client = null;
   }
 
   private void reconnectStream() {
-    log.info("Attempting to reconnect job stream");
+    log.info("Tenant: {} - Attempting to reconnect job stream", tenant);
     try {
       // Reset channel first
       resetChannel();
@@ -188,7 +188,7 @@ public class GateClientJobStream extends GateClientAbstract
       // Reset reconnect attempt counter on success
       reconnectAttempt = 0;
     } catch (Exception e) {
-      log.error("Failed to reconnect job stream", e);
+      log.error("Tenant: {} - Failed to reconnect job stream", tenant, e);
       // Schedule retry with exponential backoff
       scheduleReconnectWithBackoff();
     }
@@ -201,7 +201,7 @@ public class GateClientJobStream extends GateClientAbstract
         (int) Math.pow(2, reconnectAttempt),
         MAX_RECONNECT_DELAY_SECONDS);
 
-    log.info("Scheduling reconnection attempt {} in {} seconds", reconnectAttempt, delaySeconds);
+    log.info("Tenant: {} - Scheduling reconnection attempt {} in {} seconds", tenant, reconnectAttempt, delaySeconds);
 
     // Schedule reconnection using a separate thread
     new Thread(() -> {
@@ -210,14 +210,14 @@ public class GateClientJobStream extends GateClientAbstract
         reconnectStream();
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
-        log.warn("Reconnection thread interrupted");
+        log.warn("Tenant: {} - Reconnection thread interrupted", tenant);
       }
     }).start();
   }
 
   @Override
   public void onCompleted() {
-    log.info("Job stream onCompleted: Server closed the stream gracefully.");
+    log.info("Tenant: {} - Job stream onCompleted: Server closed the stream gracefully.", tenant);
     // Resetting flag *only after logging*
     // Optionally attempt to reconnect immediately if the stream is expected to be
     // persistent

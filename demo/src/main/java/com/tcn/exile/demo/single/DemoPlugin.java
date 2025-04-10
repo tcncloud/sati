@@ -25,10 +25,12 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   GateClient gateClient;
   private PluginConfigEvent pluginConfig;
+  private String tenantKey;
 
-  public DemoPlugin(GateClient gateClient) {
+  public DemoPlugin(String tenantKey, GateClient gateClient) {
     this.gateClient = gateClient;
     this.running = true;
+    this.tenantKey = tenantKey;
   }
 
 
@@ -57,7 +59,7 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   @Override
   public void listPools(String jobId, Public.StreamJobsResponse.ListPoolsRequest listPools) throws UnconfiguredException {
-    log.info("Listing pools for job {}", jobId);
+    log.info("Tenant: {} - Listing pools for job {}", tenantKey, jobId);
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
         .setJobId(jobId)
         .setEndOfTransmission(true)
@@ -73,7 +75,7 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   @Override
   public void getPoolStatus(String jobId, Public.StreamJobsResponse.GetPoolStatusRequest request) throws UnconfiguredException {
-    log.info("Getting pool status for job={} and pool={}", jobId, request);
+    log.info("Tenant: {} - Getting pool status for job={} and pool={}", tenantKey, jobId, request);
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
         .setJobId(jobId)
         .setEndOfTransmission(true)
@@ -88,7 +90,7 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   @Override
   public void getPoolRecords(String jobId, Public.StreamJobsResponse.GetPoolRecordsRequest request) throws UnconfiguredException {
-    log.info("Getting pool records for job {} and pool {}", jobId, request);
+    log.info("Tenant: {} - Getting pool records for job {} and pool {}", tenantKey, jobId, request);
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
         .setJobId(jobId)
         .setEndOfTransmission(true)
@@ -109,17 +111,17 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   @Override
   public void handleAgentCall(ExileAgentCall exileAgentCall) {
-    log.info("Handling agent call for job {}", exileAgentCall);
+    log.info("Tenant: {} - Handling agent call for job {}", tenantKey, exileAgentCall);
   }
 
   @Override
   public void handleTelephonyResult(ExileTelephonyResult exileTelephonyResult) {
-    log.info("Handling telephony result for job {}", exileTelephonyResult);
+    log.info("Tenant: {} - Handling telephony result for job {}", tenantKey, exileTelephonyResult);
   }
 
   @Override
   public void handleAgentResponse(ExileAgentResponse exileAgentResponse) {
-    log.info("Handling agent response for {}", exileAgentResponse);
+    log.info("Tenant: {} - Handling agent response for {}", tenantKey, exileAgentResponse);
   }
 
   @Override
@@ -128,7 +130,7 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   @Override
   public void readFields(String jobId, Public.StreamJobsResponse.GetRecordFieldsRequest getRecordFields) {
-    log.info("Reading fields for job {} and record {}", jobId, getRecordFields.getRecordId());
+    log.info("Tenant: {} - Reading fields for job {} and record {}", tenantKey, jobId, getRecordFields.getRecordId());
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
         .setJobId(jobId)
         .setEndOfTransmission(true)
@@ -144,7 +146,7 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   @Override
   public void writeFields(String jobId, Public.StreamJobsResponse.SetRecordFieldsRequest setRecordFields) {
-    log.info("Writing fields for job {} and record {}", jobId, setRecordFields.getRecordId());
+    log.info("Tenant: {} - Writing fields for job {} and record {}", tenantKey, jobId, setRecordFields.getRecordId());
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
         .setJobId(jobId)
         .setEndOfTransmission(true)
@@ -154,7 +156,7 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   @Override
   public void createPayment(String jobId, Public.StreamJobsResponse.CreatePaymentRequest createPayment) {
-    log.info("Creating payment for job {} and record {}", jobId, createPayment.getRecordId());
+    log.info("Tenant: {} - Creating payment for job {} and record {}", tenantKey, jobId, createPayment.getRecordId());
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
         .setJobId(jobId)
         .setEndOfTransmission(true)
@@ -164,7 +166,7 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   @Override
   public void popAccount(String jobId, Public.StreamJobsResponse.PopAccountRequest popAccount) {
-    log.info("Popping account for job {} and record {}", jobId, popAccount.getRecordId());
+    log.info("Tenant: {} - Popping account for job {} and record {}", tenantKey, jobId, popAccount.getRecordId());
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
         .setJobId(jobId)
         .setEndOfTransmission(true)
@@ -187,7 +189,7 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   @Override
   public void info(String jobId, Public.StreamJobsResponse.InfoRequest info) {
-    log.info("Info for job {}", jobId);
+    log.info("Tenant: {} - Info for job {}", tenantKey, jobId);
     gateClient.submitJobResults(Public.SubmitJobResultsRequest.newBuilder()
         .setJobId(jobId)
         .setEndOfTransmission(true)
@@ -215,11 +217,11 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   @Override
   public void logger(String jobId, Public.StreamJobsResponse.LoggingRequest logRequest) {
-    log.debug("Received log request {} stream {} payload: {}", jobId, logRequest.getStreamLogs(), logRequest.getLoggerLevelsList());
+    log.debug("Tenant: {} - Received log request {} stream {} payload: {}", tenantKey, jobId, logRequest.getStreamLogs(), logRequest.getLoggerLevelsList());
     LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
 
     for (var logger : logRequest.getLoggerLevelsList()) {
-      log.debug("Setting logger {} to level {}", logger.getLoggerName(), logger.getLoggerLevel());
+      log.debug("Tenant: {} - Setting logger {} to level {}", tenantKey, logger.getLoggerName(), logger.getLoggerLevel());
       var v = loggerContext.getLogger(logger.getLoggerName());
       if (v != null) {
         if (logger.getLoggerLevel() == Public.StreamJobsResponse.LoggingRequest.LoggerLevel.Level.DISABLED) {
@@ -228,7 +230,7 @@ public class DemoPlugin implements PluginInterface, LogShipper {
           v.setLevel(ch.qos.logback.classic.Level.toLevel(logger.getLoggerLevel().name()));
         }
       } else {
-        log.warn("Logger {} not found", logger.getLoggerName());
+        log.warn("Tenant: {} - Logger {} not found", tenantKey, logger.getLoggerName());
       }
     }
     if (logRequest.getStreamLogs()) {
@@ -263,7 +265,7 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   @Override
   public void shipLogs(List<String> payload) {
-    log.info("Ship logs");
+    log.info("Tenant: {} - Ship logs", tenantKey);
     if (payload == null || payload.isEmpty()) {
       return;
     }
@@ -273,7 +275,7 @@ public class DemoPlugin implements PluginInterface, LogShipper {
 
   @Override
   public void stop() {
-    log.info("Stopping shipping logs plugin");
+    log.info("Tenant: {} - Stopping shipping logs plugin", tenantKey);
     MemoryAppenderInstance.getInstance().disableLogShipper();
   }
 } 

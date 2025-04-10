@@ -31,8 +31,8 @@ public class GateClient extends GateClientAbstract {
     private static final Logger log = LoggerFactory.getLogger(GateClient.class);
     private static final int DEFAULT_TIMEOUT_SECONDS = 30;
 
-    public GateClient(Config currentConfig) {
-        super(currentConfig);
+    public GateClient(String tenant, Config currentConfig) {
+        super(tenant,currentConfig);
     }
 
     @Override
@@ -55,17 +55,17 @@ public class GateClient extends GateClientAbstract {
             }
             return result;
         } catch (UnconfiguredException e) {
-            log.error("Failed to execute {} operation: {}", operationName, e.getMessage());
+            log.error("Tenant: {} - Failed to execute {} operation: {}", tenant, operationName, e.getMessage());
             throw new RuntimeException(e);
         } catch (StatusRuntimeException e) {
             if (handleStatusRuntimeException(e)) {
-                log.warn("Connection issue during {} operation, channel reset: {}", operationName, e.getMessage());
+                log.warn("Tenant: {} - Connection issue during {} operation, channel reset: {}", tenant, operationName, e.getMessage());
                 throw new RuntimeException("Connection issue during " + operationName + ", please retry", e);
             }
-            log.error("gRPC error during {} operation: {} ({})", operationName, e.getMessage(), e.getStatus().getCode());
+            log.error("Tenant: {} - gRPC error during {} operation: {} ({})", tenant, operationName, e.getMessage(), e.getStatus().getCode());
             throw new RuntimeException("Failed to execute " + operationName, e);
         } catch (Exception e) {
-            log.error("Unexpected error during {} operation: {}", operationName, e.getMessage());
+            log.error("Tenant: {} - Unexpected error during {} operation: {}", tenant, operationName, e.getMessage());
             throw new RuntimeException("Failed to execute " + operationName, e);
         }
     }
@@ -87,7 +87,7 @@ public class GateClient extends GateClientAbstract {
 
     // Job results submission (max 2MB)
     public Public.SubmitJobResultsResponse submitJobResults(Public.SubmitJobResultsRequest request) {
-        log.info("GateClient submit job results request: {}", request.getJobId());
+        log.info("Tenant: {} - GateClient submit job results request: {}", tenant, request.getJobId());
         try {
             return executeRequest("submitJobResults", client -> {
                 var response = client.submitJobResults(request);
@@ -97,7 +97,7 @@ public class GateClient extends GateClientAbstract {
                 return response;
             });
         } catch (Exception e) {
-            log.error("Failed to submit job results for job {}: {}", request.getJobId(), e.getMessage());
+            log.error("Tenant: {} - Failed to submit job results for job {}: {}", tenant, request.getJobId(), e.getMessage());
             throw new RuntimeException("Failed to submit job results", e);
         }
     }

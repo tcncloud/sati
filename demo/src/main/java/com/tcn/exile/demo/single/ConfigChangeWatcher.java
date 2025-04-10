@@ -176,12 +176,13 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
 
     private void createBeans() {
         log.info("creating bean for org {}", this.currentConfig.getOrg());
-        var gateClient = new GateClient(this.currentConfig);
-        var demoPlugin = new DemoPlugin(gateClient);
-        var gateClientJobStream = new GateClientJobStream(this.currentConfig, demoPlugin);
+        var tenantKey = this.currentConfig.getOrg();
+        var gateClient = new GateClient(tenantKey, this.currentConfig);
+        var demoPlugin = new DemoPlugin(tenantKey, gateClient);
+        var gateClientJobStream = new GateClientJobStream(tenantKey, this.currentConfig, demoPlugin);
 
-        var gateClientPollEvents = new GateClientPollEvents(this.currentConfig, demoPlugin);
-        var gateClientConfiguration = new GateClientConfiguration(this.currentConfig, demoPlugin);
+        var gateClientPollEvents = new GateClientPollEvents(tenantKey, this.currentConfig, demoPlugin);
+        var gateClientConfiguration = new GateClientConfiguration(tenantKey,this.currentConfig, demoPlugin);
 
         context.registerSingleton(GateClient.class, gateClient, Qualifiers.byName(gateClientPrefix + this.currentConfig.getOrg()), true);
         context.registerSingleton(GateClientJobStream.class, gateClientJobStream,Qualifiers.byName(gateClientJobStreamPrefix + this.currentConfig.getOrg()), true);

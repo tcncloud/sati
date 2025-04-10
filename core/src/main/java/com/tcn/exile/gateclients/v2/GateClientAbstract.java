@@ -35,9 +35,11 @@ public abstract class GateClientAbstract {
     private static final ReentrantLock lock = new ReentrantLock();
 
     private Config currentConfig = null;
+    protected final String tenant;
 
-    public GateClientAbstract(Config currentConfig) {
+    public GateClientAbstract(String tenant, Config currentConfig) {
         this.currentConfig = currentConfig;
+        this.tenant = tenant;
     }
 
     public Config getConfig() {
@@ -66,31 +68,31 @@ public abstract class GateClientAbstract {
 
 
     protected void shutdown() {
-        log.debug("Attempting shutdown of static shared gRPC channel.");
+        log.debug("Tenant: {} - Attempting shutdown of static shared gRPC channel.", tenant);
         // Synchronize access to the shared channel for shutdown
         if (lock.tryLock()) {
             ManagedChannel channelToShutdown = sharedChannel; // Work with local variable inside lock
             if ((channelToShutdown != null) && (!channelToShutdown.isShutdown() && !channelToShutdown.isTerminated())) {
-                log.debug("Attempting graceful shutdown of shared channel {}", channelToShutdown);
+                log.debug("Tenant: {} - Attempting graceful shutdown of shared channel {}", tenant, channelToShutdown);
                 channelToShutdown.shutdown();
                 try {
                     if (!channelToShutdown.awaitTermination(10, TimeUnit.SECONDS)) {
-                        log.warn("Shared channel {} did not terminate gracefully after 10s, forcing shutdown.", channelToShutdown);
+                        log.warn("Tenant: {} - Shared channel {} did not terminate gracefully after 10s, forcing shutdown.", tenant, channelToShutdown);
                         channelToShutdown.shutdownNow();
                         if (!channelToShutdown.awaitTermination(5, TimeUnit.SECONDS)) {
-                            log.error("Shared channel {} failed to terminate even after forced shutdown.", channelToShutdown);
+                            log.error("Tenant: {} - Shared channel {} failed to terminate even after forced shutdown.", tenant, channelToShutdown);
                         }
                     }
-                    log.info("Successfully shut down shared channel {}", channelToShutdown);
+                    log.info("Tenant: {} - Successfully shut down shared channel {}", tenant, channelToShutdown);
                 } catch (InterruptedException e) {
-                    log.error("Interrupted while waiting for shared channel shutdown, forcing shutdown now.", e);
+                    log.error("Tenant: {} - Interrupted while waiting for shared channel shutdown, forcing shutdown now.", tenant, e);
                     channelToShutdown.shutdownNow();
                     Thread.currentThread().interrupt(); // Preserve interrupt status
                 }
                 // Set static field to null AFTER successful shutdown
                 sharedChannel = null;
             } else {
-                log.debug("Shared channel is already null, shut down, or terminated.");
+                log.debug("Tenant: {} - Shared channel is already null, shut down, or terminated.", tenant);
                 // Ensure static field is null if channel is unusable
                 if (sharedChannel != null && (sharedChannel.isShutdown() || sharedChannel.isTerminated())) {
                     sharedChannel = null;
@@ -118,7 +120,7 @@ public abstract class GateClientAbstract {
                     return localChannel;
                 }
 
-                log.debug("Creating a new static shared gRPC channel.");
+                log.debug("Tenant: {} - Creating a new static shared gRPC channel.", tenant);
 
                 try {
                     var channelCredentials = TlsChannelCredentials.newBuilder()
@@ -137,19 +139,19 @@ public abstract class GateClientAbstract {
                             .build();
 
                     sharedChannel = newChannel; // Assign the new channel to the static field
-                    log.debug("New static shared channel created: {}", newChannel);
+                    log.debug("Tenant: {} - New static shared channel created: {}", tenant, newChannel);
                     lock.unlock();
                     return newChannel;
                 } catch (IOException e) {
-                    log.error("IOException during shared channel creation", e);
+                    log.error("Tenant: {} - IOException during shared channel creation", tenant, e);
                     lock.unlock();
                     throw new UnconfiguredException("TCN Gate client configuration error during channel creation", e);
                 } catch (UnconfiguredException e) {
-                    log.error("Configuration error during shared channel creation", e);
+                    log.error("Tenant: {} - Configuration error during shared channel creation", tenant, e);
                     lock.unlock();
                     throw e; // Re-throw specific unconfigured exception
                 } catch (Exception e) {
-                    log.error("Unexpected error during shared channel creation", e);
+                    log.error("Tenant: {} - Unexpected error during shared channel creation", tenant, e);
                     lock.unlock();
                     throw new UnconfiguredException("Unexpected error configuring TCN Gate client channel", e);
                 } finally {
@@ -169,7 +171,7 @@ public abstract void start();
  * Resets the gRPC channel after a connection failure
  */
 protected void resetChannel() {
-    log.info("Resetting static shared gRPC channel after connection failure.");
+    log.info("Tenant: {} - Resetting static shared gRPC channel after connection failure.", tenant);
     // Simply call the synchronized shutdown method which handles the static channel
     shutdown();
 }
@@ -182,7 +184,7 @@ protected void resetChannel() {
  */
 protected boolean handleStatusRuntimeException(StatusRuntimeException e) {
     if (e.getStatus().getCode() == Status.Code.UNAVAILABLE) {
-        log.warn("Connection unavailable, resetting channel: {}", e.getMessage());
+        log.warn("Tenant: {} - Connection unavailable, resetting channel: {}", tenant, e.getMessage());
         resetChannel();
         return true;
     }
