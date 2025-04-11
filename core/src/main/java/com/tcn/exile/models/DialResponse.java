@@ -23,7 +23,7 @@ import io.micronaut.serde.annotation.Serdeable;
 public record DialResponse(
     @JsonProperty("phone_number") String phoneNumber,
     @JsonProperty("caller_id") String callerId,
-    @JsonProperty("caller_sid") Long callSid,
+    @JsonProperty("call_sid") Long callSid,
     @JsonProperty("call_type") CallType callType,
     @JsonProperty("org_id") String orgId,
     @JsonProperty("partner_agent_id") String partnerAgentId) {

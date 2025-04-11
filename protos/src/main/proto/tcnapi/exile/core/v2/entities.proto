@@ -8,8 +8,10 @@ message Pool {
   PoolStatus status = 3;
   int64 record_count = 4;
   enum PoolStatus {
+    option allow_alias = true;
     READY = 0;
     NOT_READY = 1;
+    NOT_AVAILABLE = 1; // velosidy name this NOT_AVAILABLE
     BUSY = 2;
   }
 }
