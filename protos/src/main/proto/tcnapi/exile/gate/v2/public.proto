@@ -655,7 +655,7 @@ message StartCallRecordingResponse {}
 message AddAgentCallResponseRequest {
   string partner_agent_id = 1;
   string call_sid = 2;
-  string call_type = 3;
+  CallType call_type = 3;
   int64 current_session_id = 4;
   // key value pair to save
   string key = 6;

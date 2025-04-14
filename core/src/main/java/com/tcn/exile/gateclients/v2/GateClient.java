@@ -113,7 +113,7 @@ public class GateClient extends GateClientAbstract {
 
     public Iterator<Public.ListAgentsResponse> listAgents(Public.ListAgentsRequest request) {
         return executeRequest("listAgents", client -> client.listAgents(request));
-    }
+     }
 
     public Public.UpsertAgentResponse upsertAgent(Public.UpsertAgentRequest request) {
         return executeRequest("upsertAgent", client -> client.upsertAgent(request));
