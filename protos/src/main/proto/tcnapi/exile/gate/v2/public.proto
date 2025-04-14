@@ -742,7 +742,7 @@ message ListAgentsResponse {
 }
 
 message ListHuntGroupPauseCodesRequest {
-  int64 hunt_group_sid = 1;
+  string partner_agent_id = 1;
 }
 
 message ListHuntGroupPauseCodesResponse {
