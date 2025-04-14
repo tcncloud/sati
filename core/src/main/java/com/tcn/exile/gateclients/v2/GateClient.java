@@ -169,4 +169,13 @@ public class GateClient extends GateClientAbstract {
     public Public.AddAgentCallResponseResponse addAgentCallResponse(Public.AddAgentCallResponseRequest request) {
         return executeRequest("addAgentCallResponse", client -> client.addAgentCallResponse(request));
     }
+    public Public.ListHuntGroupPauseCodesResponse listHuntGroupPauseCodes(Public.ListHuntGroupPauseCodesRequest request) {
+        return executeRequest("listHuntGroupPauseCodes", client -> client.listHuntGroupPauseCodes(request));
+    }
+    public Public.PutCallOnSimpleHoldResponse putCallOnSimpleHold(Public.PutCallOnSimpleHoldRequest request) {
+        return executeRequest("putCallOnSimpleHold", client -> client.putCallOnSimpleHold(request));
+    }
+    public Public.TakeCallOffSimpleHoldResponse takeCallOffSimpleHold(Public.TakeCallOffSimpleHoldRequest request) {
+        return executeRequest("takeCallOffSimpleHold", client -> client.takeCallOffSimpleHold(request));
+    }
 }

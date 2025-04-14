@@ -36,6 +36,8 @@ service GateService {
   // Organization details retrieval
   rpc GetOrganizationInfo(GetOrganizationInfoRequest) returns (GetOrganizationInfoResponse);
 
+  rpc RotateCertificate(RotateCertificateRequest) returns (RotateCertificateResponse);
+
   /**
    * Periodic event polling (up to 4MB)
    * This is the primary method for receiving events from the Operator platform
@@ -78,17 +80,19 @@ service GateService {
 
   // Get Agent by Partner ID - retrieves agent details using partner's ID system
   rpc GetAgentByPartnerId(GetAgentByPartnerIdRequest) returns (GetAgentByPartnerIdResponse);
-  
-  // Save a key value pair for a call
+
   rpc AddAgentCallResponse(AddAgentCallResponseRequest) returns (AddAgentCallResponseResponse);
 
+  rpc ListHuntGroupPauseCodes(ListHuntGroupPauseCodesRequest) returns (ListHuntGroupPauseCodesResponse);
+
+  rpc PutCallOnSimpleHold(PutCallOnSimpleHoldRequest) returns (PutCallOnSimpleHoldResponse);
+  rpc TakeCallOffSimpleHold(TakeCallOffSimpleHoldRequest) returns (TakeCallOffSimpleHoldResponse);
   /**
    * Call control operations
    * These methods provide telephony functionality for making and managing calls.
    */
   // Dial a phone number - initiates an outbound call
   rpc Dial(DialRequest) returns (DialResponse);
-
   /**
    * Recording control operations
    * These methods manage call recording functionality.
@@ -544,6 +548,22 @@ message GetOrganizationInfoResponse {
 }
 
 /**
+ * Request message for rotating a certificate for an organization.
+ */
+message RotateCertificateRequest {
+  // hash of the current certificate that needs to be rotated
+  string certificate_hash = 1;
+}
+
+/**
+ * Response message containing the updated encoded certificate.
+ */
+message RotateCertificateResponse {
+  // the base-64 encoded certificate that we rotated to
+  string encoded_certificate = 1;
+}
+
+/**
  * Request message for retrieving call recording status.
  */
 message GetRecordingStatusRequest {
@@ -604,21 +624,6 @@ message GetAgentByIdResponse {
 }
 
 /**
- * Request message for saving details on a call response
- */
- message AddAgentCallResponseRequest {
-  string partner_agent_id = 1;
-  string call_sid = 2;
-  string call_type = 3;
-  int64 current_session_id = 4;
-  // key value pair to save
-  string key = 6;
-  string value = 7;
-}
-
-message AddAgentCallResponseResponse {}
-
-/**
  * Request message for stopping call recording.
  */
 message StopCallRecordingRequest {
@@ -645,6 +650,20 @@ message StartCallRecordingRequest {
 message StartCallRecordingResponse {}
 
 /**
+ * Request message for saving details on a call response
+ */
+message AddAgentCallResponseRequest {
+  string partner_agent_id = 1;
+  string call_sid = 2;
+  string call_type = 3;
+  int64 current_session_id = 4;
+  // key value pair to save
+  string key = 6;
+  string value = 7;
+}
+message AddAgentCallResponseResponse {}
+
+/**
  * Request message for dialing a phone number.
  */
 message DialRequest {
@@ -653,7 +672,6 @@ message DialRequest {
   google.protobuf.StringValue caller_id = 3; // Caller ID to display
   google.protobuf.StringValue pool_id = 4; // Pool ID for the call
   google.protobuf.StringValue record_id = 5; // Record ID for the call
-
 }
 
 /**
@@ -700,6 +718,7 @@ message ConnectedParty {
 message UpdateAgentStatusRequest {
   string partner_agent_id = 1; // ID of the agent to update
   AgentState new_state = 2; // New state to set for the agent
+  string reason = 3;
 }
 
 /**
@@ -721,6 +740,27 @@ message ListAgentsRequest {}
 message ListAgentsResponse {
   Agent agent = 1; // Single agent information
 }
+
+message ListHuntGroupPauseCodesRequest {
+  int64 hunt_group_sid = 1;
+}
+
+message ListHuntGroupPauseCodesResponse {
+  string name = 1;
+  string description = 2;
+  repeated string pause_codes = 3;
+}
+message PutCallOnSimpleHoldRequest {
+  int64 current_session_id = 1;
+  string partner_agent_id = 2;
+}
+message PutCallOnSimpleHoldResponse {}
+
+message TakeCallOffSimpleHoldRequest {
+  int64 current_session_id = 1;
+  string partner_agent_id = 2;
+}
+message TakeCallOffSimpleHoldResponse {}
 
 /**
  * Message representing agent information.
