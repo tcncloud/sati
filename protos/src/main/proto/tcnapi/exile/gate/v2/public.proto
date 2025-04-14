@@ -751,13 +751,11 @@ message ListHuntGroupPauseCodesResponse {
   repeated string pause_codes = 3;
 }
 message PutCallOnSimpleHoldRequest {
-  int64 current_session_id = 1;
   string partner_agent_id = 2;
 }
 message PutCallOnSimpleHoldResponse {}
 
 message TakeCallOffSimpleHoldRequest {
-  int64 current_session_id = 1;
   string partner_agent_id = 2;
 }
 message TakeCallOffSimpleHoldResponse {}
