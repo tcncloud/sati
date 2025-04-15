@@ -257,7 +257,7 @@ message StreamJobsResponse {
     string pool_id = 2; // ID of the pool containing the record
     string record_id = 3; // ID of the record to pop
     string call_sid = 4; // Session ID of the call
-    string call_type = 5; // Type of call (inbound, outbound)
+    CallType call_type = 5; // Type of call (inbound, outbound)
     // AlternateID (usually the caller_id)
     repeated tcnapi.exile.core.v2.Filter filters = 6;
   }
@@ -680,7 +680,7 @@ message DialRequest {
 message DialResponse {
   string phone_number = 1; // Phone number that was dialed
   string caller_id = 2; // Caller ID that was used
-  int64 call_sid = 3; // Session ID for the call
+  string call_sid = 3; // Session ID for the call
   CallType call_type = 4; // Type of call (inbound, outbound)
   string org_id = 5; // Organization ID making the call
   string partner_agent_id = 6; // Partner agent ID making the call
@@ -707,7 +707,7 @@ message GetAgentStatusResponse {
  * Message representing a party connected to an agent.
  */
 message ConnectedParty {
-  int64 call_sid = 1; // Session ID of the call
+  string call_sid = 1; // Session ID of the call
   CallType call_type = 2; // Type of call (inbound, outbound)
   bool is_inbound = 3; // Whether this is an inbound call
 }

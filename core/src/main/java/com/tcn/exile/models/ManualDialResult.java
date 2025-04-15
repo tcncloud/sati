@@ -59,7 +59,11 @@ public record ManualDialResult(String phoneNumber, String callerId, long callSid
       default:
         throw new IllegalArgumentException("Invalid call type: " + result.getCallType());
     }
-    return new ManualDialResult(result.getPhoneNumber(), result.getCallerId(), result.getCallSid(),
-        callType, result.getOrgId(), result.getPartnerAgentId());
+    try {
+        return new ManualDialResult(result.getPhoneNumber(), result.getCallerId(), Long.parseLong(result.getCallSid()),
+            callType, result.getOrgId(), result.getPartnerAgentId());
+    } catch (NumberFormatException e) {
+        throw new IllegalArgumentException("Invalid call_sid format: " + result.getCallSid(), e);
+    }
   }
 }
