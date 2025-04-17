@@ -178,4 +178,7 @@ public class GateClient extends GateClientAbstract {
     public Public.TakeCallOffSimpleHoldResponse takeCallOffSimpleHold(Public.TakeCallOffSimpleHoldRequest request) {
         return executeRequest("takeCallOffSimpleHold", client -> client.takeCallOffSimpleHold(request));
     }
+    public Public.RotateCertificateResponse rotateCertificate(Public.RotateCertificateRequest request) {
+        return executeRequest("rotateCertificate", client -> client.rotateCertificate(request));
+    }
 }
