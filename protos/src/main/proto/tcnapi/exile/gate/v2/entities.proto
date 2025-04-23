@@ -2,9 +2,9 @@ syntax = "proto3";
 
 package tcnapi.exile.gate.v2;
 
+import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/wrappers.proto";
-import "google/protobuf/struct.proto";
 import "tcnapi/exile/core/v2/entities.proto";
 
 message ExileAgentCall {
@@ -33,7 +33,7 @@ message ExileAgentCall {
 }
 
 message StringField {
-    optional string value = 1;
+  optional string value = 1;
 }
 
 message ExileTelephonyResult {
