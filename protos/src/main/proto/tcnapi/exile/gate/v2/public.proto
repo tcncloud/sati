@@ -684,6 +684,12 @@ message DialResponse {
   CallType call_type = 4; // Type of call (inbound, outbound)
   string org_id = 5; // Organization ID making the call
   string partner_agent_id = 6; // Partner agent ID making the call
+  bool attempted = 7; // will be true if the call attempted to start
+  string status = 8; // if started is false this will contain why it was rejected
+  // added for backwards compatibility with old gate protos.
+  // this is just an alternate name for call_sid.
+  // will be removed in a future version.
+  string caller_sid = 9 [deprecated = true];
 }
 
 /**
