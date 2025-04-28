@@ -21,6 +21,8 @@ import com.tcn.exile.gateclients.v2.GateClient;
 import com.tcn.exile.gateclients.v2.GateClientConfiguration;
 import com.tcn.exile.gateclients.v2.GateClientJobStream;
 import com.tcn.exile.gateclients.v2.GateClientPollEvents;
+import com.tcn.exile.plugin.PluginInterface;
+
 import io.methvin.watcher.DirectoryWatcher;
 import io.micronaut.context.ApplicationContext;
 import io.micronaut.context.event.ApplicationEventListener;
@@ -167,11 +169,13 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
     private final static String gateClientJobStreamPrefix = "gate-client-job-stream-";
     private final static String gateClientPollEventsPrefix = "gate-client-poll-events-";
     private final static String gateClientConfigurationPrefix = "gate-client-config-";
+    private final static String pluginPrefix = "plugin-";
     private void destroyBeans() {
         context.destroyBean(Argument.of(GateClient.class), Qualifiers.byName(gateClientPrefix + this.currentConfig.getOrg()));
         context.destroyBean(Argument.of(GateClientJobStream.class), Qualifiers.byName(gateClientJobStreamPrefix + this.currentConfig.getOrg()));
         context.destroyBean(Argument.of(GateClientPollEvents.class), Qualifiers.byName(gateClientPollEventsPrefix + this.currentConfig.getOrg()));
         context.destroyBean(Argument.of(GateClientConfiguration.class), Qualifiers.byName(gateClientConfigurationPrefix + this.currentConfig.getOrg()));
+        context.destroyBean(Argument.of(PluginInterface.class), Qualifiers.byName(pluginPrefix + this.currentConfig.getOrg()));
     }
 
     private void createBeans() {
@@ -188,6 +192,7 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
         context.registerSingleton(GateClientJobStream.class, gateClientJobStream,Qualifiers.byName(gateClientJobStreamPrefix + this.currentConfig.getOrg()), true);
         context.registerSingleton(GateClientPollEvents.class, gateClientPollEvents, Qualifiers.byName(gateClientPollEventsPrefix + this.currentConfig.getOrg()), true);
         context.registerSingleton(GateClientConfiguration.class, gateClientConfiguration, Qualifiers.byName(gateClientConfigurationPrefix + this.currentConfig.getOrg()), true);
+        context.registerSingleton(PluginInterface.class, demoPlugin, Qualifiers.byName(pluginPrefix + this.currentConfig.getOrg()), true);
         TaskScheduler taskScheduler = context.getBean(TaskScheduler.class);
         taskScheduler.scheduleAtFixedRate(Duration.ZERO, Duration.ofSeconds(1), gateClientJobStream::start);
         taskScheduler.scheduleAtFixedRate(Duration.ZERO, Duration.ofSeconds(10), gateClientPollEvents::start);
@@ -204,5 +209,17 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
             createBeans();
         });
         this.watcher.watchAsync();
+    }
+
+    public GateClient getGateClient() {
+        if (this.currentConfig == null) {
+            throw new IllegalStateException("No current config loaded");
+        }
+        String beanName = gateClientPrefix + this.currentConfig.getOrg();
+        return context.getBean(GateClient.class, Qualifiers.byName(beanName));
+    }
+
+    public PluginInterface getPlugin() {
+        return context.getBean(PluginInterface.class, Qualifiers.byName(pluginPrefix + this.currentConfig.getOrg()));
     }
 }

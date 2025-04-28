@@ -8,11 +8,11 @@ import jakarta.inject.Inject;
 @Controller("/version")
 public class VersionController {
   @Inject
-  PluginInterface plugin;
+  ConfigChangeWatcher configChangeWatcher;
 
   @Get
   public VersionInfo index() {
-    var ver = plugin.info();
+    var ver = configChangeWatcher.getPlugin().info();
     return new VersionInfo(
         ver.getCoreVersion(),
         ver.getServerName(),

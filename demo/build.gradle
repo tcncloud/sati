@@ -9,6 +9,9 @@ repositories {
 }
 
 dependencies {
+    // Add Micronaut Platform BOM
+    implementation(platform("io.micronaut.platform:micronaut-platform:${micronautVersion}"))
+
     annotationProcessor("io.micronaut:micronaut-http-validation")
     annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
     annotationProcessor("io.micronaut.validation:micronaut-validation-processor")
@@ -53,6 +56,9 @@ dependencies {
     // Add snakeyaml for YAML configuration parsing
     runtimeOnly("org.yaml:snakeyaml")
 
+    // Add Micronaut OpenAPI and Swagger UI support
+    implementation("io.micronaut.openapi:micronaut-openapi")
+
     testImplementation("io.micronaut:micronaut-http-client")
     testImplementation("org.mockito:mockito-core:5.15.2")
 
@@ -71,6 +77,9 @@ java {
 
 tasks.withType(JavaCompile) {
     options.encoding = "UTF-8"
+    options.compilerArgs += [
+        "-Amicronaut.openapi.views.spec=swagger-ui.enabled=true"
+    ]
     options.compilerArgs += ["-Xlint:unchecked", "-Xlint:deprecation"]
 }
 

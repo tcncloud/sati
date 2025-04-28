@@ -1,6 +1,8 @@
 package com.tcn.exile.demo.single;
 
 import ch.qos.logback.classic.LoggerContext;
+import jakarta.inject.Singleton;
+
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.gateclients.v2.GateClient;
 import com.tcn.exile.memlogger.LogShipper;
