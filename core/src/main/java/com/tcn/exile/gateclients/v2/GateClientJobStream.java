@@ -74,9 +74,12 @@ public class GateClientJobStream extends GateClientAbstract
       log.debug("Tenant: {} - Thread {} acquired streamLock.", tenant, Thread.currentThread().getName());
       try {
         log.debug("Tenant: {} - Attempting to start job stream", tenant);
-        if (!isRunning()) {
-          shutdown(); // shutdown() acts on static channel
-        }
+        // THIS WAS ISSUING A SHUTDOWN ON THE STATIC CHANNEL AND CAUSING ALL JOB STREAMS TO STOP
+        // if (!isRunning()) {
+        //   log.debug("Tenant: {} - is not running then attempting to shutdown job stream", tenant);
+        //   shutdown(); // shutdown() acts on static channel
+        // }
+        
         // Use getChannel() directly here
         this.client = GateServiceGrpc.newStub(getChannel())
             .withDeadlineAfter(30, TimeUnit.SECONDS)
