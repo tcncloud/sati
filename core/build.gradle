@@ -29,7 +29,8 @@ dependencies {
 
 	implementation("ch.qos.logback:logback-classic")
 
-	implementation('build.buf.gen:tcn_exileapi_grpc_java:1.72.0.1.20250430054428.7687114e0ed0')
+	// uses exileapi v1.0.1 - NOTE: you must use api to propagate the proto files to the other projects
+	api("build.buf.gen:tcn_exileapi_grpc_java:${grpcVersion}.1.20250501194345.3318b54a20ec")
 
 	implementation("net.java.dev.jna:jna")
 	implementation("io.methvin:directory-watcher")
@@ -37,15 +38,15 @@ dependencies {
 	implementation("com.zaxxer:HikariCP:5.1.0")
 
 	// gRPC client dependencies only (no server)
-	implementation("io.grpc:grpc-protobuf:${grpcVersion}")
-	implementation("io.grpc:grpc-services:${grpcVersion}") {
+	api("io.grpc:grpc-protobuf:${grpcVersion}")
+	api("io.grpc:grpc-services:${grpcVersion}") {
 		exclude group: "io.grpc", module: "grpc-health-service"
 	}
-	implementation("io.grpc:grpc-stub:${grpcVersion}")
+	api("io.grpc:grpc-stub:${grpcVersion}")
 	compileOnly("org.apache.tomcat:annotations-api:6.0.53")
 	runtimeOnly("io.grpc:grpc-netty-shaded:${grpcVersion}")
-	implementation("com.google.protobuf:protobuf-java-util:${protobufVersion}")
-	implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
+	api("com.google.protobuf:protobuf-java-util:${protobufVersion}")
+	api("org.bouncycastle:bcpkix-jdk18on:1.78.1")
 
 	// Add SnakeYAML for YAML configuration support
 	runtimeOnly("org.yaml:snakeyaml")

@@ -36,7 +36,6 @@ dependencies {
 
 	// Import multitenant module
 	implementation(project(":core"))
-	implementation('build.buf.gen:tcn_exileapi_grpc_java:1.72.0.1.20250430054428.7687114e0ed0')
 	implementation(project(":logback-ext"))
 
 	// Reactor for reactive streams
