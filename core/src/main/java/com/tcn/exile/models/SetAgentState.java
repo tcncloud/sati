@@ -1,28 +1,28 @@
-/* 
- *  Copyright 2017-2024 original authors
- *  
+/*
+ *  (C) 2017-2024 TCN Inc. All rights reserved.
+ *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
- *  
+ *
  *  https://www.apache.org/licenses/LICENSE-2.0
- *  
+ *
  *  Unless required by applicable law or agreed to in writing, software
  *  distributed under the License is distributed on an "AS IS" BASIS,
  *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
+ *
  */
-
 package com.tcn.exile.models;
 
 public enum SetAgentState {
-//  UNAVALIABLE(0),
-//  IDLE(1),
+  //  UNAVALIABLE(0),
+  //  IDLE(1),
   READY(2),
   HUNGUP(3),
-//  DESTROYED(4),
-//  PEERED(5),
+  //  DESTROYED(4),
+  //  PEERED(5),
   PAUSED(6),
   WRAPUP(7),
 //  PREPARING_AFTER_IDLE(8),
@@ -57,7 +57,7 @@ public enum SetAgentState {
 //  CALLER_TRANSFER_LOST_MERGED_CALLER(37),
 //  COLD_OUTBOUND_TRANSFER_STARTED(38),
 //  COLD_AGENT_TRANSFER_STARTED(39),
-  ;
+;
   private int value;
 
   SetAgentState(int i) {
