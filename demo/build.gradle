@@ -25,14 +25,14 @@ dependencies {
 	implementation("io.grpc:grpc-core:${grpcVersion}")
 	implementation("io.grpc:grpc-protobuf:${grpcVersion}")
 	implementation("io.grpc:grpc-services:${grpcVersion}")
-//    implementation("io.grpc:grpc-services:${grpcVersion}")
+
 	// Management and monitoring
 	implementation("io.micronaut:micronaut-management")
 	implementation("io.micronaut.micrometer:micronaut-micrometer-core")
 
-	implementation 'ch.qos.logback:logback-classic:1.5.17'
-	implementation 'ch.qos.logback:logback-core:1.5.17'
-	implementation 'org.slf4j:slf4j-api:2.0.17'
+	implementation('ch.qos.logback:logback-classic:1.5.17')
+	implementation('ch.qos.logback:logback-core:1.5.17')
+	implementation('org.slf4j:slf4j-api:2.0.17')
 
 	// Import multitenant module
 	implementation(project(":core"))
