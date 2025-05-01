@@ -1,117 +1,114 @@
 plugins {
-    id("com.github.johnrengelman.shadow")
-    id("io.micronaut.library")
-    id("io.micronaut.aot")
-    id("maven-publish")
-    id("jacoco")
+	id("com.github.johnrengelman.shadow")
+	id("io.micronaut.library")
+	id("io.micronaut.aot")
+	id("maven-publish")
+	id("jacoco")
 }
 
 repositories {
-    mavenCentral()
+	mavenCentral()
 }
 
 dependencies {
-    annotationProcessor("io.micronaut:micronaut-http-validation")
-    annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
-    annotationProcessor("io.micronaut.validation:micronaut-validation-processor")
+	annotationProcessor("io.micronaut:micronaut-http-validation")
+	annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
+	annotationProcessor("io.micronaut.validation:micronaut-validation-processor")
 
-    implementation("io.micronaut.serde:micronaut-serde-jackson")
-    implementation("io.micronaut:micronaut-http-client")
-    implementation("io.micronaut:micronaut-http-server-netty")
-    implementation("io.micronaut.validation:micronaut-validation")
-    
-    
-    // Reactor for reactive streams
-    implementation("io.projectreactor:reactor-core:3.5.12")
+	implementation("io.micronaut.serde:micronaut-serde-jackson")
+	implementation("io.micronaut:micronaut-http-client")
+	implementation("io.micronaut:micronaut-http-server-netty")
+	implementation("io.micronaut.validation:micronaut-validation")
 
-    implementation("jakarta.annotation:jakarta.annotation-api")
-    implementation("jakarta.validation:jakarta.validation-api")
 
-    implementation("ch.qos.logback:logback-classic")
+	// Reactor for reactive streams
+	implementation("io.projectreactor:reactor-core:3.5.12")
 
-    implementation(project(":protos"))
+	implementation("jakarta.annotation:jakarta.annotation-api")
+	implementation("jakarta.validation:jakarta.validation-api")
 
-    implementation("net.java.dev.jna:jna")
-    implementation("io.methvin:directory-watcher")
+	implementation("ch.qos.logback:logback-classic")
 
-    implementation("com.zaxxer:HikariCP:5.1.0")
+	implementation('build.buf.gen:tcn_exileapi_grpc_java:1.72.0.1.20250430054428.7687114e0ed0')
 
-    // gRPC client dependencies only (no server)
-    implementation("io.grpc:grpc-protobuf:${grpcVersion}")
-    implementation("io.grpc:grpc-services:${grpcVersion}") {
-        exclude group: "io.grpc", module: "grpc-health-service"
-    }
-    implementation("io.grpc:grpc-stub:${grpcVersion}")
-    compileOnly("org.apache.tomcat:annotations-api:6.0.53")
-    runtimeOnly("io.grpc:grpc-netty-shaded:${grpcVersion}")
-    implementation("com.google.protobuf:protobuf-java-util:${protobufVersion}")
-    implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
+	implementation("net.java.dev.jna:jna")
+	implementation("io.methvin:directory-watcher")
 
-    // Add SnakeYAML for YAML configuration support
-    runtimeOnly("org.yaml:snakeyaml")
+	implementation("com.zaxxer:HikariCP:5.1.0")
 
-    testImplementation("io.micronaut:micronaut-http-client")
-    testImplementation("org.mockito:mockito-core:5.15.2")
+	// gRPC client dependencies only (no server)
+	implementation("io.grpc:grpc-protobuf:${grpcVersion}")
+	implementation("io.grpc:grpc-services:${grpcVersion}") {
+		exclude group: "io.grpc", module: "grpc-health-service"
+	}
+	implementation("io.grpc:grpc-stub:${grpcVersion}")
+	compileOnly("org.apache.tomcat:annotations-api:6.0.53")
+	runtimeOnly("io.grpc:grpc-netty-shaded:${grpcVersion}")
+	implementation("com.google.protobuf:protobuf-java-util:${protobufVersion}")
+	implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
+
+	// Add SnakeYAML for YAML configuration support
+	runtimeOnly("org.yaml:snakeyaml")
+
+	testImplementation("io.micronaut:micronaut-http-client")
+	testImplementation("org.mockito:mockito-core:5.15.2")
 }
 
 java {
-    sourceCompatibility = JavaVersion.toVersion("17")
-    targetCompatibility = JavaVersion.toVersion("17")
+	sourceCompatibility = JavaVersion.toVersion("17")
+	targetCompatibility = JavaVersion.toVersion("17")
 }
 
 graalvmNative.toolchainDetection = false
 
 micronaut {
-    runtime("netty")
-    testRuntime("junit5")
-    processing {
-        incremental(true)
-        annotations("com.tcn.exile.*")
-    }
-    aot {
-        // Please review carefully the optimizations enabled below
-        // Check https://micronaut-projects.github.io/micronaut-aot/latest/guide/ for more details
-        optimizeServiceLoading = false
-        convertYamlToJava = false
-        precomputeOperations = true
-        cacheEnvironment = true
-        optimizeClassLoading = true
-        deduceEnvironment = true
-        optimizeNetty = true
-        replaceLogbackXml = true
-    }
+	runtime("netty")
+	testRuntime("junit5")
+	processing {
+		incremental(true)
+		annotations("com.tcn.exile.*")
+	}
+	aot {
+		// Please review carefully the optimizations enabled below
+		// Check https://micronaut-projects.github.io/micronaut-aot/latest/guide/ for more details
+		optimizeServiceLoading = false
+		convertYamlToJava = false
+		precomputeOperations = true
+		cacheEnvironment = true
+		optimizeClassLoading = true
+		deduceEnvironment = true
+		optimizeNetty = true
+		replaceLogbackXml = true
+	}
 }
 
 // Configure JaCoCo for test coverage
 jacoco {
-    toolVersion = "0.8.11"
+	toolVersion = "0.8.11"
 }
 
 jacocoTestReport {
-    reports {
-        xml.required = true
-        html.required = true
-    }
-    
-    afterEvaluate {
-        classDirectories.setFrom(files(classDirectories.files.collect {
-            fileTree(dir: it, exclude: [
-                '**/*$Lambda$*/**',
-                '**/*$$*/**',
-                '**/*_Micronaut*/**',
-                '**/micronaut/**'
-            ])
-        }))
-    }
+	reports {
+		xml.required = true
+		html.required = true
+	}
+
+	afterEvaluate {
+		classDirectories.setFrom(files(classDirectories.files.collect {
+			fileTree(dir: it, exclude: [
+				'**/*$Lambda$*/**',
+				'**/*$$*/**',
+				'**/*_Micronaut*/**',
+				'**/micronaut/**'
+			])
+		}))
+	}
 }
 
 test {
-    finalizedBy jacocoTestReport
+	finalizedBy jacocoTestReport
 }
 
 jacocoTestReport {
-    dependsOn test
+	dependsOn test
 }
-
-
-

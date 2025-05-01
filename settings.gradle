@@ -1,4 +1,3 @@
 rootProject.name="sati"
 
-include('protos', 'core', 'logback-ext', 'demo')
-
+include('core', 'logback-ext', 'demo')
