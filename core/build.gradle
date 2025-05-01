@@ -14,26 +14,21 @@ dependencies {
 	annotationProcessor("io.micronaut:micronaut-http-validation")
 	annotationProcessor("io.micronaut.serde:micronaut-serde-processor")
 	annotationProcessor("io.micronaut.validation:micronaut-validation-processor")
-
-	implementation("io.micronaut.serde:micronaut-serde-jackson")
-	implementation("io.micronaut:micronaut-http-client")
-	implementation("io.micronaut:micronaut-http-server-netty")
-	implementation("io.micronaut.validation:micronaut-validation")
+	runtimeOnly("io.micronaut:micronaut-http-client")
+	runtimeOnly("io.micronaut:micronaut-http-server-netty")
+	runtimeOnly("io.micronaut.validation:micronaut-validation")
 
 
 	// Reactor for reactive streams
 	implementation("io.projectreactor:reactor-core:3.5.12")
 
-	implementation("jakarta.annotation:jakarta.annotation-api")
-	implementation("jakarta.validation:jakarta.validation-api")
+	api("jakarta.annotation:jakarta.annotation-api")
+	api("jakarta.validation:jakarta.validation-api")
 
-	implementation("ch.qos.logback:logback-classic")
+	runtimeOnly("ch.qos.logback:logback-classic")
 
 	// uses exileapi v1.0.1 - NOTE: you must use api to propagate the proto files to the other projects
 	api("build.buf.gen:tcn_exileapi_grpc_java:${grpcVersion}.1.20250501194345.3318b54a20ec")
-
-	implementation("net.java.dev.jna:jna")
-	implementation("io.methvin:directory-watcher")
 
 	implementation("com.zaxxer:HikariCP:5.1.0")
 
@@ -46,13 +41,19 @@ dependencies {
 	compileOnly("org.apache.tomcat:annotations-api:6.0.53")
 	runtimeOnly("io.grpc:grpc-netty-shaded:${grpcVersion}")
 	api("com.google.protobuf:protobuf-java-util:${protobufVersion}")
-	api("org.bouncycastle:bcpkix-jdk18on:1.78.1")
 
 	// Add SnakeYAML for YAML configuration support
 	runtimeOnly("org.yaml:snakeyaml")
 
-	testImplementation("io.micronaut:micronaut-http-client")
-	testImplementation("org.mockito:mockito-core:5.15.2")
+	testRuntimeOnly("io.micronaut:micronaut-http-client")
+
+	api('io.micronaut.serde:micronaut-serde-api:2.12.1')
+	implementation('com.google.protobuf:protobuf-java:4.28.3')
+	api('io.micronaut:micronaut-context:4.7.14')
+	api('io.micronaut:micronaut-core:4.7.14')
+	api('com.fasterxml.jackson.core:jackson-annotations:2.17.2')
+	api('build.buf.gen:tcn_exileapi_protocolbuffers_java:28.3.0.1.20250501194345.3318b54a20ec')
+	api("io.grpc:grpc-api:${grpcVersion}")
 }
 
 java {

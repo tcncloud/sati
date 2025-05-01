@@ -1,3 +1,15 @@
+
+// pluginManagement {
+//   repositories {
+//     // releases
+//     mavenCentral()
+//     // snapshots
+//     maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+//     // Once you start using pluginManagement, you should explicitly add this, unless
+//     // you NEVER want to use this repository
+//     gradlePluginPortal()
+//   }
+// }
 rootProject.name="sati"
 
 include('core', 'logback-ext', 'demo')

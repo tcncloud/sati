@@ -6,7 +6,10 @@ plugins {
 	id("com.google.protobuf") version "0.9.4" apply(false)
 	id("maven-publish")
 	id("com.diffplug.spotless") version "7.0.3"
+	id("com.autonomousapps.dependency-analysis") version "2.17.0"
 }
+
+
 
 repositories {
 	mavenCentral()
@@ -16,7 +19,7 @@ allprojects {
 	apply plugin: 'java'
 	apply plugin: 'maven-publish'
 	apply plugin: 'com.diffplug.spotless'
-
+	apply plugin: 'com.autonomousapps.dependency-analysis'
 	repositories {
 		mavenCentral()
 		maven {
