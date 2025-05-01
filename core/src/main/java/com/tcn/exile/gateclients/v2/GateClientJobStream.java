@@ -1,20 +1,24 @@
-/* 
- *  Copyright 2017-2024 original authors
- *  
+/*
+ *  (C) 2017-2025 TCN Inc. All rights reserved.
+ *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
  *  You may obtain a copy of the License at
- *  
+ *
  *  https://www.apache.org/licenses/LICENSE-2.0
- *  
+ *
  *  Unless required by applicable law or agreed to in writing, software
  *  distributed under the License is distributed on an "AS IS" BASIS,
  *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
+ *
  */
 package com.tcn.exile.gateclients.v2;
 
+import build.buf.gen.tcnapi.exile.gate.v2.GateServiceGrpc;
+import build.buf.gen.tcnapi.exile.gate.v2.StreamJobsRequest;
+import build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse;
 import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.plugin.PluginInterface;
@@ -22,17 +26,14 @@ import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import io.micronaut.scheduling.annotation.Scheduled;
-import tcnapi.exile.gate.v2.GateServiceGrpc;
-import tcnapi.exile.gate.v2.Public.StreamJobsRequest;
-import tcnapi.exile.gate.v2.Public.StreamJobsResponse;
-
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class GateClientJobStream extends GateClientAbstract
-    implements StreamObserver<tcnapi.exile.gate.v2.Public.StreamJobsResponse> {
-  protected static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GateClientJobStream.class);
+    implements StreamObserver<StreamJobsResponse> {
+  protected static final org.slf4j.Logger log =
+      org.slf4j.LoggerFactory.getLogger(GateClientJobStream.class);
 
   PluginInterface plugin;
 
@@ -44,7 +45,7 @@ public class GateClientJobStream extends GateClientAbstract
   private GateServiceGrpc.GateServiceStub client;
 
   public GateClientJobStream(String tenant, Config currentConfig, PluginInterface plugin) {
-    super(tenant,currentConfig);
+    super(tenant, currentConfig);
     this.plugin = plugin;
   }
 
@@ -59,7 +60,9 @@ public class GateClientJobStream extends GateClientAbstract
         return;
       }
       if (!plugin.isRunning()) {
-        log.debug("Tenant: {} - Plugin is not running (possibly due to database disconnection), skipping job stream", tenant);
+        log.debug(
+            "Tenant: {} - Plugin is not running (possibly due to database disconnection), skipping job stream",
+            tenant);
         streamLock.unlock();
         return;
       }
@@ -71,25 +74,32 @@ public class GateClientJobStream extends GateClientAbstract
 
       // Check if we already have an active stream
       // Log immediately after acquiring the lock
-      log.debug("Tenant: {} - Thread {} acquired streamLock.", tenant, Thread.currentThread().getName());
+      log.debug(
+          "Tenant: {} - Thread {} acquired streamLock.", tenant, Thread.currentThread().getName());
       try {
         log.debug("Tenant: {} - Attempting to start job stream", tenant);
         // THIS WAS ISSUING A SHUTDOWN ON THE STATIC CHANNEL AND CAUSING ALL JOB STREAMS TO STOP
         // if (!isRunning()) {
-        //   log.debug("Tenant: {} - is not running then attempting to shutdown job stream", tenant);
+        //   log.debug("Tenant: {} - is not running then attempting to shutdown job stream",
+        // tenant);
         //   shutdown(); // shutdown() acts on static channel
         // }
-        
+
         // Use getChannel() directly here
-        this.client = GateServiceGrpc.newStub(getChannel())
-            .withDeadlineAfter(30, TimeUnit.SECONDS)
-            .withWaitForReady();
+        this.client =
+            GateServiceGrpc.newStub(getChannel())
+                .withDeadlineAfter(30, TimeUnit.SECONDS)
+                .withWaitForReady();
         this.client.streamJobs(StreamJobsRequest.newBuilder().build(), this);
       } catch (StatusRuntimeException e) {
         if (handleStatusRuntimeException(e)) {
           log.warn("Tenant: {} - Connection unavailable in job stream, channel reset", tenant);
         } else {
-          log.error("Tenant: {} - Error in job stream: {} ({})", tenant, e.getMessage(), e.getStatus().getCode());
+          log.error(
+              "Tenant: {} - Error in job stream: {} ({})",
+              tenant,
+              e.getMessage(),
+              e.getStatus().getCode());
         }
       } catch (UnconfiguredException e) {
         log.error("Tenant: {} - Error while starting job stream {}", tenant, e.getMessage());
@@ -104,7 +114,7 @@ public class GateClientJobStream extends GateClientAbstract
   }
 
   public boolean isRunning() {
-    return client != null ;
+    return client != null;
   }
 
   @Override
@@ -149,10 +159,17 @@ public class GateClientJobStream extends GateClientAbstract
     // Log the error *before* changing the state
     if (t instanceof StatusRuntimeException) {
       StatusRuntimeException statusEx = (StatusRuntimeException) t;
-      log.error("Tenant: {} - Job stream onError: Status={}, Message={}", tenant, statusEx.getStatus(), statusEx.getMessage(), statusEx);
+      log.error(
+          "Tenant: {} - Job stream onError: Status={}, Message={}",
+          tenant,
+          statusEx.getStatus(),
+          statusEx.getMessage(),
+          statusEx);
       // Resetting flag *only after logging*
       if (statusEx.getStatus().getCode() == Status.Code.CANCELLED) {
-        log.warn("Tenant: {} - Stream cancelled by server or network issue, attempting reconnect...", tenant);
+        log.warn(
+            "Tenant: {} - Stream cancelled by server or network issue, attempting reconnect...",
+            tenant);
         // Add a delay to prevent immediate reconnection flooding
         try {
           Thread.sleep(2000);
@@ -161,7 +178,9 @@ public class GateClientJobStream extends GateClientAbstract
         }
         reconnectStream(); // Attempt reconnect
       } else if (statusEx.getStatus().getCode() == Status.Code.UNAVAILABLE) {
-        log.warn("Tenant: {} - Stream unavailable, likely network issue or server restart. Attempting reconnect...", tenant);
+        log.warn(
+            "Tenant: {} - Stream unavailable, likely network issue or server restart. Attempting reconnect...",
+            tenant);
         // Add a delay
         try {
           Thread.sleep(2000);
@@ -170,7 +189,10 @@ public class GateClientJobStream extends GateClientAbstract
         }
         reconnectStream(); // Attempt reconnect (resetChannel is called within)
       } else {
-        log.error("Tenant: {} - Unhandled StatusRuntimeException in job stream. Status: {}, Message: {}", tenant, statusEx.getStatus(),
+        log.error(
+            "Tenant: {} - Unhandled StatusRuntimeException in job stream. Status: {}, Message: {}",
+            tenant,
+            statusEx.getStatus(),
             statusEx.getMessage());
         // Consider if reconnect should happen for other statuses
       }
@@ -200,22 +222,26 @@ public class GateClientJobStream extends GateClientAbstract
   private void scheduleReconnectWithBackoff() {
     reconnectAttempt++;
     // Exponential backoff with a maximum delay
-    int delaySeconds = Math.min(
-        (int) Math.pow(2, reconnectAttempt),
-        MAX_RECONNECT_DELAY_SECONDS);
+    int delaySeconds = Math.min((int) Math.pow(2, reconnectAttempt), MAX_RECONNECT_DELAY_SECONDS);
 
-    log.info("Tenant: {} - Scheduling reconnection attempt {} in {} seconds", tenant, reconnectAttempt, delaySeconds);
+    log.info(
+        "Tenant: {} - Scheduling reconnection attempt {} in {} seconds",
+        tenant,
+        reconnectAttempt,
+        delaySeconds);
 
     // Schedule reconnection using a separate thread
-    new Thread(() -> {
-      try {
-        Thread.sleep(delaySeconds * 1000);
-        reconnectStream();
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        log.warn("Tenant: {} - Reconnection thread interrupted", tenant);
-      }
-    }).start();
+    new Thread(
+            () -> {
+              try {
+                Thread.sleep(delaySeconds * 1000);
+                reconnectStream();
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.warn("Tenant: {} - Reconnection thread interrupted", tenant);
+              }
+            })
+        .start();
   }
 
   @Override
@@ -228,5 +254,4 @@ public class GateClientJobStream extends GateClientAbstract
     // reconnectStream();
     client = null;
   }
-
 }
