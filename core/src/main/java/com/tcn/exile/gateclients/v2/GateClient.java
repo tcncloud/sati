@@ -218,4 +218,9 @@ public class GateClient extends GateClientAbstract {
       GetVoiceRecordingDownloadLinkRequest request) {
     return executeRequest("getVoiceRecordingDownloadLink", client -> client.getVoiceRecordingDownloadLink(request));
   }
+
+  public ListSearchableRecordingFieldsResponse listSearchableRecordingFields(
+      ListSearchableRecordingFieldsRequest request) {
+    return executeRequest("listSearchableRecordingFields", client -> client.listSearchableRecordingFields(request));
+  }
 }
