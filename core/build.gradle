@@ -28,7 +28,7 @@ dependencies {
 	runtimeOnly("ch.qos.logback:logback-classic")
 
 	// uses exileapi v1.0.1 - NOTE: you must use api to propagate the proto files to the other projects
-	api("build.buf.gen:tcn_exileapi_grpc_java:${grpcVersion}.1.20250501194345.3318b54a20ec")
+	api("build.buf.gen:tcn_exileapi_grpc_java:${exileapiGrpcVersion}")
 
 	implementation("com.zaxxer:HikariCP:5.1.0")
 
@@ -52,7 +52,7 @@ dependencies {
 	api('io.micronaut:micronaut-context:4.7.14')
 	api('io.micronaut:micronaut-core:4.7.14')
 	api('com.fasterxml.jackson.core:jackson-annotations:2.17.2')
-	api('build.buf.gen:tcn_exileapi_protocolbuffers_java:28.3.0.1.20250501194345.3318b54a20ec')
+	api("build.buf.gen:tcn_exileapi_protocolbuffers_java:${exileapiProtobufVersion}")
 	api("io.grpc:grpc-api:${grpcVersion}")
 }
 
