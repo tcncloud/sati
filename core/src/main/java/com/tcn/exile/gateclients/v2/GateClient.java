@@ -209,4 +209,21 @@ public class GateClient extends GateClientAbstract {
   public RotateCertificateResponse rotateCertificate(RotateCertificateRequest request) {
     return executeRequest("rotateCertificate", client -> client.rotateCertificate(request));
   }
+
+  public Iterator<SearchVoiceRecordingsResponse> searchVoiceRecordings(
+      SearchVoiceRecordingsRequest request) {
+    return executeRequest("searchVoiceRecordings", client -> client.searchVoiceRecordings(request));
+  }
+
+  public GetVoiceRecordingDownloadLinkResponse getVoiceRecordingDownloadLink(
+      GetVoiceRecordingDownloadLinkRequest request) {
+    return executeRequest(
+        "getVoiceRecordingDownloadLink", client -> client.getVoiceRecordingDownloadLink(request));
+  }
+
+  public ListSearchableRecordingFieldsResponse listSearchableRecordingFields(
+      ListSearchableRecordingFieldsRequest request) {
+    return executeRequest(
+        "listSearchableRecordingFields", client -> client.listSearchableRecordingFields(request));
+  }
 }
