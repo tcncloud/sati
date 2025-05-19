@@ -209,4 +209,23 @@ public class GateClient extends GateClientAbstract {
   public RotateCertificateResponse rotateCertificate(RotateCertificateRequest request) {
     return executeRequest("rotateCertificate", client -> client.rotateCertificate(request));
   }
+
+  public ListSkillsResponse ListSkills(ListSkillsRequest request) {
+    return executeRequest("listSkills", client -> client.listSkills(request));
+  }
+
+  // List all skills assigned to an agent, and their proficiency
+  public ListAgentSkillsResponse ListAgentSkills(ListAgentSkillsRequest request) {
+    return executeRequest("listAgentSkills", client -> client.listAgentSkills(request));
+  }
+
+  // Assign a skill to an agent
+  public AssignAgentSkillResponse AssignAgentSkill(AssignAgentSkillRequest request) {
+    return executeRequest("assignAgentSkill", client -> client.assignAgentSkill(request));
+  }
+
+  // Unassign a skill from an agent
+  public UnassignAgentSkillResponse UnassignAgentSkill(UnassignAgentSkillRequest request) {
+    return executeRequest("unassignAgentSkill", client -> client.unassignAgentSkill(request));
+  }
 }
