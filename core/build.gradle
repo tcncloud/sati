@@ -7,6 +7,7 @@ plugins {
 }
 
 repositories {
+	mavenLocal()
 	mavenCentral()
 }
 
@@ -30,7 +31,7 @@ dependencies {
 	// uses exileapi v1.0.1 - NOTE: you must use api to propagate the proto files to the other projects
 	api("build.buf.gen:tcn_exileapi_grpc_java:${exileapiGrpcVersion}")
 
-	implementation("com.zaxxer:HikariCP:5.1.0")
+	implementation("com.zaxxer:HikariCP:6.3.0")
 
 	// gRPC client dependencies only (no server)
 	api("io.grpc:grpc-protobuf:${grpcVersion}")
