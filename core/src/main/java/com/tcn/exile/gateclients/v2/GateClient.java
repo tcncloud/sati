@@ -151,6 +151,10 @@ public class GateClient extends GateClientAbstract {
   public DialResponse dial(DialRequest request) {
     return executeRequest("dial", client -> client.dial(request));
   }
+    
+  public ListNCLRulesetNamesResponse listNCLRulesetNames(ListNCLRulesetNamesRequest request) {
+    return executeRequest("listNCLRulesetNames", client -> client.listNCLRulesetNames(request));
+  }
 
   // Recording controls
   public StartCallRecordingResponse startCallRecording(StartCallRecordingRequest request) {
