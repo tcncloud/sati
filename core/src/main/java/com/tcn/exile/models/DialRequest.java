@@ -25,4 +25,6 @@ public record DialRequest(
     @NotEmpty String phoneNumber,
     @Nullable String callerId,
     @Nullable String recordId,
-    @Nullable String poolId) {}
+    @Nullable String poolId,
+    @Nullable String rulesetName,
+    @Nullable Boolean skipComplianceChecks) {}
