@@ -61,6 +61,7 @@ public class GateClientPollEvents extends GateClientAbstract {
             tenant);
         return;
       }
+      long start = System.currentTimeMillis();
       response
           .getEventsList()
           .forEach(
@@ -90,6 +91,12 @@ public class GateClientPollEvents extends GateClientAbstract {
                   plugin.handleTelephonyResult(event.getTelephonyResult());
                 }
               });
+      long end = System.currentTimeMillis();
+      log.debug(
+          "Tenant: {} - Poll events request completed {} events successfully in {}ms",
+          tenant,
+          response.getEventsCount(),
+          end - start);
     } catch (StatusRuntimeException e) {
       if (handleStatusRuntimeException(e)) {
         // Already handled in parent class method
