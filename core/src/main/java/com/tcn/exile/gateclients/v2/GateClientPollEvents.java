@@ -92,11 +92,18 @@ public class GateClientPollEvents extends GateClientAbstract {
                 }
               });
       long end = System.currentTimeMillis();
-      log.debug(
-          "Tenant: {} - Poll events request completed {} events successfully in {}ms",
-          tenant,
-          response.getEventsCount(),
-          end - start);
+      // if we take longer than 1 second on average to process an event, log something
+      if (response.getEventsCount() > 0) {
+        long avg = (end-start) / response.getEventsCount();
+        if (avg > 1000) {
+          log.warn(
+              "Tenant: {} - Poll events request completed {} events successfully in {}ms, average time per event: {}ms, this is long",
+              tenant,
+              response.getEventsCount(),
+              end - start,
+              avg);
+        }
+      }
     } catch (StatusRuntimeException e) {
       if (handleStatusRuntimeException(e)) {
         // Already handled in parent class method
