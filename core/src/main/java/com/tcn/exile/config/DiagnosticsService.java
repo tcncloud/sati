@@ -16,14 +16,14 @@
  */
 package com.tcn.exile.config;
 
-import com.tcn.exile.models.SystemDiagnostics;
+import build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.DiagnosticsResult;
+import build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.DiagnosticsResult.*;
+import com.google.protobuf.Timestamp;
 import jakarta.inject.Singleton;
 import java.io.File;
 import java.io.IOException;
 import java.lang.management.*;
 import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,7 +31,6 @@ import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.*;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,22 +43,26 @@ public class DiagnosticsService {
   private static final Pattern KUBERNETES_PATTERN =
       Pattern.compile(".*k8s.*|.*kube.*", Pattern.CASE_INSENSITIVE);
 
-  public SystemDiagnostics collectSystemDiagnostics() {
+  public DiagnosticsResult collectSystemDiagnostics() {
     log.info("Collecting comprehensive system diagnostics...");
 
     try {
-      return new SystemDiagnostics(
-          Instant.now().toString(),
-          getHostname(),
-          collectOperatingSystemInfo(),
-          collectJavaRuntimeInfo(),
-          collectHardwareInfo(),
-          collectMemoryInfo(),
-          collectStorageInfo(),
-          collectNetworkInfo(),
-          collectContainerInfo(),
-          collectEnvironmentVariables(),
-          collectSystemProperties());
+      Instant now = Instant.now();
+      Timestamp timestamp =
+          Timestamp.newBuilder().setSeconds(now.getEpochSecond()).setNanos(now.getNano()).build();
+
+      return DiagnosticsResult.newBuilder()
+          .setTimestamp(timestamp)
+          .setHostname(getHostname())
+          .setOperatingSystem(collectOperatingSystemInfo())
+          .setJavaRuntime(collectJavaRuntimeInfo())
+          .setHardware(collectHardwareInfo())
+          .setMemory(collectMemoryInfo())
+          .addAllStorage(collectStorageInfo())
+          .setContainer(collectContainerInfo())
+          .setEnvironmentVariables(collectEnvironmentVariables())
+          .setSystemProperties(collectSystemProperties())
+          .build();
     } catch (Exception e) {
       log.error("Error collecting system diagnostics", e);
       throw new RuntimeException("Failed to collect system diagnostics", e);
@@ -74,7 +77,7 @@ public class DiagnosticsService {
     }
   }
 
-  private SystemDiagnostics.OperatingSystemInfo collectOperatingSystemInfo() {
+  private OperatingSystem collectOperatingSystemInfo() {
     OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
 
     long totalPhysicalMemory = -1;
@@ -98,18 +101,19 @@ public class DiagnosticsService {
       log.debug("Could not access extended OS MXBean methods", e);
     }
 
-    return new SystemDiagnostics.OperatingSystemInfo(
-        osBean.getName(),
-        osBean.getVersion(),
-        osBean.getArch(),
-        System.getProperty("os.name"),
-        osBean.getAvailableProcessors(),
-        getSystemUptime(),
-        osBean.getSystemLoadAverage(),
-        totalPhysicalMemory,
-        availablePhysicalMemory,
-        totalSwapSpace,
-        availableSwapSpace);
+    return OperatingSystem.newBuilder()
+        .setName(osBean.getName())
+        .setVersion(osBean.getVersion())
+        .setArchitecture(osBean.getArch())
+        .setManufacturer(System.getProperty("os.name"))
+        .setAvailableProcessors(osBean.getAvailableProcessors())
+        .setSystemUptime(getSystemUptime())
+        .setSystemLoadAverage(osBean.getSystemLoadAverage())
+        .setTotalPhysicalMemory(totalPhysicalMemory)
+        .setAvailablePhysicalMemory(availablePhysicalMemory)
+        .setTotalSwapSpace(totalSwapSpace)
+        .setAvailableSwapSpace(availableSwapSpace)
+        .build();
   }
 
   private long getSystemUptime() {
@@ -122,27 +126,31 @@ public class DiagnosticsService {
     }
   }
 
-  private SystemDiagnostics.JavaRuntimeInfo collectJavaRuntimeInfo() {
+  private JavaRuntime collectJavaRuntimeInfo() {
     RuntimeMXBean runtimeBean = ManagementFactory.getRuntimeMXBean();
 
-    return new SystemDiagnostics.JavaRuntimeInfo(
-        System.getProperty("java.version"),
-        System.getProperty("java.vendor"),
-        System.getProperty("java.runtime.name"),
-        System.getProperty("java.vm.name"),
-        System.getProperty("java.vm.version"),
-        System.getProperty("java.vm.vendor"),
-        System.getProperty("java.specification.name"),
-        System.getProperty("java.specification.version"),
-        System.getProperty("java.class.path"),
-        System.getProperty("java.library.path"),
-        runtimeBean.getInputArguments(),
-        runtimeBean.getUptime(),
-        runtimeBean.getStartTime(),
-        runtimeBean.getManagementSpecVersion());
+    JavaRuntime.Builder builder =
+        JavaRuntime.newBuilder()
+            .setVersion(System.getProperty("java.version", ""))
+            .setVendor(System.getProperty("java.vendor", ""))
+            .setRuntimeName(System.getProperty("java.runtime.name", ""))
+            .setVmName(System.getProperty("java.vm.name", ""))
+            .setVmVersion(System.getProperty("java.vm.version", ""))
+            .setVmVendor(System.getProperty("java.vm.vendor", ""))
+            .setSpecificationName(System.getProperty("java.specification.name", ""))
+            .setSpecificationVersion(System.getProperty("java.specification.version", ""))
+            .setClassPath(System.getProperty("java.class.path", ""))
+            .setLibraryPath(System.getProperty("java.library.path", ""))
+            .setUptime(runtimeBean.getUptime())
+            .setStartTime(runtimeBean.getStartTime())
+            .setManagementSpecVersion(runtimeBean.getManagementSpecVersion());
+
+    runtimeBean.getInputArguments().forEach(builder::addInputArguments);
+
+    return builder.build();
   }
 
-  private SystemDiagnostics.HardwareInfo collectHardwareInfo() {
+  private Hardware collectHardwareInfo() {
     String model = System.getenv("HOSTNAME");
     String manufacturer = "Unknown";
     String serialNumber = "Unknown";
@@ -160,11 +168,16 @@ public class DiagnosticsService {
       log.debug("Could not read hardware info from system files", e);
     }
 
-    return new SystemDiagnostics.HardwareInfo(
-        model, manufacturer, serialNumber, uuid, collectProcessorInfo());
+    return Hardware.newBuilder()
+        .setModel(model)
+        .setManufacturer(manufacturer)
+        .setSerialNumber(serialNumber)
+        .setUuid(uuid)
+        .setProcessor(collectProcessorInfo())
+        .build();
   }
 
-  private SystemDiagnostics.ProcessorInfo collectProcessorInfo() {
+  private Processor collectProcessorInfo() {
     OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
 
     String processorName = System.getenv("PROCESSOR_IDENTIFIER");
@@ -180,154 +193,108 @@ public class DiagnosticsService {
       }
     }
 
-    return new SystemDiagnostics.ProcessorInfo(
-        processorName,
-        System.getProperty("java.vm.name"),
-        System.getProperty("os.arch"),
-        osBean.getAvailableProcessors(),
-        Runtime.getRuntime().availableProcessors(),
-        -1L,
-        System.getProperty("os.arch").contains("64"));
+    return Processor.newBuilder()
+        .setName(processorName)
+        .setIdentifier(System.getProperty("java.vm.name", ""))
+        .setArchitecture(System.getProperty("os.arch", ""))
+        .setPhysicalProcessorCount(osBean.getAvailableProcessors())
+        .setLogicalProcessorCount(Runtime.getRuntime().availableProcessors())
+        .setMaxFrequency(-1L)
+        .setCpu64Bit(
+            System.getProperty("os.arch", "")
+                .contains("64")) // Changed from setCpu64bit to setCpu64Bit
+        .build();
   }
 
-  private SystemDiagnostics.MemoryInfo collectMemoryInfo() {
+  private Memory collectMemoryInfo() {
     MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
     MemoryUsage heapUsage = memoryBean.getHeapMemoryUsage();
     MemoryUsage nonHeapUsage = memoryBean.getNonHeapMemoryUsage();
 
-    List<SystemDiagnostics.MemoryPoolInfo> memoryPools =
-        ManagementFactory.getMemoryPoolMXBeans().stream()
-            .map(
-                pool -> {
-                  MemoryUsage usage = pool.getUsage();
-                  return new SystemDiagnostics.MemoryPoolInfo(
-                      pool.getName(),
-                      pool.getType().toString(),
-                      usage.getUsed(),
-                      usage.getMax(),
-                      usage.getCommitted());
-                })
-            .collect(Collectors.toList());
+    Memory.Builder builder =
+        Memory.newBuilder()
+            .setHeapMemoryUsed(heapUsage.getUsed())
+            .setHeapMemoryMax(heapUsage.getMax())
+            .setHeapMemoryCommitted(heapUsage.getCommitted())
+            .setNonHeapMemoryUsed(nonHeapUsage.getUsed())
+            .setNonHeapMemoryMax(nonHeapUsage.getMax())
+            .setNonHeapMemoryCommitted(nonHeapUsage.getCommitted());
 
-    // List<SystemDiagnostics.GarbageCollectorInfo> gcInfo =
-    //     ManagementFactory.getGarbageCollectorMXBeans().stream()
-    //         .map(
-    //             gc ->
-    //                 new SystemDiagnostics.GarbageCollectorInfo(
-    //                     gc.getName(), gc.getCollectionCount(), gc.getCollectionTime()))
-    //         .collect(Collectors.toList());
+    ManagementFactory.getMemoryPoolMXBeans()
+        .forEach(
+            pool -> {
+              MemoryUsage usage = pool.getUsage();
+              builder.addMemoryPools(
+                  MemoryPool.newBuilder()
+                      .setName(pool.getName())
+                      .setType(pool.getType().toString())
+                      .setUsed(usage.getUsed())
+                      .setMax(usage.getMax())
+                      .setCommitted(usage.getCommitted())
+                      .build());
+            });
 
-    return new SystemDiagnostics.MemoryInfo(
-        heapUsage.getUsed(),
-        heapUsage.getMax(),
-        heapUsage.getCommitted(),
-        nonHeapUsage.getUsed(),
-        nonHeapUsage.getMax(),
-        nonHeapUsage.getCommitted(),
-        memoryPools,
-        null);
-    // gcInfo);
+    return builder.build();
   }
 
-  private List<SystemDiagnostics.StorageInfo> collectStorageInfo() {
-    List<SystemDiagnostics.StorageInfo> storageList = new ArrayList<>();
+  private List<Storage> collectStorageInfo() {
+    List<Storage> storageList = new ArrayList<>();
 
     File[] roots = File.listRoots();
     for (File root : roots) {
-      List<SystemDiagnostics.PartitionInfo> partitions = new ArrayList<>();
-
-      partitions.add(
-          new SystemDiagnostics.PartitionInfo(
-              root.getAbsolutePath(),
-              "filesystem",
-              root.getTotalSpace(),
-              root.getUsableSpace(),
-              root.getFreeSpace()));
-
       storageList.add(
-          new SystemDiagnostics.StorageInfo(
-              root.getAbsolutePath(),
-              "disk",
-              "Unknown",
-              "Unknown",
-              root.getTotalSpace(),
-              partitions));
+          Storage.newBuilder()
+              .setName(root.getAbsolutePath())
+              .setType("disk")
+              .setModel("Unknown")
+              .setSerialNumber("Unknown")
+              .setSize(root.getTotalSpace())
+              .build());
     }
 
     return storageList;
   }
 
-  private List<SystemDiagnostics.NetworkInfo> collectNetworkInfo() {
-    List<SystemDiagnostics.NetworkInfo> networkList = new ArrayList<>();
-
-    try {
-      Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-      while (interfaces.hasMoreElements()) {
-        NetworkInterface networkInterface = interfaces.nextElement();
-
-        List<String> ipAddresses =
-            Collections.list(networkInterface.getInetAddresses()).stream()
-                .map(addr -> addr.getHostAddress())
-                .collect(Collectors.toList());
-
-        String macAddress = "Unknown";
-        try {
-          byte[] mac = networkInterface.getHardwareAddress();
-          if (mac != null) {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < mac.length; i++) {
-              sb.append(String.format("%02X%s", mac[i], (i < mac.length - 1) ? ":" : ""));
-            }
-            macAddress = sb.toString();
-          }
-        } catch (Exception e) {
-          log.debug("Could not get MAC address for interface: " + networkInterface.getName(), e);
-        }
-
-        networkList.add(
-            new SystemDiagnostics.NetworkInfo(
-                networkInterface.getName(),
-                networkInterface.getDisplayName(),
-                macAddress,
-                ipAddresses,
-                -1L, // Network stats would need additional libraries
-                -1L,
-                -1L,
-                -1L,
-                networkInterface.isUp(),
-                networkInterface.getMTU()));
-      }
-    } catch (SocketException e) {
-      log.error("Error collecting network information", e);
-    }
-
-    return networkList;
-  }
-
-  private SystemDiagnostics.ContainerInfo collectContainerInfo() {
+  private Container collectContainerInfo() {
     boolean isContainer = detectContainer();
     String containerType = detectContainerType();
     String containerId = getContainerId();
     String containerName = System.getenv("HOSTNAME");
     String imageName = getImageName();
-    String namespace = System.getenv("POD_NAMESPACE");
-    String podName = System.getenv("POD_NAME");
 
-    Map<String, String> labels = collectKubernetesLabels();
-    Map<String, String> annotations = collectKubernetesAnnotations();
-    SystemDiagnostics.ResourceLimits limits = collectResourceLimits();
+    Container.Builder builder =
+        Container.newBuilder()
+            .setIsContainer(isContainer)
+            .setContainerType(containerType)
+            .setContainerId(containerId)
+            .setContainerName(containerName != null ? containerName : "")
+            .setImageName(imageName);
 
-    return new SystemDiagnostics.ContainerInfo(
-        isContainer,
-        containerType,
-        containerId,
-        containerName,
-        imageName,
-        namespace,
-        podName,
-        labels,
-        annotations,
-        limits);
+    Map<String, String> resourceLimits = new HashMap<>();
+    Long memoryLimit =
+        parseMemoryLimit(readFileContent("/sys/fs/cgroup/memory/memory.limit_in_bytes", null));
+    if (memoryLimit != null) {
+      resourceLimits.put("memory_limit", String.valueOf(memoryLimit));
+    }
+
+    Long cpuLimit = parseCpuLimit(readFileContent("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", null));
+    if (cpuLimit != null) {
+      resourceLimits.put("cpu_limit", String.valueOf(cpuLimit));
+    }
+
+    String cpuRequest = System.getenv("CPU_REQUEST");
+    if (cpuRequest != null) {
+      resourceLimits.put("cpu_request", cpuRequest);
+    }
+
+    String memoryRequest = System.getenv("MEMORY_REQUEST");
+    if (memoryRequest != null) {
+      resourceLimits.put("memory_request", memoryRequest);
+    }
+
+    builder.putAllResourceLimits(resourceLimits);
+
+    return builder.build();
   }
 
   private boolean detectContainer() {
@@ -375,7 +342,7 @@ public class DiagnosticsService {
         }
       }
     }
-    return System.getenv("HOSTNAME");
+    return System.getenv("HOSTNAME") != null ? System.getenv("HOSTNAME") : "";
   }
 
   private String getImageName() {
@@ -410,17 +377,6 @@ public class DiagnosticsService {
     return annotations;
   }
 
-  private SystemDiagnostics.ResourceLimits collectResourceLimits() {
-    Long memoryLimit =
-        parseMemoryLimit(readFileContent("/sys/fs/cgroup/memory/memory.limit_in_bytes", null));
-    Long cpuLimit = parseCpuLimit(readFileContent("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", null));
-
-    String cpuRequest = System.getenv("CPU_REQUEST");
-    String memoryRequest = System.getenv("MEMORY_REQUEST");
-
-    return new SystemDiagnostics.ResourceLimits(memoryLimit, cpuLimit, cpuRequest, memoryRequest);
-  }
-
   private Long parseMemoryLimit(String content) {
     if (content == null || content.trim().isEmpty()) {
       return null;
@@ -444,7 +400,7 @@ public class DiagnosticsService {
     }
   }
 
-  private Map<String, String> collectEnvironmentVariables() {
+  private EnvironmentVariables collectEnvironmentVariables() {
     Set<String> sensitiveKeys =
         Set.of(
             "PASSWORD",
@@ -456,19 +412,101 @@ public class DiagnosticsService {
             "ACCESS_TOKEN",
             "PRIVATE_KEY");
 
-    return System.getenv().entrySet().stream()
-        .filter(
-            entry ->
-                sensitiveKeys.stream()
-                    .noneMatch(sensitive -> entry.getKey().toUpperCase().contains(sensitive)))
-        .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    Map<String, String> env = System.getenv();
+
+    return EnvironmentVariables.newBuilder()
+        .setLanguage(env.getOrDefault("LANGUAGE", ""))
+        .setPath(env.getOrDefault("PATH", ""))
+        .setHostname(env.getOrDefault("HOSTNAME", ""))
+        .setLcAll(env.getOrDefault("LC_ALL", ""))
+        .setJavaHome(env.getOrDefault("JAVA_HOME", ""))
+        .setJavaVersion(env.getOrDefault("JAVA_VERSION", ""))
+        .setLang(env.getOrDefault("LANG", ""))
+        .setHome(env.getOrDefault("HOME", ""))
+        .build();
   }
 
-  private Map<String, String> collectSystemProperties() {
-    return System.getProperties().entrySet().stream()
-        .collect(
-            Collectors.toMap(
-                entry -> entry.getKey().toString(), entry -> entry.getValue().toString()));
+  private SystemProperties collectSystemProperties() {
+    Properties props = System.getProperties();
+
+    return SystemProperties.newBuilder()
+        // Java Specification
+        .setJavaSpecificationVersion(props.getProperty("java.specification.version", ""))
+        .setJavaSpecificationVendor(props.getProperty("java.specification.vendor", ""))
+        .setJavaSpecificationName(props.getProperty("java.specification.name", ""))
+        .setJavaSpecificationMaintenanceVersion(
+            props.getProperty("java.specification.maintenance.version", ""))
+
+        // Java Version Info
+        .setJavaVersion(props.getProperty("java.version", ""))
+        .setJavaVersionDate(props.getProperty("java.version.date", ""))
+        .setJavaVendor(props.getProperty("java.vendor", ""))
+        .setJavaVendorVersion(props.getProperty("java.vendor.version", ""))
+        .setJavaVendorUrl(props.getProperty("java.vendor.url", ""))
+        .setJavaVendorUrlBug(props.getProperty("java.vendor.url.bug", ""))
+
+        // Java Runtime
+        .setJavaRuntimeName(props.getProperty("java.runtime.name", ""))
+        .setJavaRuntimeVersion(props.getProperty("java.runtime.version", ""))
+        .setJavaHome(props.getProperty("java.home", ""))
+        .setJavaClassPath(props.getProperty("java.class.path", ""))
+        .setJavaLibraryPath(props.getProperty("java.library.path", ""))
+        .setJavaClassVersion(props.getProperty("java.class.version", ""))
+
+        // Java VM
+        .setJavaVmName(props.getProperty("java.vm.name", ""))
+        .setJavaVmVersion(props.getProperty("java.vm.version", ""))
+        .setJavaVmVendor(props.getProperty("java.vm.vendor", ""))
+        .setJavaVmInfo(props.getProperty("java.vm.info", ""))
+        .setJavaVmSpecificationVersion(props.getProperty("java.vm.specification.version", ""))
+        .setJavaVmSpecificationVendor(props.getProperty("java.vm.specification.vendor", ""))
+        .setJavaVmSpecificationName(props.getProperty("java.vm.specification.name", ""))
+        .setJavaVmCompressedOopsMode(props.getProperty("java.vm.compressedOopsMode", ""))
+
+        // Operating System
+        .setOsName(props.getProperty("os.name", ""))
+        .setOsVersion(props.getProperty("os.version", ""))
+        .setOsArch(props.getProperty("os.arch", ""))
+
+        // User Info
+        .setUserName(props.getProperty("user.name", ""))
+        .setUserHome(props.getProperty("user.home", ""))
+        .setUserDir(props.getProperty("user.dir", ""))
+        .setUserTimezone(props.getProperty("user.timezone", ""))
+        .setUserCountry(props.getProperty("user.country", ""))
+        .setUserLanguage(props.getProperty("user.language", ""))
+
+        // File System
+        .setFileSeparator(props.getProperty("file.separator", ""))
+        .setPathSeparator(props.getProperty("path.separator", ""))
+        .setLineSeparator(props.getProperty("line.separator", ""))
+        .setFileEncoding(props.getProperty("file.encoding", ""))
+        .setNativeEncoding(props.getProperty("native.encoding", ""))
+
+        // Sun/Oracle Specific
+        .setSunJnuEncoding(props.getProperty("sun.jnu.encoding", ""))
+        .setSunArchDataModel(props.getProperty("sun.arch.data.model", ""))
+        .setSunJavaLauncher(props.getProperty("sun.java.launcher", ""))
+        .setSunBootLibraryPath(props.getProperty("sun.boot.library.path", ""))
+        .setSunJavaCommand(props.getProperty("sun.java.command", ""))
+        .setSunCpuEndian(props.getProperty("sun.cpu.endian", ""))
+        .setSunManagementCompiler(props.getProperty("sun.management.compiler", ""))
+        .setSunIoUnicodeEncoding(props.getProperty("sun.io.unicode.encoding", ""))
+
+        // JDK/Debug
+        .setJdkDebug(props.getProperty("jdk.debug", ""))
+        .setJavaIoTmpdir(props.getProperty("java.io.tmpdir", ""))
+
+        // Application Specific
+        .setEnv(props.getProperty("env", ""))
+        .setMicronautClassloaderLogging(props.getProperty("micronaut.classloader.logging", ""))
+
+        // Third Party Libraries
+        .setIoNettyAllocatorMaxOrder(props.getProperty("io.netty.allocator.maxOrder", ""))
+        .setIoNettyProcessId(props.getProperty("io.netty.processId", ""))
+        .setIoNettyMachineId(props.getProperty("io.netty.machineId", ""))
+        .setComZaxxerHikariPoolNumber(props.getProperty("com.zaxxer.hikari.pool_number", ""))
+        .build();
   }
 
   private String readFileContent(String filePath, String defaultValue) {
@@ -481,5 +519,9 @@ public class DiagnosticsService {
       log.debug("Could not read file: " + filePath, e);
     }
     return defaultValue;
+  }
+
+  public com.tcn.exile.models.DiagnosticsResult collectSerdeableDiagnostics() {
+    return com.tcn.exile.models.DiagnosticsResult.fromProto(collectSystemDiagnostics());
   }
 }
