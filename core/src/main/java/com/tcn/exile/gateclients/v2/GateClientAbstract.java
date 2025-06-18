@@ -18,13 +18,17 @@ package com.tcn.exile.gateclients.v2;
 
 import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
-import io.grpc.*;
+import io.grpc.Grpc;
+import io.grpc.ManagedChannel;
+import io.grpc.Status;
+import io.grpc.StatusRuntimeException;
+import io.grpc.TlsChannelCredentials;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,10 +50,14 @@ public abstract class GateClientAbstract {
 
   private static void registerShutdownHook() {
     if (shutdownHookRegistered.compareAndSet(false, true)) {
-      Runtime.getRuntime().addShutdownHook(new Thread(() -> {
-        log.info("Shutdown hook triggered - cleaning up gRPC channels");
-        forceShutdownSharedChannel();
-      }, "gRPC-Channel-Cleanup"));
+      Runtime.getRuntime()
+          .addShutdownHook(
+              new Thread(
+                  () -> {
+                    log.info("Shutdown hook triggered - cleaning up gRPC channels");
+                    forceShutdownSharedChannel();
+                  },
+                  "gRPC-Channel-Cleanup"));
     }
   }
 
@@ -88,29 +96,44 @@ public abstract class GateClientAbstract {
 
   protected void shutdown() {
     log.debug("Tenant: {} - Attempting shutdown of static shared gRPC channel.", tenant);
-    
+
     lock.lock();
     try {
       ManagedChannel channelToShutdown = sharedChannel;
-      if (channelToShutdown != null && !channelToShutdown.isShutdown() && !channelToShutdown.isTerminated()) {
-        log.debug("Tenant: {} - Attempting graceful shutdown of shared channel {}", tenant, channelToShutdown);
-        
+      if (channelToShutdown != null
+          && !channelToShutdown.isShutdown()
+          && !channelToShutdown.isTerminated()) {
+        log.debug(
+            "Tenant: {} - Attempting graceful shutdown of shared channel {}",
+            tenant,
+            channelToShutdown);
+
         channelToShutdown.shutdown();
         try {
           if (!channelToShutdown.awaitTermination(10, TimeUnit.SECONDS)) {
-            log.warn("Tenant: {} - Shared channel {} did not terminate gracefully after 10s, forcing shutdown.", tenant, channelToShutdown);
+            log.warn(
+                "Tenant: {} - Shared channel {} did not terminate gracefully after 10s, forcing shutdown.",
+                tenant,
+                channelToShutdown);
             channelToShutdown.shutdownNow();
             if (!channelToShutdown.awaitTermination(5, TimeUnit.SECONDS)) {
-              log.error("Tenant: {} - Shared channel {} failed to terminate even after forced shutdown.", tenant, channelToShutdown);
+              log.error(
+                  "Tenant: {} - Shared channel {} failed to terminate even after forced shutdown.",
+                  tenant,
+                  channelToShutdown);
             }
           }
-          log.info("Tenant: {} - Successfully shut down shared channel {}", tenant, channelToShutdown);
+          log.info(
+              "Tenant: {} - Successfully shut down shared channel {}", tenant, channelToShutdown);
         } catch (InterruptedException e) {
-          log.error("Tenant: {} - Interrupted while waiting for shared channel shutdown, forcing shutdown now.", tenant, e);
+          log.error(
+              "Tenant: {} - Interrupted while waiting for shared channel shutdown, forcing shutdown now.",
+              tenant,
+              e);
           channelToShutdown.shutdownNow();
           Thread.currentThread().interrupt(); // Preserve interrupt status
         }
-        
+
         // Set static field to null AFTER successful shutdown
         sharedChannel = null;
       } else {
@@ -151,7 +174,7 @@ public abstract class GateClientAbstract {
     // Double-checked locking pattern for thread-safe lazy initialization
     ManagedChannel localChannel = sharedChannel;
     if (localChannel == null || localChannel.isShutdown() || localChannel.isTerminated()) {
-      
+
       lock.lock();
       try {
         // Double-check condition inside synchronized block
@@ -166,7 +189,7 @@ public abstract class GateClientAbstract {
         lock.unlock();
       }
     }
-    
+
     return localChannel;
   }
 
@@ -187,10 +210,11 @@ public abstract class GateClientAbstract {
           .idleTimeout(30, TimeUnit.MINUTES)
           .overrideAuthority("exile-proxy")
           .build();
-          
+
     } catch (IOException e) {
       log.error("Tenant: {} - IOException during shared channel creation", tenant, e);
-      throw new UnconfiguredException("TCN Gate client configuration error during channel creation", e);
+      throw new UnconfiguredException(
+          "TCN Gate client configuration error during channel creation", e);
     } catch (UnconfiguredException e) {
       log.error("Tenant: {} - Configuration error during shared channel creation", tenant, e);
       throw e; // Re-throw specific unconfigured exception
@@ -216,16 +240,15 @@ public abstract class GateClientAbstract {
    */
   protected boolean handleStatusRuntimeException(StatusRuntimeException e) {
     if (e.getStatus().getCode() == Status.Code.UNAVAILABLE) {
-      log.warn("Tenant: {} - Connection unavailable, resetting channel: {}", tenant, e.getMessage());
+      log.warn(
+          "Tenant: {} - Connection unavailable, resetting channel: {}", tenant, e.getMessage());
       resetChannel();
       return true;
     }
     return false;
   }
 
-  /**
-   * Get channel statistics for monitoring
-   */
+  /** Get channel statistics for monitoring */
   public Map<String, Object> getChannelStats() {
     ManagedChannel channel = sharedChannel;
     if (channel != null) {
@@ -233,8 +256,7 @@ public abstract class GateClientAbstract {
           "isShutdown", channel.isShutdown(),
           "isTerminated", channel.isTerminated(),
           "authority", channel.authority(),
-          "state", channel.getState(false).toString()
-      );
+          "state", channel.getState(false).toString());
     }
     return Map.of("channel", "null");
   }

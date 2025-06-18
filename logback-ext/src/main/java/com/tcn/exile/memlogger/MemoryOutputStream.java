@@ -20,59 +20,58 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
 
 public class MemoryOutputStream extends OutputStream {
-    private static final int MAX_BUFFER_SIZE = 1000;
-    private final BlockingQueue<String> events;
-    private final StringBuilder currentLine;
-    private volatile boolean closed;
+  private static final int MAX_BUFFER_SIZE = 1000;
+  private final BlockingQueue<String> events;
+  private final StringBuilder currentLine;
+  private volatile boolean closed;
 
-    public MemoryOutputStream() {
-        this.events = new ArrayBlockingQueue<>(MAX_BUFFER_SIZE);
-        this.currentLine = new StringBuilder();
-        this.closed = false;
+  public MemoryOutputStream() {
+    this.events = new ArrayBlockingQueue<>(MAX_BUFFER_SIZE);
+    this.currentLine = new StringBuilder();
+    this.closed = false;
+  }
+
+  @Override
+  public void write(int b) throws IOException {
+    if (closed) {
+      throw new IOException("Stream is closed");
     }
 
-    @Override
-    public void write(int b) throws IOException {
-        if (closed) {
-            throw new IOException("Stream is closed");
-        }
-        
-        char c = (char) b;
-        currentLine.append(c);
-        
-        if (c == '\n') {
-            String line = currentLine.toString();
-            currentLine.setLength(0);
-            
-            // If queue is full, remove oldest element
-            if (!events.offer(line)) {
-                events.poll();
-                events.offer(line);
-            }
-        }
-    }
+    char c = (char) b;
+    currentLine.append(c);
 
-    public String[] getEvents() {
-        return events.toArray(new String[0]);
-    }
+    if (c == '\n') {
+      String line = currentLine.toString();
+      currentLine.setLength(0);
 
-    public void clear() {
-        events.clear();
-        currentLine.setLength(0);
+      // If queue is full, remove oldest element
+      if (!events.offer(line)) {
+        events.poll();
+        events.offer(line);
+      }
     }
+  }
 
-    @Override
-    public void close() throws IOException {
-        if (!closed) {
-            closed = true;
-            clear();
-        }
-    }
+  public String[] getEvents() {
+    return events.toArray(new String[0]);
+  }
 
-    public boolean isClosed() {
-        return closed;
+  public void clear() {
+    events.clear();
+    currentLine.setLength(0);
+  }
+
+  @Override
+  public void close() throws IOException {
+    if (!closed) {
+      closed = true;
+      clear();
     }
+  }
+
+  public boolean isClosed() {
+    return closed;
+  }
 }

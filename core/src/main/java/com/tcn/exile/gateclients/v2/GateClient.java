@@ -19,9 +19,9 @@ package com.tcn.exile.gateclients.v2;
 import build.buf.gen.tcnapi.exile.gate.v2.*;
 import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
+import com.tcn.exile.log.LogCategory;
+import com.tcn.exile.log.StructuredLogger;
 import com.tcn.exile.models.OrgInfo;
-import com.tcn.exile.sati.log.LogCategory;
-import com.tcn.exile.sati.log.StructuredLogger;
 import io.grpc.StatusRuntimeException;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
@@ -55,24 +55,38 @@ public class GateClient extends GateClientAbstract {
       return result;
     } catch (UnconfiguredException e) {
       log.error(
-          LogCategory.GRPC, "OperationFailed", "Failed to execute {} operation: {}", operationName, e.getMessage());
+          LogCategory.GRPC,
+          "OperationFailed",
+          "Failed to execute {} operation: {}",
+          operationName,
+          e.getMessage());
       throw new RuntimeException(e);
     } catch (StatusRuntimeException e) {
       if (handleStatusRuntimeException(e)) {
         log.warn(
-            LogCategory.GRPC, "ConnectionIssue", "Connection issue during {} operation, channel reset: {}", 
-            operationName, e.getMessage());
+            LogCategory.GRPC,
+            "ConnectionIssue",
+            "Connection issue during {} operation, channel reset: {}",
+            operationName,
+            e.getMessage());
         throw new RuntimeException(
             "Connection issue during " + operationName + ", please retry", e);
       }
       log.error(
-          LogCategory.GRPC, "GrpcError", "gRPC error during {} operation: {} ({})",
-          operationName, e.getMessage(), e.getStatus().getCode());
+          LogCategory.GRPC,
+          "GrpcError",
+          "gRPC error during {} operation: {} ({})",
+          operationName,
+          e.getMessage(),
+          e.getStatus().getCode());
       throw new RuntimeException("Failed to execute " + operationName, e);
     } catch (Exception e) {
       log.error(
-          LogCategory.GRPC, "UnexpectedError", "Unexpected error during {} operation: {}",
-          operationName, e.getMessage());
+          LogCategory.GRPC,
+          "UnexpectedError",
+          "Unexpected error during {} operation: {}",
+          operationName,
+          e.getMessage());
       throw new RuntimeException("Failed to execute " + operationName, e);
     }
   }
@@ -94,7 +108,11 @@ public class GateClient extends GateClientAbstract {
 
   // Job results submission (max 2MB)
   public SubmitJobResultsResponse submitJobResults(SubmitJobResultsRequest request) {
-    log.info(LogCategory.GRPC, "SubmitJobResults", "GateClient submit job results request: {}", request.getJobId());
+    log.info(
+        LogCategory.GRPC,
+        "SubmitJobResults",
+        "GateClient submit job results request: {}",
+        request.getJobId());
     try {
       return executeRequest(
           "submitJobResults",
@@ -107,8 +125,11 @@ public class GateClient extends GateClientAbstract {
           });
     } catch (Exception e) {
       log.error(
-          LogCategory.GRPC, "SubmitJobResultsFailed", "Failed to submit job results for job {}: {}", 
-          request.getJobId(), e.getMessage());
+          LogCategory.GRPC,
+          "SubmitJobResultsFailed",
+          "Failed to submit job results for job {}: {}",
+          request.getJobId(),
+          e.getMessage());
       throw new RuntimeException("Failed to submit job results", e);
     }
   }

@@ -21,9 +21,9 @@ import build.buf.gen.tcnapi.exile.gate.v2.StreamJobsRequest;
 import build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse;
 import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
+import com.tcn.exile.log.LogCategory;
+import com.tcn.exile.log.StructuredLogger;
 import com.tcn.exile.plugin.PluginInterface;
-import com.tcn.exile.sati.log.LogCategory;
-import com.tcn.exile.sati.log.StructuredLogger;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
@@ -39,7 +39,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @Context
 @Requires(property = "tcn.gate.enabled", value = "true")
-public class GateClientJobStream extends GateClientAbstract implements StreamObserver<StreamJobsResponse> {
+public class GateClientJobStream extends GateClientAbstract
+    implements StreamObserver<StreamJobsResponse> {
   private static final StructuredLogger log = new StructuredLogger(GateClientJobStream.class);
 
   private final PluginInterface plugin;
@@ -47,7 +48,8 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
   private final AtomicBoolean shouldReconnect = new AtomicBoolean(true);
   private final AtomicReference<ExecutorService> executorRef = new AtomicReference<>();
   private final AtomicReference<Thread> streamThreadRef = new AtomicReference<>();
-  private final AtomicReference<GateServiceGrpc.GateServiceStub> clientRef = new AtomicReference<>();
+  private final AtomicReference<GateServiceGrpc.GateServiceStub> clientRef =
+      new AtomicReference<>();
 
   public GateClientJobStream(String tenant, Config currentConfig, PluginInterface plugin) {
     super(tenant, currentConfig);
@@ -57,30 +59,36 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
   @Override
   public void start() {
     if (isUnconfigured()) {
-      log.warn(LogCategory.GRPC, "StartupSkipped", "GateClientJobStream is unconfigured, not starting.");
+      log.warn(
+          LogCategory.GRPC, "StartupSkipped", "GateClientJobStream is unconfigured, not starting.");
       return;
     }
 
     if (!plugin.isRunning()) {
-      log.debug(LogCategory.GRPC, "PluginNotRunning", "Plugin is not running (possibly due to database disconnection), skipping job stream");
+      log.debug(
+          LogCategory.GRPC,
+          "PluginNotRunning",
+          "Plugin is not running (possibly due to database disconnection), skipping job stream");
       return;
     }
 
     if (isRunning.compareAndSet(false, true)) {
       // Set up MDC context for the stream
       StructuredLogger.setupRequestContext(tenant, null, "jobStream", null);
-      
+
       log.info(LogCategory.GRPC, "Starting", "Starting GateClientJobStream");
       shouldReconnect.set(true);
-      
+
       // Create managed executor service
-      ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
-        Thread t = new Thread(r, "GateClientJobStream-" + tenant);
-        t.setDaemon(true); // Daemon thread to prevent JVM hanging
-        return t;
-      });
+      ExecutorService executor =
+          Executors.newSingleThreadExecutor(
+              r -> {
+                Thread t = new Thread(r, "GateClientJobStream-" + tenant);
+                t.setDaemon(true); // Daemon thread to prevent JVM hanging
+                return t;
+              });
       executorRef.set(executor);
-      
+
       executor.submit(this::maintainConnection);
     } else {
       log.debug(LogCategory.GRPC, "AlreadyRunning", "GateClientJobStream is already running");
@@ -93,54 +101,78 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
         log.info(LogCategory.GRPC, "EstablishingConnection", "Establishing job stream connection");
         establishJobStream();
       } catch (UnconfiguredException e) {
-        log.error(LogCategory.GRPC, "ConfigurationError", "Configuration error in job stream, stopping reconnection attempts");
+        log.error(
+            LogCategory.GRPC,
+            "ConfigurationError",
+            "Configuration error in job stream, stopping reconnection attempts");
         shouldReconnect.set(false);
         break;
       } catch (Exception e) {
         log.error(LogCategory.GRPC, "UnexpectedError", "Unexpected error in job stream connection");
         if (shouldReconnect.get()) {
-          log.info(LogCategory.GRPC, "WaitingReconnectionAttempt", "Waiting 30 seconds before reconnection attempt");
+          log.info(
+              LogCategory.GRPC,
+              "WaitingReconnectionAttempt",
+              "Waiting 30 seconds before reconnection attempt");
           try {
             Thread.sleep(30000);
           } catch (InterruptedException ie) {
-            log.info(LogCategory.GRPC, "ReconnectionWaitInterrupted", "Reconnection wait interrupted, stopping");
+            log.info(
+                LogCategory.GRPC,
+                "ReconnectionWaitInterrupted",
+                "Reconnection wait interrupted, stopping");
             Thread.currentThread().interrupt();
             break;
           }
         }
       }
     }
-    log.info(LogCategory.GRPC, "JobStreamMaintenanceLoopEnded", "Job stream connection maintenance loop ended");
+    log.info(
+        LogCategory.GRPC,
+        "JobStreamMaintenanceLoopEnded",
+        "Job stream connection maintenance loop ended");
   }
 
   private void establishJobStream() throws UnconfiguredException {
-    GateServiceGrpc.GateServiceStub client = GateServiceGrpc.newStub(getChannel())
-        .withDeadlineAfter(30, TimeUnit.SECONDS)
-        .withWaitForReady();
-    
+    GateServiceGrpc.GateServiceStub client =
+        GateServiceGrpc.newStub(getChannel())
+            .withDeadlineAfter(30, TimeUnit.SECONDS)
+            .withWaitForReady();
+
     clientRef.set(client);
     streamThreadRef.set(Thread.currentThread());
-    
+
     try {
       log.debug(LogCategory.GRPC, "CreatingStream", "Creating job stream");
       client.streamJobs(StreamJobsRequest.newBuilder().build(), this);
-      
+
       // Keep the stream alive while we should be connected
       while (shouldReconnect.get() && isRunning.get() && !Thread.currentThread().isInterrupted()) {
         try {
           Thread.sleep(10000); // Check every 10 seconds
         } catch (InterruptedException e) {
-          log.info(LogCategory.GRPC, "JobStreamThreadInterrupted", "Job stream thread interrupted, closing stream");
+          log.info(
+              LogCategory.GRPC,
+              "JobStreamThreadInterrupted",
+              "Job stream thread interrupted, closing stream");
           Thread.currentThread().interrupt();
           break;
         }
       }
-      
+
     } catch (StatusRuntimeException e) {
       if (handleStatusRuntimeException(e)) {
-        log.warn(LogCategory.GRPC, "ConnectionUnavailable", "Connection unavailable in job stream, channel reset");
+        log.warn(
+            LogCategory.GRPC,
+            "ConnectionUnavailable",
+            "Connection unavailable in job stream, channel reset");
       } else {
-        log.error(LogCategory.GRPC, "Error", "Error in job stream: {} ({})", e.getMessage(), e.getStatus().getCode());
+        log.error(
+            LogCategory.GRPC,
+            "Error",
+            "Error in job stream: {} ({})",
+            e.getMessage(),
+            e.getStatus().getCode());
       }
       throw e;
     } catch (Exception e) {
@@ -181,12 +213,23 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
       } else if (value.hasExecuteLogic()) {
         plugin.executeLogic(value.getJobId(), value.getExecuteLogic());
       } else {
-        log.error(LogCategory.GRPC, "UnknownJobType", "Unknown job type: {}", value.getUnknownFields());
+        log.error(
+            LogCategory.GRPC, "UnknownJobType", "Unknown job type: {}", value.getUnknownFields());
       }
     } catch (UnconfiguredException e) {
-      log.error(LogCategory.GRPC, "JobHandlingError", "Error while handling job: {}", value.getJobId(), e);
+      log.error(
+          LogCategory.GRPC,
+          "JobHandlingError",
+          "Error while handling job: {}",
+          value.getJobId(),
+          e);
     } catch (Exception e) {
-      log.error(LogCategory.GRPC, "UnexpectedJobError", "Unexpected error while handling job: {}", value.getJobId(), e);
+      log.error(
+          LogCategory.GRPC,
+          "UnexpectedJobError",
+          "Unexpected error while handling job: {}",
+          value.getJobId(),
+          e);
     }
   }
 
@@ -194,22 +237,38 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
   public void onError(Throwable t) {
     if (t instanceof StatusRuntimeException) {
       StatusRuntimeException statusEx = (StatusRuntimeException) t;
-      log.error(LogCategory.GRPC, "StreamError", "Job stream onError: Status={}, Message={}", 
-          statusEx.getStatus(), statusEx.getMessage(), statusEx);
-      
+      log.error(
+          LogCategory.GRPC,
+          "StreamError",
+          "Job stream onError: Status={}, Message={}",
+          statusEx.getStatus(),
+          statusEx.getMessage(),
+          statusEx);
+
       if (statusEx.getStatus().getCode() == Status.Code.CANCELLED) {
-        log.warn(LogCategory.GRPC, "StreamCancelled", "Stream cancelled by server or network issue, will attempt reconnect if enabled");
+        log.warn(
+            LogCategory.GRPC,
+            "StreamCancelled",
+            "Stream cancelled by server or network issue, will attempt reconnect if enabled");
       } else if (statusEx.getStatus().getCode() == Status.Code.UNAVAILABLE) {
-        log.warn(LogCategory.GRPC, "StreamUnavailable", "Stream unavailable, likely network issue or server restart. Will attempt reconnect if enabled");
+        log.warn(
+            LogCategory.GRPC,
+            "StreamUnavailable",
+            "Stream unavailable, likely network issue or server restart. Will attempt reconnect if enabled");
         resetChannel(); // Reset channel for unavailable errors
       } else {
-        log.error(LogCategory.GRPC, "UnhandledStatusError", "Unhandled StatusRuntimeException in job stream. Status: {}, Message: {}", 
-            statusEx.getStatus(), statusEx.getMessage());
+        log.error(
+            LogCategory.GRPC,
+            "UnhandledStatusError",
+            "Unhandled StatusRuntimeException in job stream. Status: {}, Message: {}",
+            statusEx.getStatus(),
+            statusEx.getMessage());
       }
     } else {
-      log.error(LogCategory.GRPC, "NonStatusError", "Job stream onError: Non-StatusRuntimeException", t);
+      log.error(
+          LogCategory.GRPC, "NonStatusError", "Job stream onError: Non-StatusRuntimeException", t);
     }
-    
+
     // Clear client reference
     clientRef.set(null);
     isRunning.set(false);
@@ -218,7 +277,10 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
 
   @Override
   public void onCompleted() {
-    log.info(LogCategory.GRPC, "StreamCompleted", "Job stream onCompleted: Server closed the stream gracefully.");
+    log.info(
+        LogCategory.GRPC,
+        "StreamCompleted",
+        "Job stream onCompleted: Server closed the stream gracefully.");
     clientRef.set(null);
     isRunning.set(false);
     shouldReconnect.set(true);
@@ -234,66 +296,84 @@ public class GateClientJobStream extends GateClientAbstract implements StreamObs
 
   public void stop() {
     log.info(LogCategory.GRPC, "Stopping", "Stopping GateClientJobStream");
-    
+
     shouldReconnect.set(false);
     isRunning.set(false);
-    
+
     Thread streamThread = streamThreadRef.get();
     if (streamThread != null && streamThread.isAlive()) {
       log.debug(LogCategory.GRPC, "InterruptingStreamThread", "Interrupting stream thread");
       streamThread.interrupt();
     }
-    
+
     ExecutorService executor = executorRef.get();
     if (executor != null && !executor.isShutdown()) {
       log.debug(LogCategory.GRPC, "ShuttingDownExecutorService", "Shutting down executor service");
       executor.shutdown();
       try {
         if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
-          log.warn(LogCategory.GRPC, "ExecutorDidNotTerminateGracefully", "Executor did not terminate gracefully, forcing shutdown");
+          log.warn(
+              LogCategory.GRPC,
+              "ExecutorDidNotTerminateGracefully",
+              "Executor did not terminate gracefully, forcing shutdown");
           executor.shutdownNow();
           if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-            log.error(LogCategory.GRPC, "ExecutorFailedToTerminateEvenAfterForcedShutdown", "Executor failed to terminate even after forced shutdown");
+            log.error(
+                LogCategory.GRPC,
+                "ExecutorFailedToTerminateEvenAfterForcedShutdown",
+                "Executor failed to terminate even after forced shutdown");
           }
         }
       } catch (InterruptedException e) {
-        log.warn(LogCategory.GRPC, "InterruptedWhileWaitingForExecutorTermination", "Interrupted while waiting for executor termination");
+        log.warn(
+            LogCategory.GRPC,
+            "InterruptedWhileWaitingForExecutorTermination",
+            "Interrupted while waiting for executor termination");
         executor.shutdownNow();
         Thread.currentThread().interrupt();
       }
     }
-    
+
     shutdown();
-    
+
     // Clear MDC context
     StructuredLogger.clearContext();
-    
+
     log.info(LogCategory.GRPC, "GateClientJobStreamStopped", "GateClientJobStream stopped");
   }
 
   @PreDestroy
   public void destroy() {
-    log.info(LogCategory.GRPC, "GateClientJobStream@PreDestroyCalled", "GateClientJobStream @PreDestroy called");
+    log.info(
+        LogCategory.GRPC,
+        "GateClientJobStream@PreDestroyCalled",
+        "GateClientJobStream @PreDestroy called");
     stop();
   }
 
   public boolean isActive() {
-    return isRunning.get()  && shouldReconnect.get();
+    return isRunning.get() && shouldReconnect.get();
   }
 
   public Map<String, Object> getStreamStatus() {
     ExecutorService executor = executorRef.get();
     Thread streamThread = streamThreadRef.get();
     GateServiceGrpc.GateServiceStub client = clientRef.get();
-    
+
     return Map.of(
-        "isRunning", isRunning.get(),
-        "shouldReconnect", shouldReconnect.get(),
-        "executorShutdown", executor == null || executor.isShutdown(),
-        "executorTerminated", executor == null || executor.isTerminated(),
-        "streamThreadAlive", streamThread != null && streamThread.isAlive(),
-        "streamThreadInterrupted", streamThread != null && streamThread.isInterrupted(),
-        "clientActive", client != null
-    );
+        "isRunning",
+        isRunning.get(),
+        "shouldReconnect",
+        shouldReconnect.get(),
+        "executorShutdown",
+        executor == null || executor.isShutdown(),
+        "executorTerminated",
+        executor == null || executor.isTerminated(),
+        "streamThreadAlive",
+        streamThread != null && streamThread.isAlive(),
+        "streamThreadInterrupted",
+        streamThread != null && streamThread.isInterrupted(),
+        "clientActive",
+        client != null);
   }
 }
