@@ -54,7 +54,7 @@ public class LogsController {
     if (instance == null) {
       return new ArrayList<>();
     }
-    return instance.getEvents();
+    return List.of(); // instance.getEvents();
   }
 
   @Get("/loggers")
