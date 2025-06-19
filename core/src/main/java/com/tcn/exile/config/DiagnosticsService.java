@@ -45,7 +45,7 @@ public class DiagnosticsService {
       Pattern.compile(".*docker.*", Pattern.CASE_INSENSITIVE);
   private static final Pattern KUBERNETES_PATTERN =
       Pattern.compile(".*k8s.*|.*kube.*", Pattern.CASE_INSENSITIVE);
- 
+
   public DiagnosticsResult collectSystemDiagnostics() {
     log.info("Collecting comprehensive system diagnostics...");
 
