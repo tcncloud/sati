@@ -30,6 +30,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.*;
+import java.util.Base64;
 import java.util.regex.Pattern;
 import javax.management.MBeanServer;
 import javax.management.ObjectName;
@@ -44,7 +45,7 @@ public class DiagnosticsService {
       Pattern.compile(".*docker.*", Pattern.CASE_INSENSITIVE);
   private static final Pattern KUBERNETES_PATTERN =
       Pattern.compile(".*k8s.*|.*kube.*", Pattern.CASE_INSENSITIVE);
-
+ 
   public DiagnosticsResult collectSystemDiagnostics() {
     log.info("Collecting comprehensive system diagnostics...");
 
@@ -52,6 +53,10 @@ public class DiagnosticsService {
       Instant now = Instant.now();
       Timestamp timestamp =
           Timestamp.newBuilder().setSeconds(now.getEpochSecond()).setNanos(now.getNano()).build();
+
+      // Collect Hikari metrics and config details
+      List<HikariPoolMetrics> hikariPoolMetrics = collectHikariMetrics();
+      ConfigDetails configDetails = collectConfigDetails();
 
       return DiagnosticsResult.newBuilder()
           .setTimestamp(timestamp)
@@ -64,6 +69,8 @@ public class DiagnosticsService {
           .setContainer(collectContainerInfo())
           .setEnvironmentVariables(collectEnvironmentVariables())
           .setSystemProperties(collectSystemProperties())
+          .addAllHikariPoolMetrics(hikariPoolMetrics)
+          .setConfigDetails(configDetails)
           .build();
     } catch (Exception e) {
       log.error("Error collecting system diagnostics", e);
@@ -524,43 +531,39 @@ public class DiagnosticsService {
   }
 
   public com.tcn.exile.models.DiagnosticsResult collectSerdeableDiagnostics() {
-    collectAndOutputHikariMetrics();
     return com.tcn.exile.models.DiagnosticsResult.fromProto(collectSystemDiagnostics());
   }
 
   /**
-   * Collects and outputs detailed metrics for all HikariCP connection pools in the application.
-   * This method finds all HikariCP pools via JMX and logs their metrics to the console. The metrics
-   * include active connections, idle connections, total connections, threads awaiting connections,
-   * and pool configuration if available.
+   * Collects metrics for all HikariCP connection pools in the application.
+   *
+   * @return List of HikariPoolMetrics objects with data about each connection pool
    */
-  public void collectAndOutputHikariMetrics() {
+  private List<HikariPoolMetrics> collectHikariMetrics() {
     log.info("Collecting HikariCP connection pool metrics...");
+    List<HikariPoolMetrics> poolMetrics = new ArrayList<>();
 
     try {
       // Get the platform MBean server
       MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
 
-      // Search for all HikariCP pools by finding all MBeans with ObjectName pattern
+      // Search for all HikariCP pools
       Set<ObjectName> hikariPoolNames =
           mBeanServer.queryNames(new ObjectName("com.zaxxer.hikari:type=Pool *"), null);
 
       if (hikariPoolNames.isEmpty()) {
-        log.info(
-            "No HikariCP connection pools found. Are pools configured with registerMbeans=true?");
-        return;
+        log.info("No HikariCP connection pools found.");
+        return poolMetrics;
       }
 
       log.info("Found {} HikariCP connection pool(s)", hikariPoolNames.size());
 
-      // For each pool, get and output the metrics
+      // For each pool, collect metrics
       for (ObjectName poolName : hikariPoolNames) {
         String poolNameStr = poolName.getKeyProperty("type").split(" ")[1];
         if (poolNameStr.startsWith("(") && poolNameStr.endsWith(")")) {
           poolNameStr = poolNameStr.substring(1, poolNameStr.length() - 1);
         }
-
-        log.info("==== HikariCP Pool: {} ====", poolNameStr);
 
         try {
           // Basic metrics
@@ -570,103 +573,174 @@ public class DiagnosticsService {
           int threadsAwaitingConnection =
               (Integer) mBeanServer.getAttribute(poolName, "ThreadsAwaitingConnection");
 
-          log.info("Active Connections: {}", activeConnections);
-          log.info("Idle Connections: {}", idleConnections);
-          log.info("Total Connections: {}", totalConnections);
-          log.info("Threads Awaiting Connection: {}", threadsAwaitingConnection);
+          // Create builder for this pool
+          HikariPoolMetrics.Builder poolMetricBuilder =
+              HikariPoolMetrics.newBuilder()
+                  .setPoolName(poolNameStr)
+                  .setActiveConnections(activeConnections)
+                  .setIdleConnections(idleConnections)
+                  .setTotalConnections(totalConnections)
+                  .setThreadsAwaitingConnection(threadsAwaitingConnection);
 
-          // Try to get the configuration metrics
-          ObjectName configName =
-              new ObjectName("com.zaxxer.hikari:type=PoolConfig (" + poolNameStr + ")");
-          if (mBeanServer.isRegistered(configName)) {
-            log.info("--- Configuration ---");
+          // Try to get configuration metrics
+          try {
+            ObjectName configName =
+                new ObjectName("com.zaxxer.hikari:type=PoolConfig (" + poolNameStr + ")");
+            if (mBeanServer.isRegistered(configName)) {
+              long connectionTimeout =
+                  (Long) mBeanServer.getAttribute(configName, "ConnectionTimeout");
+              long validationTimeout =
+                  (Long) mBeanServer.getAttribute(configName, "ValidationTimeout");
+              long idleTimeout = (Long) mBeanServer.getAttribute(configName, "IdleTimeout");
+              long maxLifetime = (Long) mBeanServer.getAttribute(configName, "MaxLifetime");
+              int minimumIdle = (Integer) mBeanServer.getAttribute(configName, "MinimumIdle");
+              int maximumPoolSize =
+                  (Integer) mBeanServer.getAttribute(configName, "MaximumPoolSize");
+              long leakDetectionThreshold =
+                  (Long) mBeanServer.getAttribute(configName, "LeakDetectionThreshold");
+              String poolName_ = (String) mBeanServer.getAttribute(configName, "PoolName");
 
-            long connectionTimeout =
-                (Long) mBeanServer.getAttribute(configName, "ConnectionTimeout");
-            long validationTimeout =
-                (Long) mBeanServer.getAttribute(configName, "ValidationTimeout");
-            long idleTimeout = (Long) mBeanServer.getAttribute(configName, "IdleTimeout");
-            long maxLifetime = (Long) mBeanServer.getAttribute(configName, "MaxLifetime");
-            int minimumIdle = (Integer) mBeanServer.getAttribute(configName, "MinimumIdle");
-            int maximumPoolSize = (Integer) mBeanServer.getAttribute(configName, "MaximumPoolSize");
-            long leakDetectionThreshold =
-                (Long) mBeanServer.getAttribute(configName, "LeakDetectionThreshold");
-            String poolName_ = (String) mBeanServer.getAttribute(configName, "PoolName");
+              // Build pool config
+              HikariPoolMetrics.PoolConfig.Builder configBuilder =
+                  HikariPoolMetrics.PoolConfig.newBuilder()
+                      .setPoolName(poolName_)
+                      .setConnectionTimeout(connectionTimeout)
+                      .setValidationTimeout(validationTimeout)
+                      .setIdleTimeout(idleTimeout)
+                      .setMaxLifetime(maxLifetime)
+                      .setMinimumIdle(minimumIdle)
+                      .setMaximumPoolSize(maximumPoolSize)
+                      .setLeakDetectionThreshold(leakDetectionThreshold);
 
-            log.info("Pool Name: {}", poolName_);
-            log.info("Connection Timeout: {} ms", connectionTimeout);
-            log.info("Validation Timeout: {} ms", validationTimeout);
-            log.info("Idle Timeout: {} ms", idleTimeout);
-            log.info("Max Lifetime: {} ms", maxLifetime);
-            log.info("Minimum Idle: {}", minimumIdle);
-            log.info("Maximum Pool Size: {}", maximumPoolSize);
-            log.info("Leak Detection Threshold: {} ms", leakDetectionThreshold);
+              // Try to get JDBC URL and username
+              try {
+                String jdbcUrl = (String) mBeanServer.getAttribute(configName, "JdbcUrl");
+                String username = (String) mBeanServer.getAttribute(configName, "Username");
+                configBuilder.setJdbcUrl(jdbcUrl).setUsername(username);
+              } catch (Exception e) {
+                log.debug("JDBC URL and Username not accessible via JMX: {}", e.getMessage());
+              }
 
-            // Try to get JDBC URL and username (these might be available depending on security
-            // settings)
-            try {
-              String jdbcUrl = (String) mBeanServer.getAttribute(configName, "JdbcUrl");
-              String username = (String) mBeanServer.getAttribute(configName, "Username");
-              log.info("JDBC URL: {}", jdbcUrl);
-              log.info("Username: {}", username);
-            } catch (Exception e) {
-              log.debug("JDBC URL and Username not accessible via JMX: {}", e.getMessage());
+              poolMetricBuilder.setPoolConfig(configBuilder);
             }
+          } catch (Exception e) {
+            log.debug("Error accessing pool configuration: {}", e.getMessage());
           }
 
-          // Additional pool properties that might be useful
-          log.info("--- Extended Metrics ---");
+          // Collect extended metrics if available
+          Map<String, String> extendedMetrics = new HashMap<>();
           try {
-            // Find connections usage data using dropwizard metrics if available
             Set<ObjectName> metricNames =
                 mBeanServer.queryNames(
                     new ObjectName("metrics:name=hikaricp." + poolNameStr + ".*"), null);
 
-            if (!metricNames.isEmpty()) {
-              log.info("Found Dropwizard metrics for pool {}", poolNameStr);
-              for (ObjectName metricName : metricNames) {
-                String metricType = metricName.getKeyProperty("name");
-                try {
-                  Object value = mBeanServer.getAttribute(metricName, "Value");
-                  log.info("Metric {}: {}", metricType, value);
-                } catch (Exception e) {
-                  log.debug("Could not get metric value for {}: {}", metricType, e.getMessage());
-                }
+            for (ObjectName metricName : metricNames) {
+              String metricType = metricName.getKeyProperty("name");
+              try {
+                Object value = mBeanServer.getAttribute(metricName, "Value");
+                extendedMetrics.put(metricType, String.valueOf(value));
+              } catch (Exception e) {
+                log.debug("Could not get metric value for {}: {}", metricType, e.getMessage());
               }
-            } else {
-              log.info("No Dropwizard metrics found for this pool");
             }
           } catch (Exception e) {
             log.debug("Error accessing Dropwizard metrics: {}", e.getMessage());
           }
 
-          // Try to gather connection state information
-          try {
-            log.info("--- Connection State ---");
-            // This information might not be accessible but worth trying
-            // Try to get a sample of connection states if available
-            log.info(
-                "Note: Detailed connection state information is typically not exposed through JMX");
-            log.info(
-                "To get this information, consider using a custom HikariCP listener or metrics reporter");
-          } catch (Exception e) {
-            log.debug("Could not access detailed connection state: {}", e.getMessage());
-          }
+          poolMetricBuilder.putAllExtendedMetrics(extendedMetrics);
+          poolMetrics.add(poolMetricBuilder.build());
 
         } catch (Exception e) {
           log.error("Error getting metrics for pool {}: {}", poolNameStr, e.getMessage());
         }
-        log.info("================================");
       }
-
-      // Output helpful guidance for pool configuration
-      log.info("\nTo improve HikariCP metrics visibility:");
-      log.info("1. Ensure pools are configured with 'registerMbeans=true'");
-      log.info("2. Consider adding Dropwizard metrics integration");
-      log.info(
-          "3. For Spring Boot apps, enable actuator metrics with 'management.metrics.enable.jdbc=true'");
     } catch (Exception e) {
       log.error("Error collecting HikariCP metrics", e);
     }
+
+    return poolMetrics;
+  }
+
+  /**
+   * Collects configuration details from the config file.
+   *
+   * @return ConfigDetails object with API endpoint and certificate information
+   */
+  private ConfigDetails collectConfigDetails() {
+    log.info("Collecting configuration file details...");
+    ConfigDetails.Builder configBuilder = ConfigDetails.newBuilder();
+
+    // Define the config paths and filename
+    final String CONFIG_FILE_NAME = "com.tcn.exiles.sati.config.cfg";
+    final List<Path> watchList = List.of(Path.of("/workdir/config"), Path.of("workdir/config"));
+
+    try {
+      // Find the first valid directory
+      Optional<Path> configDir =
+          watchList.stream().filter(path -> path.toFile().exists()).findFirst();
+
+      if (configDir.isEmpty()) {
+        log.error("No valid config directory found");
+        return configBuilder.build();
+      }
+
+      Path configFile = configDir.get().resolve(CONFIG_FILE_NAME);
+      if (!configFile.toFile().exists()) {
+        log.error("Config file not found: {}", configFile);
+        return configBuilder.build();
+      }
+
+      log.info("Found config file: {}", configFile);
+      byte[] base64EncodedData = Files.readAllBytes(configFile);
+      String dataString = new String(base64EncodedData);
+
+      // Trim and ensure proper base64 length
+      byte[] data = dataString.trim().getBytes();
+      byte[] decodedData;
+
+      try {
+        decodedData = Base64.getDecoder().decode(data);
+      } catch (IllegalArgumentException e) {
+        // Try removing the last byte which might be a newline
+        log.debug("Failed to decode base64, trying with truncated data");
+        decodedData = Base64.getDecoder().decode(Arrays.copyOf(data, data.length - 1));
+      }
+
+      // Convert to string for processing
+      String jsonString = new String(decodedData);
+
+      // Extract JSON values
+      String apiEndpoint = extractJsonValue(jsonString, "api_endpoint");
+      String certificateName = extractJsonValue(jsonString, "certificate_name");
+      String certificateDescription = extractJsonValue(jsonString, "certificate_description");
+
+      // Build Config Details
+      configBuilder
+          .setApiEndpoint(apiEndpoint)
+          .setCertificateName(certificateName)
+          .setCertificateDescription(certificateDescription);
+
+    } catch (IOException e) {
+      log.error("Error reading or parsing config file", e);
+    } catch (Exception e) {
+      log.error("Unexpected error processing config file", e);
+    }
+
+    return configBuilder.build();
+  }
+
+  /**
+   * Simple method to extract a JSON value by key from a JSON string. This is a basic implementation
+   * that works for first-level string values in JSON.
+   */
+  private String extractJsonValue(String jsonString, String key) {
+    String searchPattern = "\"" + key + "\"\\s*:\\s*\"([^\"]*)\"";
+    java.util.regex.Pattern pattern = java.util.regex.Pattern.compile(searchPattern);
+    java.util.regex.Matcher matcher = pattern.matcher(jsonString);
+
+    if (matcher.find()) {
+      return matcher.group(1);
+    }
+    return "Not found";
   }
 }

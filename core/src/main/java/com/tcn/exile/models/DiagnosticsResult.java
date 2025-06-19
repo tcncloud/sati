@@ -35,6 +35,8 @@ public class DiagnosticsResult {
   private Container container;
   private EnvironmentVariables environmentVariables;
   private SystemProperties systemProperties;
+  private List<HikariPoolMetrics> hikariPoolMetrics;
+  private ConfigDetails configDetails;
 
   // Getters and setters
   public Instant getTimestamp() {
@@ -115,6 +117,22 @@ public class DiagnosticsResult {
 
   public void setSystemProperties(SystemProperties systemProperties) {
     this.systemProperties = systemProperties;
+  }
+
+  public List<HikariPoolMetrics> getHikariPoolMetrics() {
+    return hikariPoolMetrics;
+  }
+
+  public void setHikariPoolMetrics(List<HikariPoolMetrics> hikariPoolMetrics) {
+    this.hikariPoolMetrics = hikariPoolMetrics;
+  }
+
+  public ConfigDetails getConfigDetails() {
+    return configDetails;
+  }
+
+  public void setConfigDetails(ConfigDetails configDetails) {
+    this.configDetails = configDetails;
   }
 
   @Serdeable
@@ -1255,6 +1273,198 @@ public class DiagnosticsResult {
     }
   }
 
+  @Serdeable
+  public static class HikariPoolMetrics {
+    private String poolName;
+    private int activeConnections;
+    private int idleConnections;
+    private int totalConnections;
+    private int threadsAwaitingConnection;
+    private PoolConfig poolConfig;
+    private Map<String, String> extendedMetrics;
+
+    public String getPoolName() {
+      return poolName;
+    }
+
+    public void setPoolName(String poolName) {
+      this.poolName = poolName;
+    }
+
+    public int getActiveConnections() {
+      return activeConnections;
+    }
+
+    public void setActiveConnections(int activeConnections) {
+      this.activeConnections = activeConnections;
+    }
+
+    public int getIdleConnections() {
+      return idleConnections;
+    }
+
+    public void setIdleConnections(int idleConnections) {
+      this.idleConnections = idleConnections;
+    }
+
+    public int getTotalConnections() {
+      return totalConnections;
+    }
+
+    public void setTotalConnections(int totalConnections) {
+      this.totalConnections = totalConnections;
+    }
+
+    public int getThreadsAwaitingConnection() {
+      return threadsAwaitingConnection;
+    }
+
+    public void setThreadsAwaitingConnection(int threadsAwaitingConnection) {
+      this.threadsAwaitingConnection = threadsAwaitingConnection;
+    }
+
+    public PoolConfig getPoolConfig() {
+      return poolConfig;
+    }
+
+    public void setPoolConfig(PoolConfig poolConfig) {
+      this.poolConfig = poolConfig;
+    }
+
+    public Map<String, String> getExtendedMetrics() {
+      return extendedMetrics;
+    }
+
+    public void setExtendedMetrics(Map<String, String> extendedMetrics) {
+      this.extendedMetrics = extendedMetrics;
+    }
+
+    @Serdeable
+    public static class PoolConfig {
+      private String poolName;
+      private long connectionTimeout;
+      private long validationTimeout;
+      private long idleTimeout;
+      private long maxLifetime;
+      private int minimumIdle;
+      private int maximumPoolSize;
+      private long leakDetectionThreshold;
+      private String jdbcUrl;
+      private String username;
+
+      public String getPoolName() {
+        return poolName;
+      }
+
+      public void setPoolName(String poolName) {
+        this.poolName = poolName;
+      }
+
+      public long getConnectionTimeout() {
+        return connectionTimeout;
+      }
+
+      public void setConnectionTimeout(long connectionTimeout) {
+        this.connectionTimeout = connectionTimeout;
+      }
+
+      public long getValidationTimeout() {
+        return validationTimeout;
+      }
+
+      public void setValidationTimeout(long validationTimeout) {
+        this.validationTimeout = validationTimeout;
+      }
+
+      public long getIdleTimeout() {
+        return idleTimeout;
+      }
+
+      public void setIdleTimeout(long idleTimeout) {
+        this.idleTimeout = idleTimeout;
+      }
+
+      public long getMaxLifetime() {
+        return maxLifetime;
+      }
+
+      public void setMaxLifetime(long maxLifetime) {
+        this.maxLifetime = maxLifetime;
+      }
+
+      public int getMinimumIdle() {
+        return minimumIdle;
+      }
+
+      public void setMinimumIdle(int minimumIdle) {
+        this.minimumIdle = minimumIdle;
+      }
+
+      public int getMaximumPoolSize() {
+        return maximumPoolSize;
+      }
+
+      public void setMaximumPoolSize(int maximumPoolSize) {
+        this.maximumPoolSize = maximumPoolSize;
+      }
+
+      public long getLeakDetectionThreshold() {
+        return leakDetectionThreshold;
+      }
+
+      public void setLeakDetectionThreshold(long leakDetectionThreshold) {
+        this.leakDetectionThreshold = leakDetectionThreshold;
+      }
+
+      public String getJdbcUrl() {
+        return jdbcUrl;
+      }
+
+      public void setJdbcUrl(String jdbcUrl) {
+        this.jdbcUrl = jdbcUrl;
+      }
+
+      public String getUsername() {
+        return username;
+      }
+
+      public void setUsername(String username) {
+        this.username = username;
+      }
+    }
+  }
+
+  @Serdeable
+  public static class ConfigDetails {
+    private String apiEndpoint;
+    private String certificateName;
+    private String certificateDescription;
+
+    public String getApiEndpoint() {
+      return apiEndpoint;
+    }
+
+    public void setApiEndpoint(String apiEndpoint) {
+      this.apiEndpoint = apiEndpoint;
+    }
+
+    public String getCertificateName() {
+      return certificateName;
+    }
+
+    public void setCertificateName(String certificateName) {
+      this.certificateName = certificateName;
+    }
+
+    public String getCertificateDescription() {
+      return certificateDescription;
+    }
+
+    public void setCertificateDescription(String certificateDescription) {
+      this.certificateDescription = certificateDescription;
+    }
+  }
+
   // Convert from protobuf DiagnosticsResult to our Serdeable model
   public static DiagnosticsResult fromProto(
       build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.DiagnosticsResult proto) {
@@ -1454,6 +1664,45 @@ public class DiagnosticsResult {
       props.setComZaxxerHikariPoolNumber(
           proto.getSystemProperties().getComZaxxerHikariPoolNumber());
       result.setSystemProperties(props);
+    }
+
+    // Convert HikariPoolMetrics
+    List<HikariPoolMetrics> hikariPools = new ArrayList<>();
+    for (var protoPool : proto.getHikariPoolMetricsList()) {
+      HikariPoolMetrics pool = new HikariPoolMetrics();
+      pool.setPoolName(protoPool.getPoolName());
+      pool.setActiveConnections(protoPool.getActiveConnections());
+      pool.setIdleConnections(protoPool.getIdleConnections());
+      pool.setTotalConnections(protoPool.getTotalConnections());
+      pool.setThreadsAwaitingConnection(protoPool.getThreadsAwaitingConnection());
+      pool.setExtendedMetrics(new HashMap<>(protoPool.getExtendedMetricsMap()));
+
+      if (protoPool.hasPoolConfig()) {
+        HikariPoolMetrics.PoolConfig config = new HikariPoolMetrics.PoolConfig();
+        config.setPoolName(protoPool.getPoolConfig().getPoolName());
+        config.setConnectionTimeout(protoPool.getPoolConfig().getConnectionTimeout());
+        config.setValidationTimeout(protoPool.getPoolConfig().getValidationTimeout());
+        config.setIdleTimeout(protoPool.getPoolConfig().getIdleTimeout());
+        config.setMaxLifetime(protoPool.getPoolConfig().getMaxLifetime());
+        config.setMinimumIdle(protoPool.getPoolConfig().getMinimumIdle());
+        config.setMaximumPoolSize(protoPool.getPoolConfig().getMaximumPoolSize());
+        config.setLeakDetectionThreshold(protoPool.getPoolConfig().getLeakDetectionThreshold());
+        config.setJdbcUrl(protoPool.getPoolConfig().getJdbcUrl());
+        config.setUsername(protoPool.getPoolConfig().getUsername());
+        pool.setPoolConfig(config);
+      }
+
+      hikariPools.add(pool);
+    }
+    result.setHikariPoolMetrics(hikariPools);
+
+    // Convert ConfigDetails
+    if (proto.hasConfigDetails()) {
+      ConfigDetails config = new ConfigDetails();
+      config.setApiEndpoint(proto.getConfigDetails().getApiEndpoint());
+      config.setCertificateName(proto.getConfigDetails().getCertificateName());
+      config.setCertificateDescription(proto.getConfigDetails().getCertificateDescription());
+      result.setConfigDetails(config);
     }
 
     return result;
