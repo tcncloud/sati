@@ -743,4 +743,184 @@ public class DiagnosticsService {
     }
     return "Not found";
   }
+
+  /**
+   * Get JDBC connection details for diagnostic purposes.
+   *
+   * @return Map containing JDBC connection information
+   */
+  public Map<String, Object> getJdbcConnectionDetails() {
+    Map<String, Object> jdbcDetails = new HashMap<>();
+
+    try {
+      MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+      Set<ObjectName> hikariPoolNames =
+          mBeanServer.queryNames(new ObjectName("com.zaxxer.hikari:type=Pool *"), null);
+
+      for (ObjectName poolName : hikariPoolNames) {
+        String poolNameStr = poolName.getKeyProperty("type").split(" ")[1];
+        if (poolNameStr.startsWith("(") && poolNameStr.endsWith(")")) {
+          poolNameStr = poolNameStr.substring(1, poolNameStr.length() - 1);
+        }
+
+        Map<String, Object> poolInfo = new HashMap<>();
+
+        // Get basic connection metrics
+        poolInfo.put("activeConnections", mBeanServer.getAttribute(poolName, "ActiveConnections"));
+        poolInfo.put("idleConnections", mBeanServer.getAttribute(poolName, "IdleConnections"));
+        poolInfo.put("totalConnections", mBeanServer.getAttribute(poolName, "TotalConnections"));
+
+        // Get configuration details
+        try {
+          ObjectName configName =
+              new ObjectName("com.zaxxer.hikari:type=PoolConfig (" + poolNameStr + ")");
+          if (mBeanServer.isRegistered(configName)) {
+            poolInfo.put("jdbcUrl", mBeanServer.getAttribute(configName, "JdbcUrl"));
+            poolInfo.put("username", mBeanServer.getAttribute(configName, "Username"));
+
+            // Try to get driver class name
+            try {
+              poolInfo.put(
+                  "driverClassName", mBeanServer.getAttribute(configName, "DriverClassName"));
+            } catch (Exception e) {
+              log.debug("Driver class name not available: {}", e.getMessage());
+              poolInfo.put("driverClassName", "Unknown");
+            }
+          }
+        } catch (Exception e) {
+          log.debug("Error accessing pool configuration: {}", e.getMessage());
+        }
+
+        jdbcDetails.put(poolNameStr, poolInfo);
+      }
+    } catch (Exception e) {
+      log.error("Error collecting JDBC connection details", e);
+    }
+
+    return jdbcDetails;
+  }
+
+  /**
+   * Get event stream statistics.
+   *
+   * @return Map containing event stream stats
+   */
+  public Map<String, Object> getEventStreamStats() {
+    Map<String, Object> eventStreamStats = new HashMap<>();
+
+    try {
+      MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+
+      // Check for event stream MBeans
+      Set<ObjectName> eventStreamMBeans =
+          mBeanServer.queryNames(new ObjectName("com.tcn.exile:type=EventStream,*"), null);
+
+      if (eventStreamMBeans.isEmpty()) {
+        // Try alternative MBean domain pattern
+        eventStreamMBeans = mBeanServer.queryNames(new ObjectName("exile.eventstream:*"), null);
+      }
+
+      if (!eventStreamMBeans.isEmpty()) {
+        for (ObjectName streamName : eventStreamMBeans) {
+          Map<String, Object> streamInfo = new HashMap<>();
+
+          // Get basic stream information
+          try {
+            streamInfo.put("status", mBeanServer.getAttribute(streamName, "Status"));
+          } catch (Exception e) {
+            streamInfo.put("status", "Unknown");
+          }
+
+          try {
+            streamInfo.put("maxJobs", mBeanServer.getAttribute(streamName, "MaxJobs"));
+          } catch (Exception e) {
+            streamInfo.put("maxJobs", -1);
+          }
+
+          try {
+            streamInfo.put("runningJobs", mBeanServer.getAttribute(streamName, "RunningJobs"));
+          } catch (Exception e) {
+            streamInfo.put("runningJobs", -1);
+          }
+
+          try {
+            streamInfo.put("completedJobs", mBeanServer.getAttribute(streamName, "CompletedJobs"));
+          } catch (Exception e) {
+            streamInfo.put("completedJobs", -1);
+          }
+
+          try {
+            streamInfo.put("queuedJobs", mBeanServer.getAttribute(streamName, "QueuedJobs"));
+          } catch (Exception e) {
+            streamInfo.put("queuedJobs", -1);
+          }
+
+          String streamKey =
+              streamName.getKeyProperty("name") != null
+                  ? streamName.getKeyProperty("name")
+                  : "defaultStream";
+          eventStreamStats.put(streamKey, streamInfo);
+        }
+      } else {
+        log.info("No event stream MBeans found");
+        eventStreamStats.put("status", "Not available");
+      }
+    } catch (Exception e) {
+      log.error("Error collecting event stream stats", e);
+      eventStreamStats.put("error", e.getMessage());
+    }
+
+    return eventStreamStats;
+  }
+
+  /** Outputs JDBC connection details and event stream statistics to the terminal. */
+  public void printDiagnosticsToTerminal() {
+    // Get JDBC connection details
+    Map<String, Object> jdbcDetails = getJdbcConnectionDetails();
+
+    System.out.println("\n========== JDBC CONNECTION DETAILS ==========");
+    if (jdbcDetails.isEmpty()) {
+      System.out.println("No JDBC connections found.");
+    } else {
+      jdbcDetails.forEach(
+          (poolName, details) -> {
+            System.out.println("\nPool: " + poolName);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> poolInfo = (Map<String, Object>) details;
+
+            System.out.println("  JDBC URL: " + poolInfo.getOrDefault("jdbcUrl", "Unknown"));
+            System.out.println("  Driver: " + poolInfo.getOrDefault("driverClassName", "Unknown"));
+            System.out.println("  Username: " + poolInfo.getOrDefault("username", "Unknown"));
+            System.out.println(
+                "  Total Connections: " + poolInfo.getOrDefault("totalConnections", -1));
+            System.out.println(
+                "  Active Connections: " + poolInfo.getOrDefault("activeConnections", -1));
+            System.out.println(
+                "  Idle Connections: " + poolInfo.getOrDefault("idleConnections", -1));
+          });
+    }
+
+    // Get event stream stats
+    Map<String, Object> eventStreamStats = getEventStreamStats();
+
+    System.out.println("\n========== EVENT STREAM STATISTICS ==========");
+    if (eventStreamStats.isEmpty() || eventStreamStats.containsKey("status")) {
+      System.out.println("No event streams found or not available.");
+    } else {
+      eventStreamStats.forEach(
+          (streamName, stats) -> {
+            System.out.println("\nStream: " + streamName);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> streamInfo = (Map<String, Object>) stats;
+
+            System.out.println("  Status: " + streamInfo.getOrDefault("status", "Unknown"));
+            System.out.println("  Max Jobs: " + streamInfo.getOrDefault("maxJobs", -1));
+            System.out.println("  Running Jobs: " + streamInfo.getOrDefault("runningJobs", -1));
+            System.out.println("  Completed Jobs: " + streamInfo.getOrDefault("completedJobs", -1));
+            System.out.println("  Queued Jobs: " + streamInfo.getOrDefault("queuedJobs", -1));
+          });
+    }
+
+    System.out.println("\n=============================================");
+  }
 }
