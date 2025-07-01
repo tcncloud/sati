@@ -97,11 +97,11 @@ public interface PluginInterface {
   void logger(String jobId, StreamJobsResponse.LoggingRequest log);
 
   void executeLogic(String jobId, StreamJobsResponse.ExecuteLogicRequest executeLogic);
-  
+
   /**
-   * Run system diagnostics and collect detailed information about the system
-   * environment, JVM settings, memory usage, container details, and database connections.
-   * The resulting diagnostics data is submitted back to the gate service.
+   * Run system diagnostics and collect detailed information about the system environment, JVM
+   * settings, memory usage, container details, and database connections. The resulting diagnostics
+   * data is submitted back to the gate service.
    *
    * @param jobId The ID of the job
    * @param diagnosticsRequest The diagnostics request details
