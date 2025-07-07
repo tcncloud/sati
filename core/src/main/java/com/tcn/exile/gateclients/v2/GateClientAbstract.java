@@ -27,7 +27,6 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,35 +34,24 @@ import org.slf4j.LoggerFactory;
 public abstract class GateClientAbstract {
   private static final Logger log = LoggerFactory.getLogger(GateClientAbstract.class);
 
-  // Properly static channel shared by all instances with thread-safe management
-  private static volatile ManagedChannel sharedChannel;
+  private ManagedChannel sharedChannel;
   private static final ReentrantLock lock = new ReentrantLock();
-  private static final AtomicBoolean shutdownHookRegistered = new AtomicBoolean(false);
 
   private Config currentConfig = null;
   protected final String tenant;
 
-  // Register shutdown hook to ensure proper cleanup
-  static {
-    registerShutdownHook();
-  }
-
-  private static void registerShutdownHook() {
-    if (shutdownHookRegistered.compareAndSet(false, true)) {
-      Runtime.getRuntime()
-          .addShutdownHook(
-              new Thread(
-                  () -> {
-                    log.info("Shutdown hook triggered - cleaning up gRPC channels");
-                    forceShutdownSharedChannel();
-                  },
-                  "gRPC-Channel-Cleanup"));
-    }
-  }
-
   public GateClientAbstract(String tenant, Config currentConfig) {
     this.currentConfig = currentConfig;
     this.tenant = tenant;
+
+    Runtime.getRuntime()
+        .addShutdownHook(
+            new Thread(
+                () -> {
+                  log.info("Shutdown hook triggered - cleaning up gRPC channels");
+                  forceShutdownSharedChannel();
+                },
+                "gRPC-Channel-Cleanup"));
   }
 
   public Config getConfig() {
@@ -148,7 +136,7 @@ public abstract class GateClientAbstract {
     }
   }
 
-  private static void forceShutdownSharedChannel() {
+  private void forceShutdownSharedChannel() {
     lock.lock();
     try {
       ManagedChannel channelToShutdown = sharedChannel;
@@ -180,11 +168,16 @@ public abstract class GateClientAbstract {
         // Double-check condition inside synchronized block
         localChannel = sharedChannel;
         if (localChannel == null || localChannel.isShutdown() || localChannel.isTerminated()) {
-          log.debug("Tenant: {} - Creating a new static shared gRPC channel.", tenant);
           localChannel = createNewChannel();
           sharedChannel = localChannel;
-          log.debug("Tenant: {} - New static shared channel created: {}", tenant, localChannel);
         }
+      } catch (Exception e) {
+        log.error(
+            "Tenant: {} - Error creating new static shared gRPC channel for config: {}",
+            tenant,
+            getConfig(),
+            e);
+        throw new UnconfiguredException("Error creating new static shared gRPC channel", e);
       } finally {
         lock.unlock();
       }
