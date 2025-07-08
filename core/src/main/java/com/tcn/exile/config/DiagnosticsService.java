@@ -160,7 +160,7 @@ public class DiagnosticsService {
   }
 
   private Hardware collectHardwareInfo() {
-    String model = System.getenv("HOSTNAME");
+    String model = System.getenv("HOSTNAME") != null ? System.getenv("HOSTNAME") : "Unknown";
     String manufacturer = "Unknown";
     String serialNumber = "Unknown";
     String uuid = "Unknown";
@@ -531,6 +531,7 @@ public class DiagnosticsService {
   }
 
   public com.tcn.exile.models.DiagnosticsResult collectSerdeableDiagnostics() {
+    printDiagnosticsToTerminal();
     return com.tcn.exile.models.DiagnosticsResult.fromProto(collectSystemDiagnostics());
   }
 

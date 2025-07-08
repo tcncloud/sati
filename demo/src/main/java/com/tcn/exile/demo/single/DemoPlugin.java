@@ -31,7 +31,6 @@ import com.tcn.exile.memlogger.MemoryAppenderInstance;
 import com.tcn.exile.models.PluginConfigEvent;
 import com.tcn.exile.plugin.PluginInterface;
 import com.tcn.exile.plugin.PluginStatus;
-import jakarta.inject.Inject;
 import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.List;
@@ -45,13 +44,13 @@ public class DemoPlugin implements PluginInterface, LogShipper {
   GateClient gateClient;
   private PluginConfigEvent pluginConfig;
   private String tenantKey;
-
-  @Inject private DiagnosticsService diagnosticsService;
+  private DiagnosticsService diagnosticsService;
 
   public DemoPlugin(String tenantKey, GateClient gateClient) {
     this.gateClient = gateClient;
     this.running = true;
     this.tenantKey = tenantKey;
+    this.diagnosticsService = new DiagnosticsService();
   }
 
   @Override
