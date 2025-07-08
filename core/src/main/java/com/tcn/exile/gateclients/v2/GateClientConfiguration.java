@@ -38,6 +38,7 @@ public class GateClientConfiguration extends GateClientAbstract {
   public GateClientConfiguration(String tenant, Config currentConfig, PluginInterface plugin) {
     super(tenant, currentConfig);
     this.plugin = plugin;
+    this.event = new PluginConfigEvent(this).setOrgId(currentConfig.getOrg()).setUnconfigured(true);
   }
 
   @Override
@@ -50,15 +51,24 @@ public class GateClientConfiguration extends GateClientAbstract {
               .withWaitForReady();
       GetClientConfigurationResponse response =
           client.getClientConfiguration(GetClientConfigurationRequest.newBuilder().build());
+
+      log.debug(
+          "Tenant: {} got config response: {} current event: {}",
+          this.tenant,
+          response,
+          this.event);
       var newEvent =
           new PluginConfigEvent(this)
               .setConfigurationName(response.getConfigName())
               .setConfigurationPayload(response.getConfigPayload())
-              .setOrgId(response.getOrgName())
+              .setOrgId(response.getOrgId())
               .setOrgName(response.getOrgName())
               .setUnconfigured(false);
       if (!newEvent.equals(event)) {
-        log.debug("Tenant: {} - Received new configuration, update plugin config", tenant);
+        log.debug(
+            "Tenant: {} - Received new configuration event: {}, update plugin config",
+            tenant,
+            newEvent);
         event = newEvent;
         this.plugin.setConfig(event);
       }
