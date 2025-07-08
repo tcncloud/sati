@@ -23,6 +23,7 @@ import build.buf.gen.tcnapi.exile.gate.v2.LogRequest;
 import build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse;
 import build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest;
 import ch.qos.logback.classic.LoggerContext;
+import com.tcn.exile.config.DiagnosticsService;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.gateclients.v2.GateClient;
 import com.tcn.exile.memlogger.LogShipper;
@@ -43,11 +44,13 @@ public class DemoPlugin implements PluginInterface, LogShipper {
   GateClient gateClient;
   private PluginConfigEvent pluginConfig;
   private String tenantKey;
+  private DiagnosticsService diagnosticsService;
 
   public DemoPlugin(String tenantKey, GateClient gateClient) {
     this.gateClient = gateClient;
     this.running = true;
     this.tenantKey = tenantKey;
+    this.diagnosticsService = new DiagnosticsService();
   }
 
   @Override
@@ -339,5 +342,40 @@ public class DemoPlugin implements PluginInterface, LogShipper {
   public void stop() {
     log.info("Tenant: {} - Stopping shipping logs plugin", tenantKey);
     MemoryAppenderInstance.getInstance().disableLogShipper();
+  }
+
+  @Override
+  public void runDiagnostics(
+      String jobId, StreamJobsResponse.DiagnosticsRequest diagnosticsRequest) {
+    log.info("Tenant: {} - Running diagnostics for job {}", tenantKey, jobId);
+
+    try {
+      build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.DiagnosticsResult diagnostics =
+          null;
+      if (diagnosticsService != null) {
+        diagnostics = diagnosticsService.collectSystemDiagnostics();
+      } else {
+        log.warn("DiagnosticsService is null, cannot collect system diagnostics");
+        // Create empty diagnostics result if service is unavailable
+        diagnostics = SubmitJobResultsRequest.DiagnosticsResult.newBuilder().build();
+      }
+
+      // Submit diagnostics results back to gate
+      gateClient.submitJobResults(
+          SubmitJobResultsRequest.newBuilder()
+              .setJobId(jobId)
+              .setEndOfTransmission(true)
+              .setDiagnosticsResult(diagnostics)
+              .build());
+    } catch (Exception e) {
+      log.error("Error running diagnostics", e);
+      // Return empty diagnostics result on error
+      gateClient.submitJobResults(
+          SubmitJobResultsRequest.newBuilder()
+              .setJobId(jobId)
+              .setEndOfTransmission(true)
+              .setDiagnosticsResult(SubmitJobResultsRequest.DiagnosticsResult.newBuilder().build())
+              .build());
+    }
   }
 }
