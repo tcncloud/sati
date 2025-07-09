@@ -18,6 +18,7 @@ package com.tcn.exile.demo.single;
 
 import com.tcn.exile.config.DiagnosticsService;
 import com.tcn.exile.models.DiagnosticsResult;
+import com.tcn.exile.models.TenantLogsResult;
 import io.micronaut.context.annotation.Requires;
 import io.micronaut.context.env.Environment;
 import io.micronaut.http.HttpResponse;
@@ -64,6 +65,27 @@ public class AdminController {
       log.error("Failed to collect diagnostics information", e);
       throw new HttpStatusException(
           HttpStatus.INTERNAL_SERVER_ERROR, "Failed to collect diagnostics: " + e.getMessage());
+    }
+  }
+
+  /**
+   * Returns tenant logs from memory appender.
+   *
+   * @return TenantLogsResult containing tenant logs
+   */
+  @Get("/listTenantLogs")
+  @Tag(name = "admin")
+  @Produces(MediaType.APPLICATION_JSON)
+  public HttpResponse<TenantLogsResult> getListTenantLogs() {
+    log.info("Collecting tenant logs information");
+    try {
+      // Get the serializable tenant logs result
+      TenantLogsResult result = diagnosticsService.collectSerdeableTenantLogs();
+      return HttpResponse.ok(result);
+    } catch (Exception e) {
+      log.error("Failed to collect tenant logs information", e);
+      throw new HttpStatusException(
+          HttpStatus.INTERNAL_SERVER_ERROR, "Failed to collect tenant logs: " + e.getMessage());
     }
   }
 }
