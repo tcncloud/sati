@@ -108,5 +108,14 @@ public interface PluginInterface {
    */
   void runDiagnostics(String jobId, StreamJobsResponse.DiagnosticsRequest diagnosticsRequest);
 
+  /**
+   * List tenant logs by retrieving logs from memory and formatting them into log groups. The logs
+   * are retrieved from the MemoryAppender and submitted back to the gate service.
+   *
+   * @param jobId The ID of the job
+   * @param listTenantLogsRequest The list tenant logs request details
+   */
+  void listTenantLogs(String jobId, StreamJobsResponse.ListTenantLogsRequest listTenantLogsRequest);
+
   void setConfig(PluginConfigEvent config);
 }

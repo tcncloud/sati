@@ -114,61 +114,61 @@ public class TenantLogsResult {
   }
 
   // Convert from protobuf ListTenantLogsResult to our Serdeable model
-  // public static TenantLogsResult fromProto(
-  //       build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult proto) {
-  //     TenantLogsResult result = new TenantLogsResult();
-  //     result.setNextPageToken(proto.getNextPageToken());
+  public static TenantLogsResult fromProto(
+      build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult proto) {
+    TenantLogsResult result = new TenantLogsResult();
+    result.setNextPageToken(proto.getNextPageToken());
 
-  //     java.util.List<LogGroup> logGroups = new java.util.ArrayList<>();
-  //     for (var protoLogGroup : proto.getLogGroupsList()) {
-  //       LogGroup logGroup = new LogGroup();
-  //       logGroup.setName(protoLogGroup.getName());
-  //       logGroup.setLogs(protoLogGroup.getLogsList());
+    java.util.List<LogGroup> logGroups = new java.util.ArrayList<>();
+    for (var protoLogGroup : proto.getLogGroupsList()) {
+      LogGroup logGroup = new LogGroup();
+      logGroup.setName(protoLogGroup.getName());
+      logGroup.setLogs(protoLogGroup.getLogsList());
 
-  //       if (protoLogGroup.hasTimeRange()) {
-  //         LogGroup.TimeRange timeRange = new LogGroup.TimeRange();
-  //         timeRange.setStartTime(
-  //             Instant.ofEpochSecond(
-  //                 protoLogGroup.getTimeRange().getStartTime().getSeconds(),
-  //                 protoLogGroup.getTimeRange().getStartTime().getNanos()));
-  //         timeRange.setEndTime(
-  //             Instant.ofEpochSecond(
-  //                 protoLogGroup.getTimeRange().getEndTime().getSeconds(),
-  //                 protoLogGroup.getTimeRange().getEndTime().getNanos()));
-  //         logGroup.setTimeRange(timeRange);
-  //       }
+      if (protoLogGroup.hasTimeRange()) {
+        LogGroup.TimeRange timeRange = new LogGroup.TimeRange();
+        timeRange.setStartTime(
+            Instant.ofEpochSecond(
+                protoLogGroup.getTimeRange().getStartTime().getSeconds(),
+                protoLogGroup.getTimeRange().getStartTime().getNanos()));
+        timeRange.setEndTime(
+            Instant.ofEpochSecond(
+                protoLogGroup.getTimeRange().getEndTime().getSeconds(),
+                protoLogGroup.getTimeRange().getEndTime().getNanos()));
+        logGroup.setTimeRange(timeRange);
+      }
 
-  //       // Convert log levels map
-  //       Map<String, LogGroup.LogLevel> logLevelsMap = new java.util.HashMap<>();
-  //       for (var entry : protoLogGroup.getLogLevelsMap().entrySet()) {
-  //         LogGroup.LogLevel level;
-  //         switch (entry.getValue()) {
-  //           case DEBUG:
-  //             level = LogGroup.LogLevel.DEBUG;
-  //             break;
-  //           case INFO:
-  //             level = LogGroup.LogLevel.INFO;
-  //             break;
-  //           case WARNING:
-  //             level = LogGroup.LogLevel.WARNING;
-  //             break;
-  //           case ERROR:
-  //             level = LogGroup.LogLevel.ERROR;
-  //             break;
-  //           case FATAL:
-  //             level = LogGroup.LogLevel.FATAL;
-  //             break;
-  //           default:
-  //             level = LogGroup.LogLevel.INFO;
-  //         }
-  //         logLevelsMap.put(entry.getKey(), level);
-  //       }
-  //       logGroup.setLogLevels(logLevelsMap);
+      // Convert log levels map
+      Map<String, LogGroup.LogLevel> logLevelsMap = new java.util.HashMap<>();
+      for (var entry : protoLogGroup.getLogLevelsMap().entrySet()) {
+        LogGroup.LogLevel level;
+        switch (entry.getValue()) {
+          case DEBUG:
+            level = LogGroup.LogLevel.DEBUG;
+            break;
+          case INFO:
+            level = LogGroup.LogLevel.INFO;
+            break;
+          case WARNING:
+            level = LogGroup.LogLevel.WARNING;
+            break;
+          case ERROR:
+            level = LogGroup.LogLevel.ERROR;
+            break;
+          case FATAL:
+            level = LogGroup.LogLevel.FATAL;
+            break;
+          default:
+            level = LogGroup.LogLevel.INFO;
+        }
+        logLevelsMap.put(entry.getKey(), level);
+      }
+      logGroup.setLogLevels(logLevelsMap);
 
-  //       logGroups.add(logGroup);
-  //     }
-  //     result.setLogGroups(logGroups);
+      logGroups.add(logGroup);
+    }
+    result.setLogGroups(logGroups);
 
-  //     return result;
-  //   }
+    return result;
+  }
 }
