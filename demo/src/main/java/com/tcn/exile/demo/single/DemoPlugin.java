@@ -32,6 +32,7 @@ import com.tcn.exile.models.PluginConfigEvent;
 import com.tcn.exile.plugin.PluginInterface;
 import com.tcn.exile.plugin.PluginStatus;
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import org.slf4j.Logger;
@@ -375,6 +376,79 @@ public class DemoPlugin implements PluginInterface, LogShipper {
               .setJobId(jobId)
               .setEndOfTransmission(true)
               .setDiagnosticsResult(SubmitJobResultsRequest.DiagnosticsResult.newBuilder().build())
+              .build());
+    }
+  }
+
+  @Override
+  public void listTenantLogs(
+      String jobId, StreamJobsResponse.ListTenantLogsRequest listTenantLogsRequest) {
+    log.info("Tenant: {} - Listing tenant logs for job {}", tenantKey, jobId);
+
+    try {
+      // Get logs from memory appender
+      List<String> logs = new ArrayList<>();
+      if (MemoryAppenderInstance.getInstance() != null) {
+        logs = MemoryAppenderInstance.getInstance().getEventsAsList();
+      }
+
+      // Create log groups from the retrieved logs
+      SubmitJobResultsRequest.ListTenantLogsResult.Builder resultBuilder =
+          SubmitJobResultsRequest.ListTenantLogsResult.newBuilder();
+
+      if (!logs.isEmpty()) {
+        // Create a single log group with all logs
+        SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.Builder logGroupBuilder =
+            SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.newBuilder()
+                .setName("logGroups/memory-logs")
+                .addAllLogs(logs);
+
+        // Use time range from request, or default to current time if not provided
+        if (listTenantLogsRequest.hasTimeRange()) {
+          // Use the time range provided in the request - directly set the TimeRange from gate v2
+          logGroupBuilder.setTimeRange(listTenantLogsRequest.getTimeRange());
+        } else {
+          // Fallback to current time if no time range provided (shouldn't happen with new default
+          // logic)
+          long now = System.currentTimeMillis();
+          logGroupBuilder.setTimeRange(
+              build.buf.gen.tcnapi.exile.gate.v2.TimeRange.newBuilder()
+                  .setStartTime(
+                      com.google.protobuf.Timestamp.newBuilder()
+                          .setSeconds(now / 1000)
+                          .setNanos((int) ((now % 1000) * 1000000))
+                          .build())
+                  .setEndTime(
+                      com.google.protobuf.Timestamp.newBuilder()
+                          .setSeconds(now / 1000)
+                          .setNanos((int) ((now % 1000) * 1000000))
+                          .build())
+                  .build());
+        }
+
+        // Set log levels (default to INFO for all components)
+        logGroupBuilder.putLogLevels(
+            "memory", SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.LogLevel.INFO);
+
+        resultBuilder.addLogGroups(logGroupBuilder.build());
+      }
+
+      // Submit tenant logs results back to gate
+      gateClient.submitJobResults(
+          SubmitJobResultsRequest.newBuilder()
+              .setJobId(jobId)
+              .setEndOfTransmission(true)
+              .setListTenantLogsResult(resultBuilder.build())
+              .build());
+    } catch (Exception e) {
+      log.error("Error listing tenant logs for job {}: {}", jobId, e.getMessage(), e);
+      // Return empty log result on error
+      gateClient.submitJobResults(
+          SubmitJobResultsRequest.newBuilder()
+              .setJobId(jobId)
+              .setEndOfTransmission(true)
+              .setListTenantLogsResult(
+                  SubmitJobResultsRequest.ListTenantLogsResult.newBuilder().build())
               .build());
     }
   }

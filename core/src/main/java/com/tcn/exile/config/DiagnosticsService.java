@@ -23,6 +23,7 @@ import jakarta.inject.Singleton;
 import java.io.File;
 import java.io.IOException;
 import java.lang.management.*;
+import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.nio.file.Files;
@@ -533,6 +534,96 @@ public class DiagnosticsService {
   public com.tcn.exile.models.DiagnosticsResult collectSerdeableDiagnostics() {
     printDiagnosticsToTerminal();
     return com.tcn.exile.models.DiagnosticsResult.fromProto(collectSystemDiagnostics());
+  }
+
+  /**
+   * Collects tenant logs from the MemoryAppender and returns them as a serializable result. Uses
+   * reflection to access MemoryAppender classes since they're in a different module.
+   *
+   * @return TenantLogsResult containing the collected logs
+   */
+  public com.tcn.exile.models.TenantLogsResult collectSerdeableTenantLogs() {
+    log.info("Collecting tenant logs from memory appender...");
+
+    try {
+      // Get logs from memory appender using reflection to avoid direct dependency
+      List<String> logs = new ArrayList<>();
+
+      try {
+        // Use reflection to access MemoryAppenderInstance.getInstance()
+        Class<?> memoryAppenderInstanceClass =
+            Class.forName("com.tcn.exile.memlogger.MemoryAppenderInstance");
+        Method getInstanceMethod = memoryAppenderInstanceClass.getMethod("getInstance");
+        Object memoryAppenderInstance = getInstanceMethod.invoke(null);
+
+        if (memoryAppenderInstance != null) {
+          // Use reflection to call getEventsAsList() on the MemoryAppender instance
+          Method getEventsAsListMethod =
+              memoryAppenderInstance.getClass().getMethod("getEventsAsList");
+          @SuppressWarnings("unchecked")
+          List<String> retrievedLogs =
+              (List<String>) getEventsAsListMethod.invoke(memoryAppenderInstance);
+
+          if (retrievedLogs != null) {
+            logs = retrievedLogs;
+            log.debug("Successfully retrieved {} log events from memory appender", logs.size());
+          }
+        } else {
+          log.warn("MemoryAppender instance is null - no in-memory logs available");
+        }
+      } catch (ClassNotFoundException e) {
+        log.warn(
+            "MemoryAppender classes not found - memory logging not available: {}", e.getMessage());
+      } catch (Exception e) {
+        log.warn(
+            "Failed to retrieve logs from memory appender using reflection: {}", e.getMessage());
+      }
+
+      // Create the result object
+      com.tcn.exile.models.TenantLogsResult result = new com.tcn.exile.models.TenantLogsResult();
+      List<com.tcn.exile.models.TenantLogsResult.LogGroup> logGroups = new ArrayList<>();
+
+      if (!logs.isEmpty()) {
+        // Create a single log group with all logs
+        com.tcn.exile.models.TenantLogsResult.LogGroup logGroup =
+            new com.tcn.exile.models.TenantLogsResult.LogGroup();
+        logGroup.setName("logGroups/memory-logs");
+        logGroup.setLogs(logs);
+
+        // Set time range
+        java.time.Instant now = java.time.Instant.now();
+        java.time.Instant oneHourAgo = now.minusSeconds(3600); // 1 hour ago
+
+        com.tcn.exile.models.TenantLogsResult.LogGroup.TimeRange timeRange =
+            new com.tcn.exile.models.TenantLogsResult.LogGroup.TimeRange();
+        timeRange.setStartTime(oneHourAgo);
+        timeRange.setEndTime(now);
+        logGroup.setTimeRange(timeRange);
+
+        // Set log levels (default to INFO for all components)
+        Map<String, com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel> logLevels =
+            new HashMap<>();
+        logLevels.put("memory", com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel.INFO);
+        logGroup.setLogLevels(logLevels);
+
+        logGroups.add(logGroup);
+        log.info("Created log group with {} log entries", logs.size());
+      } else {
+        log.info("No logs found in memory appender");
+      }
+
+      result.setLogGroups(logGroups);
+      result.setNextPageToken(""); // No pagination for now
+
+      return result;
+    } catch (Exception e) {
+      log.error("Error collecting tenant logs", e);
+      // Return empty result on error
+      com.tcn.exile.models.TenantLogsResult result = new com.tcn.exile.models.TenantLogsResult();
+      result.setLogGroups(new ArrayList<>());
+      result.setNextPageToken("");
+      return result;
+    }
   }
 
   /**
