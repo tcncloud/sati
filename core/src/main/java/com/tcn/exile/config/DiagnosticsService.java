@@ -47,6 +47,27 @@ public class DiagnosticsService {
   private static final Pattern KUBERNETES_PATTERN =
       Pattern.compile(".*k8s.*|.*kube.*", Pattern.CASE_INSENSITIVE);
 
+  // Helper class to hold log collection results
+  private static class LogCollectionResult {
+    final List<String> logs;
+    final boolean success;
+    final String errorMessage;
+
+    LogCollectionResult(List<String> logs, boolean success, String errorMessage) {
+      this.logs = logs != null ? logs : new ArrayList<>();
+      this.success = success;
+      this.errorMessage = errorMessage;
+    }
+
+    static LogCollectionResult success(List<String> logs) {
+      return new LogCollectionResult(logs, true, null);
+    }
+
+    static LogCollectionResult failure(String errorMessage) {
+      return new LogCollectionResult(null, false, errorMessage);
+    }
+  }
+
   public DiagnosticsResult collectSystemDiagnostics() {
     log.info("Collecting comprehensive system diagnostics...");
 
@@ -95,97 +116,35 @@ public class DiagnosticsService {
     long startTime = System.currentTimeMillis();
 
     try {
-      // Get logs from memory appender using reflection to avoid direct dependency
-      List<String> logs = new ArrayList<>();
-
-      try {
-        // Use reflection to access MemoryAppenderInstance.getInstance()
-        Class<?> memoryAppenderInstanceClass =
-            Class.forName("com.tcn.exile.memlogger.MemoryAppenderInstance");
-        Method getInstanceMethod = memoryAppenderInstanceClass.getMethod("getInstance");
-        Object memoryAppenderInstance = getInstanceMethod.invoke(null);
-
-        if (memoryAppenderInstance != null) {
-          // Check if time range is provided in the request
-          if (listTenantLogsRequest.hasTimeRange()) {
-            // Convert protobuf timestamps to milliseconds
-            long startTimeMs =
-                listTenantLogsRequest.getTimeRange().getStartTime().getSeconds() * 1000
-                    + listTenantLogsRequest.getTimeRange().getStartTime().getNanos() / 1000000;
-            long endTimeMs =
-                listTenantLogsRequest.getTimeRange().getEndTime().getSeconds() * 1000
-                    + listTenantLogsRequest.getTimeRange().getEndTime().getNanos() / 1000000;
-
-            log.debug(
-                "Filtering logs with time range: {} to {} (timestamps: {} to {})",
-                listTenantLogsRequest.getTimeRange().getStartTime(),
-                listTenantLogsRequest.getTimeRange().getEndTime(),
-                startTimeMs,
-                endTimeMs);
-
-            // Use reflection to call getEventsInTimeRange() on the MemoryAppender instance
-            Method getEventsInTimeRangeMethod =
-                memoryAppenderInstance
-                    .getClass()
-                    .getMethod("getEventsInTimeRange", long.class, long.class);
-            @SuppressWarnings("unchecked")
-            List<String> retrievedLogs =
-                (List<String>)
-                    getEventsInTimeRangeMethod.invoke(
-                        memoryAppenderInstance, startTimeMs, endTimeMs);
-
-            if (retrievedLogs != null) {
-              logs = retrievedLogs;
-              log.debug(
-                  "Retrieved {} logs within time range {} to {}",
-                  logs.size(),
-                  startTimeMs,
-                  endTimeMs);
-            }
-
-            // Also get all logs with timestamps for debugging
-            Method getEventsWithTimestampsMethod =
-                memoryAppenderInstance.getClass().getMethod("getEventsWithTimestamps");
-            @SuppressWarnings("unchecked")
-            List<Object> allLogsWithTimestamps =
-                (List<Object>) getEventsWithTimestampsMethod.invoke(memoryAppenderInstance);
-            log.debug("Available logs with timestamps:");
-            for (Object logEvent : allLogsWithTimestamps) {
-              // Use reflection to access LogEvent fields
-              long timestamp = (Long) logEvent.getClass().getField("timestamp").get(logEvent);
-              log.debug("  Log timestamp: {} ({})", timestamp, new java.util.Date(timestamp));
-            }
-          } else {
-            // Use reflection to call getEventsAsList() on the MemoryAppender instance
-            Method getEventsAsListMethod =
-                memoryAppenderInstance.getClass().getMethod("getEventsAsList");
-            @SuppressWarnings("unchecked")
-            List<String> retrievedLogs =
-                (List<String>) getEventsAsListMethod.invoke(memoryAppenderInstance);
-
-            if (retrievedLogs != null) {
-              logs = retrievedLogs;
-              log.debug("Retrieved {} logs (no time range specified)", logs.size());
-            }
-          }
-        } else {
-          log.warn("MemoryAppender instance is null - no in-memory logs available");
-        }
-      } catch (ClassNotFoundException e) {
-        log.warn(
-            "MemoryAppender classes not found - memory logging not available: {}", e.getMessage());
-      } catch (Exception e) {
-        log.warn(
-            "Failed to retrieve logs from memory appender using reflection: {}", e.getMessage());
+      // Extract time range from request if provided
+      Long startTimeMs = null;
+      Long endTimeMs = null;
+      if (listTenantLogsRequest.hasTimeRange()) {
+        // Use the exact same timestamp conversion logic that was working before
+        startTimeMs =
+            listTenantLogsRequest.getTimeRange().getStartTime().getSeconds() * 1000
+                + listTenantLogsRequest.getTimeRange().getStartTime().getNanos() / 1000000;
+        endTimeMs =
+            listTenantLogsRequest.getTimeRange().getEndTime().getSeconds() * 1000
+                + listTenantLogsRequest.getTimeRange().getEndTime().getNanos() / 1000000;
+        log.debug(
+            "Filtering logs with time range: {} to {} (timestamps: {} to {})",
+            listTenantLogsRequest.getTimeRange().getStartTime(),
+            listTenantLogsRequest.getTimeRange().getEndTime(),
+            startTimeMs,
+            endTimeMs);
       }
 
-      // Create log groups from the retrieved logs
+      // Collect logs using common method
+      LogCollectionResult result = collectLogsFromMemoryAppender(startTimeMs, endTimeMs);
+
+      // Create protobuf result
       build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.Builder
           resultBuilder =
               build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
                   .newBuilder();
 
-      if (!logs.isEmpty()) {
+      if (result.success && !result.logs.isEmpty()) {
         // Create a single log group with all logs
         build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
                 .Builder
@@ -193,35 +152,25 @@ public class DiagnosticsService {
                 build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
                     .LogGroup.newBuilder()
                     .setName("logGroups/memory-logs")
-                    .addAllLogs(logs);
+                    .addAllLogs(result.logs);
 
-        // Use time range from request, or default to current time if not provided
+        // Set time range
         if (listTenantLogsRequest.hasTimeRange()) {
-          // Use the time range provided in the request - directly set the TimeRange from gate v2
           logGroupBuilder.setTimeRange(listTenantLogsRequest.getTimeRange());
         } else {
-          // Fallback to current time if no time range provided (shouldn't happen with new default
-          // logic)
+          // Fallback to current time
           long now = System.currentTimeMillis();
           logGroupBuilder.setTimeRange(
               build.buf.gen.tcnapi.exile.gate.v2.TimeRange.newBuilder()
-                  .setStartTime(
-                      com.google.protobuf.Timestamp.newBuilder()
-                          .setSeconds(now / 1000)
-                          .setNanos((int) ((now % 1000) * 1000000))
-                          .build())
-                  .setEndTime(
-                      com.google.protobuf.Timestamp.newBuilder()
-                          .setSeconds(now / 1000)
-                          .setNanos((int) ((now % 1000) * 1000000))
-                          .build())
+                  .setStartTime(createTimestamp(now))
+                  .setEndTime(createTimestamp(now))
                   .build());
         }
 
         // Detect log levels from the actual logs
         build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
                 .LogLevel
-            detectedLevel = detectLogLevelFromLogs(logs);
+            detectedLevel = detectLogLevelFromLogs(result.logs);
         logGroupBuilder.putLogLevels("memory", detectedLevel);
 
         resultBuilder.addLogGroups(logGroupBuilder.build());
@@ -233,24 +182,82 @@ public class DiagnosticsService {
       return resultBuilder.build();
     } catch (Exception e) {
       log.error("Error collecting tenant logs: {}", e.getMessage(), e);
-
-      // Add more detailed error logging
-      try {
-        Class<?> memoryAppenderInstanceClass =
-            Class.forName("com.tcn.exile.memlogger.MemoryAppenderInstance");
-        Method getInstanceMethod = memoryAppenderInstanceClass.getMethod("getInstance");
-        Object memoryAppenderInstance = getInstanceMethod.invoke(null);
-        if (memoryAppenderInstance == null) {
-          log.error("MemoryAppenderInstance is null");
-        }
-      } catch (Exception instanceCheckError) {
-        log.error("Failed to check MemoryAppenderInstance: {}", instanceCheckError.getMessage());
-      }
-
-      // Return empty log result on error
       return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
           .newBuilder()
           .build();
+    }
+  }
+
+  /**
+   * Collects tenant logs from the MemoryAppender and returns them as a serializable result. Uses
+   * reflection to access MemoryAppender classes since they're in a different module.
+   *
+   * @return TenantLogsResult containing the collected logs
+   */
+  public com.tcn.exile.models.TenantLogsResult collectSerdeableTenantLogs() {
+    return collectSerdeableTenantLogs(null, null);
+  }
+
+  /**
+   * Collects tenant logs from the MemoryAppender within a specific time range.
+   *
+   * @param startTimeMs Start time in milliseconds since epoch, or null for no start limit
+   * @param endTimeMs End time in milliseconds since epoch, or null for no end limit
+   * @return TenantLogsResult containing the collected logs
+   */
+  public com.tcn.exile.models.TenantLogsResult collectSerdeableTenantLogs(
+      Long startTimeMs, Long endTimeMs) {
+    log.info("Collecting tenant logs from memory appender...");
+
+    try {
+      // Collect logs using common method
+      LogCollectionResult result = collectLogsFromMemoryAppender(startTimeMs, endTimeMs);
+
+      // Create the result object
+      com.tcn.exile.models.TenantLogsResult tenantLogsResult =
+          new com.tcn.exile.models.TenantLogsResult();
+      List<com.tcn.exile.models.TenantLogsResult.LogGroup> logGroups = new ArrayList<>();
+
+      if (result.success && !result.logs.isEmpty()) {
+        // Create a single log group with all logs
+        com.tcn.exile.models.TenantLogsResult.LogGroup logGroup =
+            new com.tcn.exile.models.TenantLogsResult.LogGroup();
+        logGroup.setName("logGroups/memory-logs");
+        logGroup.setLogs(result.logs);
+
+        // Set time range
+        java.time.Instant now = java.time.Instant.now();
+        java.time.Instant oneHourAgo = now.minusSeconds(3600); // 1 hour ago
+
+        com.tcn.exile.models.TenantLogsResult.LogGroup.TimeRange timeRange =
+            new com.tcn.exile.models.TenantLogsResult.LogGroup.TimeRange();
+        timeRange.setStartTime(oneHourAgo);
+        timeRange.setEndTime(now);
+        logGroup.setTimeRange(timeRange);
+
+        // Set log levels (default to INFO for all components)
+        Map<String, com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel> logLevels =
+            new HashMap<>();
+        logLevels.put("memory", com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel.INFO);
+        logGroup.setLogLevels(logLevels);
+
+        logGroups.add(logGroup);
+        log.info("Created log group with {} log entries", result.logs.size());
+      } else {
+        log.info("No logs found in memory appender");
+      }
+
+      tenantLogsResult.setLogGroups(logGroups);
+      tenantLogsResult.setNextPageToken(""); // No pagination for now
+
+      return tenantLogsResult;
+    } catch (Exception e) {
+      log.error("Error collecting tenant logs", e);
+      // Return empty result on error
+      com.tcn.exile.models.TenantLogsResult result = new com.tcn.exile.models.TenantLogsResult();
+      result.setLogGroups(new ArrayList<>());
+      result.setNextPageToken("");
+      return result;
     }
   }
 
@@ -757,128 +764,81 @@ public class DiagnosticsService {
   }
 
   /**
-   * Collects tenant logs from the MemoryAppender and returns them as a serializable result. Uses
-   * reflection to access MemoryAppender classes since they're in a different module.
-   *
-   * @return TenantLogsResult containing the collected logs
-   */
-  public com.tcn.exile.models.TenantLogsResult collectSerdeableTenantLogs() {
-    return collectSerdeableTenantLogs(null, null);
-  }
-
-  /**
-   * Collects tenant logs from the MemoryAppender within a specific time range.
+   * Common method to collect logs from MemoryAppender using reflection. This eliminates code
+   * duplication between different collection methods.
    *
    * @param startTimeMs Start time in milliseconds since epoch, or null for no start limit
    * @param endTimeMs End time in milliseconds since epoch, or null for no end limit
-   * @return TenantLogsResult containing the collected logs
+   * @return LogCollectionResult containing logs and success status
    */
-  public com.tcn.exile.models.TenantLogsResult collectSerdeableTenantLogs(
-      Long startTimeMs, Long endTimeMs) {
-    log.info("Collecting tenant logs from memory appender...");
-
+  private LogCollectionResult collectLogsFromMemoryAppender(Long startTimeMs, Long endTimeMs) {
     try {
-      // Get logs from memory appender using reflection to avoid direct dependency
-      List<String> logs = new ArrayList<>();
+      // Use reflection to access MemoryAppenderInstance.getInstance()
+      Class<?> memoryAppenderInstanceClass =
+          Class.forName("com.tcn.exile.memlogger.MemoryAppenderInstance");
+      Method getInstanceMethod = memoryAppenderInstanceClass.getMethod("getInstance");
+      Object memoryAppenderInstance = getInstanceMethod.invoke(null);
 
-      try {
-        // Use reflection to access MemoryAppenderInstance.getInstance()
-        Class<?> memoryAppenderInstanceClass =
-            Class.forName("com.tcn.exile.memlogger.MemoryAppenderInstance");
-        Method getInstanceMethod = memoryAppenderInstanceClass.getMethod("getInstance");
-        Object memoryAppenderInstance = getInstanceMethod.invoke(null);
-
-        if (memoryAppenderInstance != null) {
-          // Check if time filtering is requested
-          if (startTimeMs != null && endTimeMs != null) {
-            // Use reflection to call getEventsInTimeRange() on the MemoryAppender instance
-            Method getEventsInTimeRangeMethod =
-                memoryAppenderInstance
-                    .getClass()
-                    .getMethod("getEventsInTimeRange", long.class, long.class);
-            @SuppressWarnings("unchecked")
-            List<String> retrievedLogs =
-                (List<String>)
-                    getEventsInTimeRangeMethod.invoke(
-                        memoryAppenderInstance, startTimeMs, endTimeMs);
-
-            if (retrievedLogs != null) {
-              logs = retrievedLogs;
-              log.debug(
-                  "Successfully retrieved {} log events from memory appender within time range {} to {}",
-                  logs.size(),
-                  startTimeMs,
-                  endTimeMs);
-            }
-          } else {
-            // Use reflection to call getEventsAsList() on the MemoryAppender instance
-            Method getEventsAsListMethod =
-                memoryAppenderInstance.getClass().getMethod("getEventsAsList");
-            @SuppressWarnings("unchecked")
-            List<String> retrievedLogs =
-                (List<String>) getEventsAsListMethod.invoke(memoryAppenderInstance);
-
-            if (retrievedLogs != null) {
-              logs = retrievedLogs;
-              log.debug("Successfully retrieved {} log events from memory appender", logs.size());
-            }
-          }
-        } else {
-          log.warn("MemoryAppender instance is null - no in-memory logs available");
-        }
-      } catch (ClassNotFoundException e) {
-        log.warn(
-            "MemoryAppender classes not found - memory logging not available: {}", e.getMessage());
-      } catch (Exception e) {
-        log.warn(
-            "Failed to retrieve logs from memory appender using reflection: {}", e.getMessage());
+      if (memoryAppenderInstance == null) {
+        log.warn("MemoryAppender instance is null - no in-memory logs available");
+        return LogCollectionResult.success(new ArrayList<>());
       }
 
-      // Create the result object
-      com.tcn.exile.models.TenantLogsResult result = new com.tcn.exile.models.TenantLogsResult();
-      List<com.tcn.exile.models.TenantLogsResult.LogGroup> logGroups = new ArrayList<>();
+      List<String> logs;
 
-      if (!logs.isEmpty()) {
-        // Create a single log group with all logs
-        com.tcn.exile.models.TenantLogsResult.LogGroup logGroup =
-            new com.tcn.exile.models.TenantLogsResult.LogGroup();
-        logGroup.setName("logGroups/memory-logs");
-        logGroup.setLogs(logs);
+      // Check if time filtering is requested
+      if (startTimeMs != null && endTimeMs != null) {
+        // Use reflection to call getEventsInTimeRange() on the MemoryAppender instance
+        Method getEventsInTimeRangeMethod =
+            memoryAppenderInstance
+                .getClass()
+                .getMethod("getEventsInTimeRange", long.class, long.class);
+        @SuppressWarnings("unchecked")
+        List<String> retrievedLogs =
+            (List<String>)
+                getEventsInTimeRangeMethod.invoke(memoryAppenderInstance, startTimeMs, endTimeMs);
 
-        // Set time range
-        java.time.Instant now = java.time.Instant.now();
-        java.time.Instant oneHourAgo = now.minusSeconds(3600); // 1 hour ago
-
-        com.tcn.exile.models.TenantLogsResult.LogGroup.TimeRange timeRange =
-            new com.tcn.exile.models.TenantLogsResult.LogGroup.TimeRange();
-        timeRange.setStartTime(oneHourAgo);
-        timeRange.setEndTime(now);
-        logGroup.setTimeRange(timeRange);
-
-        // Set log levels (default to INFO for all components)
-        Map<String, com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel> logLevels =
-            new HashMap<>();
-        logLevels.put("memory", com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel.INFO);
-        logGroup.setLogLevels(logLevels);
-
-        logGroups.add(logGroup);
-        log.info("Created log group with {} log entries", logs.size());
+        logs = retrievedLogs != null ? retrievedLogs : new ArrayList<>();
+        log.debug(
+            "Retrieved {} logs within time range {} to {}", logs.size(), startTimeMs, endTimeMs);
       } else {
-        log.info("No logs found in memory appender");
+        // Use reflection to call getEventsAsList() on the MemoryAppender instance
+        Method getEventsAsListMethod =
+            memoryAppenderInstance.getClass().getMethod("getEventsAsList");
+        @SuppressWarnings("unchecked")
+        List<String> retrievedLogs =
+            (List<String>) getEventsAsListMethod.invoke(memoryAppenderInstance);
+
+        logs = retrievedLogs != null ? retrievedLogs : new ArrayList<>();
+        log.debug("Retrieved {} logs (no time range specified)", logs.size());
       }
 
-      result.setLogGroups(logGroups);
-      result.setNextPageToken(""); // No pagination for now
+      return LogCollectionResult.success(logs);
 
-      return result;
+    } catch (ClassNotFoundException e) {
+      String errorMsg =
+          "MemoryAppender classes not found - memory logging not available: " + e.getMessage();
+      log.warn(errorMsg);
+      return LogCollectionResult.failure(errorMsg);
     } catch (Exception e) {
-      log.error("Error collecting tenant logs", e);
-      // Return empty result on error
-      com.tcn.exile.models.TenantLogsResult result = new com.tcn.exile.models.TenantLogsResult();
-      result.setLogGroups(new ArrayList<>());
-      result.setNextPageToken("");
-      return result;
+      String errorMsg =
+          "Failed to retrieve logs from memory appender using reflection: " + e.getMessage();
+      log.warn(errorMsg);
+      return LogCollectionResult.failure(errorMsg);
     }
+  }
+
+  /** Helper method to convert protobuf Timestamp to milliseconds since epoch. */
+  private long convertTimestampToMs(com.google.protobuf.Timestamp timestamp) {
+    return timestamp.getSeconds() * 1000 + timestamp.getNanos() / 1000000;
+  }
+
+  /** Helper method to create a protobuf Timestamp from milliseconds since epoch. */
+  private com.google.protobuf.Timestamp createTimestamp(long timeMs) {
+    return com.google.protobuf.Timestamp.newBuilder()
+        .setSeconds(timeMs / 1000)
+        .setNanos((int) ((timeMs % 1000) * 1000000))
+        .build();
   }
 
   /**
