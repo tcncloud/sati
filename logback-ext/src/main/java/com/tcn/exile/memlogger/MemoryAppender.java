@@ -130,7 +130,54 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
 
   public List<String> getEventsAsList() {
     List<String> result = new ArrayList<>();
-    events.forEach(event -> result.add(event.message));
+
+    // Create a snapshot of the queue to avoid concurrent modification issues
+    List<LogEvent> snapshot = new ArrayList<>(events);
+
+    for (LogEvent event : snapshot) {
+      result.add(event.message);
+    }
+
+    return result;
+  }
+
+  /**
+   * Get events within a specific time range
+   *
+   * @param startTimeMs Start time in milliseconds since epoch
+   * @param endTimeMs End time in milliseconds since epoch
+   * @return List of log messages within the time range
+   */
+  public List<String> getEventsInTimeRange(long startTimeMs, long endTimeMs) {
+    List<String> result = new ArrayList<>();
+
+    // Create a snapshot of the queue to avoid concurrent modification issues
+    List<LogEvent> snapshot = new ArrayList<>(events);
+
+    for (LogEvent event : snapshot) {
+      if (event.timestamp >= startTimeMs && event.timestamp <= endTimeMs) {
+        result.add(event.message);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Get all events with their timestamps
+   *
+   * @return List of LogEvent objects containing both message and timestamp
+   */
+  public List<LogEvent> getEventsWithTimestamps() {
+    List<LogEvent> result = new ArrayList<>();
+
+    // Create a snapshot of the queue to avoid concurrent modification issues
+    List<LogEvent> snapshot = new ArrayList<>(events);
+
+    for (LogEvent event : snapshot) {
+      result.add(new LogEvent(event.message, event.timestamp));
+    }
+
     return result;
   }
 
@@ -158,11 +205,11 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     events.clear();
   }
 
-  private static class LogEvent {
-    final String message;
-    final long timestamp;
+  public static class LogEvent {
+    public final String message;
+    public final long timestamp;
 
-    LogEvent(String message, long timestamp) {
+    public LogEvent(String message, long timestamp) {
       this.message = message;
       this.timestamp = timestamp;
     }

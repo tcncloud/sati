@@ -543,6 +543,18 @@ public class DiagnosticsService {
    * @return TenantLogsResult containing the collected logs
    */
   public com.tcn.exile.models.TenantLogsResult collectSerdeableTenantLogs() {
+    return collectSerdeableTenantLogs(null, null);
+  }
+
+  /**
+   * Collects tenant logs from the MemoryAppender within a specific time range.
+   *
+   * @param startTimeMs Start time in milliseconds since epoch, or null for no start limit
+   * @param endTimeMs End time in milliseconds since epoch, or null for no end limit
+   * @return TenantLogsResult containing the collected logs
+   */
+  public com.tcn.exile.models.TenantLogsResult collectSerdeableTenantLogs(
+      Long startTimeMs, Long endTimeMs) {
     log.info("Collecting tenant logs from memory appender...");
 
     try {
@@ -557,16 +569,39 @@ public class DiagnosticsService {
         Object memoryAppenderInstance = getInstanceMethod.invoke(null);
 
         if (memoryAppenderInstance != null) {
-          // Use reflection to call getEventsAsList() on the MemoryAppender instance
-          Method getEventsAsListMethod =
-              memoryAppenderInstance.getClass().getMethod("getEventsAsList");
-          @SuppressWarnings("unchecked")
-          List<String> retrievedLogs =
-              (List<String>) getEventsAsListMethod.invoke(memoryAppenderInstance);
+          // Check if time filtering is requested
+          if (startTimeMs != null && endTimeMs != null) {
+            // Use reflection to call getEventsInTimeRange() on the MemoryAppender instance
+            Method getEventsInTimeRangeMethod =
+                memoryAppenderInstance
+                    .getClass()
+                    .getMethod("getEventsInTimeRange", long.class, long.class);
+            @SuppressWarnings("unchecked")
+            List<String> retrievedLogs =
+                (List<String>)
+                    getEventsInTimeRangeMethod.invoke(
+                        memoryAppenderInstance, startTimeMs, endTimeMs);
 
-          if (retrievedLogs != null) {
-            logs = retrievedLogs;
-            log.debug("Successfully retrieved {} log events from memory appender", logs.size());
+            if (retrievedLogs != null) {
+              logs = retrievedLogs;
+              log.debug(
+                  "Successfully retrieved {} log events from memory appender within time range {} to {}",
+                  logs.size(),
+                  startTimeMs,
+                  endTimeMs);
+            }
+          } else {
+            // Use reflection to call getEventsAsList() on the MemoryAppender instance
+            Method getEventsAsListMethod =
+                memoryAppenderInstance.getClass().getMethod("getEventsAsList");
+            @SuppressWarnings("unchecked")
+            List<String> retrievedLogs =
+                (List<String>) getEventsAsListMethod.invoke(memoryAppenderInstance);
+
+            if (retrievedLogs != null) {
+              logs = retrievedLogs;
+              log.debug("Successfully retrieved {} log events from memory appender", logs.size());
+            }
           }
         } else {
           log.warn("MemoryAppender instance is null - no in-memory logs available");
