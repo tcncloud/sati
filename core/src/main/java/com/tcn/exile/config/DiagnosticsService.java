@@ -79,6 +79,226 @@ public class DiagnosticsService {
     }
   }
 
+  /**
+   * Collects tenant logs and returns them in protobuf format for plugin responses. This method
+   * handles time range filtering and log level detection.
+   *
+   * @param listTenantLogsRequest The request containing optional time range filtering
+   * @return ListTenantLogsResult in protobuf format ready for submission to gate
+   */
+  public build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+      collectTenantLogs(
+          build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse.ListTenantLogsRequest
+              listTenantLogsRequest) {
+    log.info("Collecting tenant logs from memory appender...");
+
+    long startTime = System.currentTimeMillis();
+
+    try {
+      // Get logs from memory appender using reflection to avoid direct dependency
+      List<String> logs = new ArrayList<>();
+
+      try {
+        // Use reflection to access MemoryAppenderInstance.getInstance()
+        Class<?> memoryAppenderInstanceClass =
+            Class.forName("com.tcn.exile.memlogger.MemoryAppenderInstance");
+        Method getInstanceMethod = memoryAppenderInstanceClass.getMethod("getInstance");
+        Object memoryAppenderInstance = getInstanceMethod.invoke(null);
+
+        if (memoryAppenderInstance != null) {
+          // Check if time range is provided in the request
+          if (listTenantLogsRequest.hasTimeRange()) {
+            // Convert protobuf timestamps to milliseconds
+            long startTimeMs =
+                listTenantLogsRequest.getTimeRange().getStartTime().getSeconds() * 1000
+                    + listTenantLogsRequest.getTimeRange().getStartTime().getNanos() / 1000000;
+            long endTimeMs =
+                listTenantLogsRequest.getTimeRange().getEndTime().getSeconds() * 1000
+                    + listTenantLogsRequest.getTimeRange().getEndTime().getNanos() / 1000000;
+
+            log.debug(
+                "Filtering logs with time range: {} to {} (timestamps: {} to {})",
+                listTenantLogsRequest.getTimeRange().getStartTime(),
+                listTenantLogsRequest.getTimeRange().getEndTime(),
+                startTimeMs,
+                endTimeMs);
+
+            // Use reflection to call getEventsInTimeRange() on the MemoryAppender instance
+            Method getEventsInTimeRangeMethod =
+                memoryAppenderInstance
+                    .getClass()
+                    .getMethod("getEventsInTimeRange", long.class, long.class);
+            @SuppressWarnings("unchecked")
+            List<String> retrievedLogs =
+                (List<String>)
+                    getEventsInTimeRangeMethod.invoke(
+                        memoryAppenderInstance, startTimeMs, endTimeMs);
+
+            if (retrievedLogs != null) {
+              logs = retrievedLogs;
+              log.debug(
+                  "Retrieved {} logs within time range {} to {}",
+                  logs.size(),
+                  startTimeMs,
+                  endTimeMs);
+            }
+
+            // Also get all logs with timestamps for debugging
+            Method getEventsWithTimestampsMethod =
+                memoryAppenderInstance.getClass().getMethod("getEventsWithTimestamps");
+            @SuppressWarnings("unchecked")
+            List<Object> allLogsWithTimestamps =
+                (List<Object>) getEventsWithTimestampsMethod.invoke(memoryAppenderInstance);
+            log.debug("Available logs with timestamps:");
+            for (Object logEvent : allLogsWithTimestamps) {
+              // Use reflection to access LogEvent fields
+              long timestamp = (Long) logEvent.getClass().getField("timestamp").get(logEvent);
+              log.debug("  Log timestamp: {} ({})", timestamp, new java.util.Date(timestamp));
+            }
+          } else {
+            // Use reflection to call getEventsAsList() on the MemoryAppender instance
+            Method getEventsAsListMethod =
+                memoryAppenderInstance.getClass().getMethod("getEventsAsList");
+            @SuppressWarnings("unchecked")
+            List<String> retrievedLogs =
+                (List<String>) getEventsAsListMethod.invoke(memoryAppenderInstance);
+
+            if (retrievedLogs != null) {
+              logs = retrievedLogs;
+              log.debug("Retrieved {} logs (no time range specified)", logs.size());
+            }
+          }
+        } else {
+          log.warn("MemoryAppender instance is null - no in-memory logs available");
+        }
+      } catch (ClassNotFoundException e) {
+        log.warn(
+            "MemoryAppender classes not found - memory logging not available: {}", e.getMessage());
+      } catch (Exception e) {
+        log.warn(
+            "Failed to retrieve logs from memory appender using reflection: {}", e.getMessage());
+      }
+
+      // Create log groups from the retrieved logs
+      build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.Builder
+          resultBuilder =
+              build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+                  .newBuilder();
+
+      if (!logs.isEmpty()) {
+        // Create a single log group with all logs
+        build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
+                .Builder
+            logGroupBuilder =
+                build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+                    .LogGroup.newBuilder()
+                    .setName("logGroups/memory-logs")
+                    .addAllLogs(logs);
+
+        // Use time range from request, or default to current time if not provided
+        if (listTenantLogsRequest.hasTimeRange()) {
+          // Use the time range provided in the request - directly set the TimeRange from gate v2
+          logGroupBuilder.setTimeRange(listTenantLogsRequest.getTimeRange());
+        } else {
+          // Fallback to current time if no time range provided (shouldn't happen with new default
+          // logic)
+          long now = System.currentTimeMillis();
+          logGroupBuilder.setTimeRange(
+              build.buf.gen.tcnapi.exile.gate.v2.TimeRange.newBuilder()
+                  .setStartTime(
+                      com.google.protobuf.Timestamp.newBuilder()
+                          .setSeconds(now / 1000)
+                          .setNanos((int) ((now % 1000) * 1000000))
+                          .build())
+                  .setEndTime(
+                      com.google.protobuf.Timestamp.newBuilder()
+                          .setSeconds(now / 1000)
+                          .setNanos((int) ((now % 1000) * 1000000))
+                          .build())
+                  .build());
+        }
+
+        // Detect log levels from the actual logs
+        build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
+                .LogLevel
+            detectedLevel = detectLogLevelFromLogs(logs);
+        logGroupBuilder.putLogLevels("memory", detectedLevel);
+
+        resultBuilder.addLogGroups(logGroupBuilder.build());
+      }
+
+      long duration = System.currentTimeMillis() - startTime;
+      log.debug("Successfully collected tenant logs in {}ms", duration);
+
+      return resultBuilder.build();
+    } catch (Exception e) {
+      log.error("Error collecting tenant logs: {}", e.getMessage(), e);
+
+      // Add more detailed error logging
+      try {
+        Class<?> memoryAppenderInstanceClass =
+            Class.forName("com.tcn.exile.memlogger.MemoryAppenderInstance");
+        Method getInstanceMethod = memoryAppenderInstanceClass.getMethod("getInstance");
+        Object memoryAppenderInstance = getInstanceMethod.invoke(null);
+        if (memoryAppenderInstance == null) {
+          log.error("MemoryAppenderInstance is null");
+        }
+      } catch (Exception instanceCheckError) {
+        log.error("Failed to check MemoryAppenderInstance: {}", instanceCheckError.getMessage());
+      }
+
+      // Return empty log result on error
+      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+          .newBuilder()
+          .build();
+    }
+  }
+
+  /**
+   * Detects the most verbose log level from a collection of log messages. Returns the highest level
+   * found (DEBUG > INFO > WARN > ERROR).
+   */
+  private build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
+          .LogLevel
+      detectLogLevelFromLogs(List<String> logs) {
+    boolean hasDebug = false;
+    boolean hasInfo = false;
+    boolean hasWarn = false;
+    boolean hasError = false;
+
+    for (String logLine : logs) {
+      String upperLogLine = logLine.toUpperCase();
+      if (upperLogLine.contains(" DEBUG ")) {
+        hasDebug = true;
+      } else if (upperLogLine.contains(" INFO ")) {
+        hasInfo = true;
+      } else if (upperLogLine.contains(" WARN ")) {
+        hasWarn = true;
+      } else if (upperLogLine.contains(" ERROR ")) {
+        hasError = true;
+      }
+    }
+
+    // Return the most verbose level found
+    if (hasDebug) {
+      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+          .LogGroup.LogLevel.DEBUG;
+    } else if (hasInfo) {
+      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+          .LogGroup.LogLevel.INFO;
+    } else if (hasWarn) {
+      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+          .LogGroup.LogLevel.WARNING;
+    } else if (hasError) {
+      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+          .LogGroup.LogLevel.ERROR;
+    } else {
+      // Default to INFO if no recognizable log level found
+      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+          .LogGroup.LogLevel.INFO;
+    }
+  }
+
   private String getHostname() {
     try {
       return InetAddress.getLocalHost().getHostName();
