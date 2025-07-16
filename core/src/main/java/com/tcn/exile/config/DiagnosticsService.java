@@ -111,7 +111,7 @@ public class DiagnosticsService {
       collectTenantLogs(
           build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse.ListTenantLogsRequest
               listTenantLogsRequest) {
-    log.info("Collecting tenant logs from memory appender...");
+    log.debug("Collecting tenant logs from memory appender...");
 
     long startTime = System.currentTimeMillis();
 
@@ -207,7 +207,7 @@ public class DiagnosticsService {
    */
   public com.tcn.exile.models.TenantLogsResult collectSerdeableTenantLogs(
       Long startTimeMs, Long endTimeMs) {
-    log.info("Collecting tenant logs from memory appender...");
+    log.debug("Collecting tenant logs from memory appender...");
 
     try {
       // Collect logs using common method
