@@ -216,6 +216,8 @@ public class GateClientJobStream extends GateClientAbstract
         plugin.runDiagnostics(value.getJobId(), value.getDiagnostics());
       } else if (value.hasListTenantLogs()) {
         plugin.listTenantLogs(value.getJobId(), value.getListTenantLogs());
+      } else if (value.hasSetLogLevel()) {
+        plugin.setLogLevel(value.getJobId(), value.getSetLogLevel());
       } else {
         log.error(
             LogCategory.GRPC, "UnknownJobType", "Unknown job type: {}", value.getUnknownFields());

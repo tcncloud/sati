@@ -18,6 +18,7 @@ package com.tcn.exile.config;
 
 import build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.DiagnosticsResult;
 import build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.DiagnosticsResult.*;
+import ch.qos.logback.classic.LoggerContext;
 import com.google.protobuf.Timestamp;
 import jakarta.inject.Singleton;
 import java.io.File;
@@ -303,6 +304,112 @@ public class DiagnosticsService {
       // Default to INFO if no recognizable log level found
       return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
           .LogGroup.LogLevel.INFO;
+    }
+  }
+
+  /**
+   * Sets the log level for a specific logger and returns the result in protobuf format for plugin
+   * responses. This method handles dynamic log level changes during runtime.
+   *
+   * @param setLogLevelRequest The request containing the logger name and new log level
+   * @return SetLogLevelResult in protobuf format ready for submission to gate
+   */
+  public build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult setLogLevel(
+      build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse.SetLogLevelRequest setLogLevelRequest) {
+    log.debug(
+        "Setting log level for logger: {} to level: {}",
+        setLogLevelRequest.getLog(),
+        setLogLevelRequest.getLogLevel());
+
+    try {
+      // Get the logback logger context
+      LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+
+      String loggerName = setLogLevelRequest.getLog();
+
+      // Handle special case for root logger
+      if ("ROOT".equalsIgnoreCase(loggerName) || loggerName.isEmpty()) {
+        loggerName = ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME;
+      }
+
+      // Get the target logger
+      ch.qos.logback.classic.Logger targetLogger = loggerContext.getLogger(loggerName);
+
+      if (targetLogger == null) {
+        log.warn("Logger '{}' not found", loggerName);
+        return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult
+            .newBuilder()
+            .setSuccess(false)
+            .setMessage("Logger not found: " + loggerName)
+            .build();
+      }
+
+      // Convert the protobuf log level to logback level
+      ch.qos.logback.classic.Level newLevel;
+      try {
+        newLevel = convertProtobufLevelToLogbackLevel(setLogLevelRequest.getLogLevel());
+      } catch (IllegalArgumentException e) {
+        log.warn("Invalid log level: {}", setLogLevelRequest.getLogLevel());
+        return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult
+            .newBuilder()
+            .setSuccess(false)
+            .setMessage("Invalid log level: " + setLogLevelRequest.getLogLevel())
+            .build();
+      }
+
+      // Get the old level for logging
+      String oldLevel =
+          targetLogger.getLevel() != null ? targetLogger.getLevel().toString() : "INHERITED";
+
+      // Set the new level
+      targetLogger.setLevel(newLevel);
+
+      log.info(
+          "Successfully changed log level for '{}' from '{}' to '{}'",
+          loggerName,
+          oldLevel,
+          newLevel.toString());
+
+      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult
+          .newBuilder()
+          .setSuccess(true)
+          .setMessage(
+              String.format(
+                  "Successfully changed log level for '%s' from '%s' to '%s'",
+                  loggerName, oldLevel, newLevel.toString()))
+          .build();
+
+    } catch (Exception e) {
+      log.error(
+          "Error setting log level for logger '{}': {}",
+          setLogLevelRequest.getLog(),
+          e.getMessage(),
+          e);
+      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult
+          .newBuilder()
+          .setSuccess(false)
+          .setMessage("Failed to set log level: " + e.getMessage())
+          .build();
+    }
+  }
+
+  /** Converts protobuf LogLevel enum to logback Level. */
+  private ch.qos.logback.classic.Level convertProtobufLevelToLogbackLevel(
+      build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse.SetLogLevelRequest.LogLevel
+          protobufLevel) {
+    switch (protobufLevel) {
+      case DEBUG:
+        return ch.qos.logback.classic.Level.DEBUG;
+      case INFO:
+        return ch.qos.logback.classic.Level.INFO;
+      case WARNING:
+        return ch.qos.logback.classic.Level.WARN;
+      case ERROR:
+        return ch.qos.logback.classic.Level.ERROR;
+      case FATAL:
+        return ch.qos.logback.classic.Level.ERROR; // Logback doesn't have FATAL, map to ERROR
+      default:
+        throw new IllegalArgumentException("Unknown protobuf log level: " + protobufLevel);
     }
   }
 

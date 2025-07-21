@@ -117,5 +117,14 @@ public interface PluginInterface {
    */
   void listTenantLogs(String jobId, StreamJobsResponse.ListTenantLogsRequest listTenantLogsRequest);
 
+  /**
+   * Set the log level for a specific logger dynamically. This allows changing log levels at runtime
+   * without restarting the application.
+   *
+   * @param jobId The ID of the job
+   * @param setLogLevelRequest The set log level request details
+   */
+  void setLogLevel(String jobId, StreamJobsResponse.SetLogLevelRequest setLogLevelRequest);
+
   void setConfig(PluginConfigEvent config);
 }

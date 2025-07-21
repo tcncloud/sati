@@ -418,4 +418,50 @@ public class DemoPlugin implements PluginInterface, LogShipper {
       }
     }
   }
+
+  @Override
+  public void setLogLevel(String jobId, StreamJobsResponse.SetLogLevelRequest setLogLevelRequest) {
+    log.info(
+        "Tenant: {} - Setting log level for job {} and logger {}",
+        tenantKey,
+        jobId,
+        setLogLevelRequest.getLog());
+
+    try {
+      build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult
+          setLogLevelResult = null;
+      if (diagnosticsService != null) {
+        setLogLevelResult = diagnosticsService.setLogLevel(setLogLevelRequest);
+      } else {
+        log.warn("DiagnosticsService is null, cannot set log level");
+        // Create empty set log level result if service is unavailable
+        setLogLevelResult =
+            SubmitJobResultsRequest.SetLogLevelResult.newBuilder()
+                .setSuccess(false)
+                .setMessage("DiagnosticsService is not available")
+                .build();
+      }
+
+      // Submit set log level results back to gate
+      gateClient.submitJobResults(
+          SubmitJobResultsRequest.newBuilder()
+              .setJobId(jobId)
+              .setEndOfTransmission(true)
+              .setSetLogLevelResult(setLogLevelResult)
+              .build());
+    } catch (Exception e) {
+      log.error("Error setting log level for job {}: {}", jobId, e.getMessage(), e);
+      // Return error result on error
+      gateClient.submitJobResults(
+          SubmitJobResultsRequest.newBuilder()
+              .setJobId(jobId)
+              .setEndOfTransmission(true)
+              .setSetLogLevelResult(
+                  SubmitJobResultsRequest.SetLogLevelResult.newBuilder()
+                      .setSuccess(false)
+                      .setMessage("Failed to set log level: " + e.getMessage())
+                      .build())
+              .build());
+    }
+  }
 }
