@@ -18,6 +18,7 @@ package com.tcn.exile.config;
 
 import build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.DiagnosticsResult;
 import build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.DiagnosticsResult.*;
+import ch.qos.logback.classic.LoggerContext;
 import com.google.protobuf.Timestamp;
 import jakarta.inject.Singleton;
 import java.io.File;
@@ -111,7 +112,7 @@ public class DiagnosticsService {
       collectTenantLogs(
           build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse.ListTenantLogsRequest
               listTenantLogsRequest) {
-    log.info("Collecting tenant logs from memory appender...");
+    log.debug("Collecting tenant logs from memory appender...");
 
     long startTime = System.currentTimeMillis();
 
@@ -207,7 +208,7 @@ public class DiagnosticsService {
    */
   public com.tcn.exile.models.TenantLogsResult collectSerdeableTenantLogs(
       Long startTimeMs, Long endTimeMs) {
-    log.info("Collecting tenant logs from memory appender...");
+    log.debug("Collecting tenant logs from memory appender...");
 
     try {
       // Collect logs using common method
@@ -303,6 +304,202 @@ public class DiagnosticsService {
       // Default to INFO if no recognizable log level found
       return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
           .LogGroup.LogLevel.INFO;
+    }
+  }
+
+  /**
+   * Sets the log level for a specific logger and returns the result in protobuf format for plugin
+   * responses. This method handles dynamic log level changes during runtime and includes proper
+   * tenant information.
+   *
+   * @param setLogLevelRequest The request containing the logger name and new log level
+   * @param tenantKey The tenant identifier for proper tenant information
+   * @return SetLogLevelResult in protobuf format ready for submission to gate
+   */
+  public build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult
+      setLogLevelWithTenant(
+          build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse.SetLogLevelRequest
+              setLogLevelRequest,
+          String tenantKey) {
+    log.debug(
+        "Setting log level for logger: {} to level: {} (tenant: {})",
+        setLogLevelRequest.getLog(),
+        setLogLevelRequest.getLogLevel(),
+        tenantKey);
+
+    try {
+      // Get the logback logger context
+      LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+
+      String loggerName = setLogLevelRequest.getLog();
+
+      // Handle special case for root logger
+      if ("ROOT".equalsIgnoreCase(loggerName) || loggerName.isEmpty()) {
+        loggerName = ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME;
+      }
+
+      // Get the target logger
+      ch.qos.logback.classic.Logger targetLogger = loggerContext.getLogger(loggerName);
+
+      if (targetLogger == null) {
+        log.warn("Logger '{}' not found", loggerName);
+        return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult
+            .newBuilder()
+            .setTenant(createTenantInfoWithKey(tenantKey, "Logger not found: " + loggerName))
+            .build();
+      }
+
+      // Convert the protobuf log level to logback level
+      ch.qos.logback.classic.Level newLevel;
+      try {
+        newLevel = convertProtobufLevelToLogbackLevel(setLogLevelRequest.getLogLevel());
+      } catch (IllegalArgumentException e) {
+        log.warn("Invalid log level: {}", setLogLevelRequest.getLogLevel());
+        return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult
+            .newBuilder()
+            .setTenant(
+                createTenantInfoWithKey(
+                    tenantKey, "Invalid log level: " + setLogLevelRequest.getLogLevel()))
+            .build();
+      }
+
+      // Get the old level for logging
+      String oldLevel =
+          targetLogger.getLevel() != null ? targetLogger.getLevel().toString() : "INHERITED";
+
+      // Set the new level
+      targetLogger.setLevel(newLevel);
+
+      log.info(
+          "Successfully changed log level for '{}' from '{}' to '{}' (tenant: {})",
+          loggerName,
+          oldLevel,
+          newLevel.toString(),
+          tenantKey);
+
+      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult
+          .newBuilder()
+          .setTenant(
+              createTenantInfoWithKey(
+                  tenantKey,
+                  "Successfully changed log level for '"
+                      + loggerName
+                      + "' from '"
+                      + oldLevel
+                      + "' to '"
+                      + newLevel.toString()
+                      + "'"))
+          .build();
+
+    } catch (Exception e) {
+      log.error(
+          "Error setting log level for logger '{}' (tenant: {}): {}",
+          setLogLevelRequest.getLog(),
+          tenantKey,
+          e.getMessage(),
+          e);
+      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult
+          .newBuilder()
+          .setTenant(
+              createTenantInfoWithKey(tenantKey, "Failed to set log level: " + e.getMessage()))
+          .build();
+    }
+  }
+
+  /**
+   * Sets the log level for a specific logger and returns the result in protobuf format for plugin
+   * responses. This method handles dynamic log level changes during runtime.
+   *
+   * @param setLogLevelRequest The request containing the logger name and new log level
+   * @return SetLogLevelResult in protobuf format ready for submission to gate
+   * @deprecated Use setLogLevelWithTenant instead for proper tenant information
+   */
+  @Deprecated
+  public build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult setLogLevel(
+      build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse.SetLogLevelRequest setLogLevelRequest) {
+    return setLogLevelWithTenant(setLogLevelRequest, getHostname());
+  }
+
+  /**
+   * Creates a Tenant object for the SetLogLevelResult with proper tenant key.
+   *
+   * @param tenantKey The tenant identifier
+   * @param statusMessage A status message to include in the name field
+   * @return Tenant object with system information
+   */
+  private build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult.Tenant
+      createTenantInfoWithKey(String tenantKey, String statusMessage) {
+    Instant now = Instant.now();
+    Timestamp updateTime =
+        Timestamp.newBuilder().setSeconds(now.getEpochSecond()).setNanos(now.getNano()).build();
+
+    // Get version information
+    String satiVersion = "Unknown";
+    String pluginVersion = "Unknown";
+    try {
+      satiVersion = com.tcn.exile.gateclients.v2.BuildVersion.getBuildVersion();
+    } catch (Exception e) {
+      log.debug("Could not get SATI version: {}", e.getMessage());
+    }
+
+    try {
+      // Try to get plugin version from system properties or manifest
+      String implVersion = this.getClass().getPackage().getImplementationVersion();
+      if (implVersion != null) {
+        pluginVersion = implVersion;
+      }
+    } catch (Exception e) {
+      log.debug("Could not get plugin version: {}", e.getMessage());
+    }
+
+    // Use tenant key as the primary identifier
+    String tenantName = tenantKey != null ? tenantKey : getHostname();
+    if (statusMessage != null && !statusMessage.isEmpty()) {
+      tenantName = tenantName + " (" + statusMessage + ")";
+    }
+
+    return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult.Tenant
+        .newBuilder()
+        .setName(tenantName)
+        .setSatiVersion(satiVersion)
+        .setPluginVersion(pluginVersion)
+        .setUpdateTime(updateTime)
+        .setConnectedGate(getHostname()) // Use hostname as connected gate info
+        .build();
+  }
+
+  /**
+   * Creates a Tenant object for the SetLogLevelResult. Since we don't have access to the actual
+   * tenant context in DiagnosticsService, we create a basic tenant info with available system
+   * information.
+   *
+   * @param statusMessage A status message to include in the name field
+   * @return Tenant object with system information
+   * @deprecated Use createTenantInfoWithKey instead for proper tenant information
+   */
+  @Deprecated
+  private build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult.Tenant
+      createTenantInfo(String statusMessage) {
+    return createTenantInfoWithKey(null, statusMessage);
+  }
+
+  /** Converts protobuf LogLevel enum to logback Level. */
+  private ch.qos.logback.classic.Level convertProtobufLevelToLogbackLevel(
+      build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse.SetLogLevelRequest.LogLevel
+          protobufLevel) {
+    switch (protobufLevel) {
+      case DEBUG:
+        return ch.qos.logback.classic.Level.DEBUG;
+      case INFO:
+        return ch.qos.logback.classic.Level.INFO;
+      case WARNING:
+        return ch.qos.logback.classic.Level.WARN;
+      case ERROR:
+        return ch.qos.logback.classic.Level.ERROR;
+      case FATAL:
+        return ch.qos.logback.classic.Level.ERROR; // Logback doesn't have FATAL, map to ERROR
+      default:
+        throw new IllegalArgumentException("Unknown protobuf log level: " + protobufLevel);
     }
   }
 

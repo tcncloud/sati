@@ -269,7 +269,75 @@ public class DemoPlugin implements PluginInterface, LogShipper {
   }
 
   @Override
-  public void shutdown(String jobId, StreamJobsResponse.SeppukuRequest shutdown) {}
+  public void shutdown(String jobId, StreamJobsResponse.SeppukuRequest shutdown) {
+    log.warn("Tenant: {} - Seppuku requested for job: {}", tenantKey, jobId);
+
+    // Try to submit acknowledgment, but don't let failure prevent shutdown
+    try {
+      gateClient.submitJobResults(
+          SubmitJobResultsRequest.newBuilder()
+              .setJobId(jobId)
+              .setEndOfTransmission(true)
+              .setShutdownResult(SubmitJobResultsRequest.SeppukuResult.newBuilder().build())
+              .build());
+      log.warn(
+          "Tenant: {} - Seppuku acknowledged for job: {}, initiating graceful shutdown",
+          tenantKey,
+          jobId);
+    } catch (Exception e) {
+      log.warn(
+          "Tenant: {} - Failed to acknowledge seppuku for job: {}, but proceeding with shutdown anyway: {}",
+          tenantKey,
+          jobId,
+          e.getMessage());
+    }
+
+    // Execute shutdown in separate thread to allow any gRPC response to be sent
+    try {
+      Thread shutdownThread =
+          new Thread(
+              () -> {
+                try {
+                  log.warn(
+                      "Tenant: {} - Shutdown thread started, waiting 2 seconds before termination",
+                      tenantKey);
+
+                  // Give time for any response to be sent back to the server
+                  Thread.sleep(2000);
+
+                  log.warn("Tenant: {} - Executing seppuku - terminating application", tenantKey);
+
+                  // Perform graceful shutdown
+                  System.exit(0);
+
+                } catch (InterruptedException e) {
+                  log.error(
+                      "Tenant: {} - Seppuku interrupted, forcing immediate shutdown", tenantKey);
+                  Thread.currentThread().interrupt();
+                  System.exit(1);
+                } catch (Exception e) {
+                  log.error(
+                      "Tenant: {} - Unexpected error during seppuku, forcing immediate shutdown: {}",
+                      tenantKey,
+                      e.getMessage());
+                  System.exit(1);
+                }
+              },
+              "SeppukuThread-" + tenantKey);
+
+      shutdownThread.setDaemon(false); // Ensure JVM waits for this thread
+      shutdownThread.start();
+
+      log.warn("Tenant: {} - Seppuku thread started, shutdown sequence initiated", tenantKey);
+    } catch (Exception e) {
+      log.error(
+          "Tenant: {} - Failed to start shutdown thread, forcing immediate shutdown: {}",
+          tenantKey,
+          e.getMessage());
+      // If we can't even start the thread, exit immediately
+      System.exit(1);
+    }
+  }
 
   @Override
   public void logger(String jobId, StreamJobsResponse.LoggingRequest logRequest) {
@@ -311,6 +379,30 @@ public class DemoPlugin implements PluginInterface, LogShipper {
             .setEndOfTransmission(true)
             .setLoggingResult(SubmitJobResultsRequest.LoggingResult.newBuilder().build())
             .build());
+  }
+
+  /** Helper method to list all available loggers for debugging */
+  private void listAvailableLoggers() {
+    try {
+      LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+      log.info("Tenant: {} - Available loggers:", tenantKey);
+
+      // List some common loggers
+      for (ch.qos.logback.classic.Logger logger : loggerContext.getLoggerList()) {
+        if (logger.getLevel() != null
+            || logger.getName().contains("tcn")
+            || logger.getName().contains("exile")
+            || logger.getName().equals("ROOT")) {
+          log.info(
+              "Tenant: {} - Logger: '{}' - Level: {}",
+              tenantKey,
+              logger.getName(),
+              logger.getLevel() != null ? logger.getLevel().toString() : "INHERITED");
+        }
+      }
+    } catch (Exception e) {
+      log.warn("Tenant: {} - Error listing loggers: {}", tenantKey, e.getMessage());
+    }
   }
 
   @Override
@@ -416,6 +508,62 @@ public class DemoPlugin implements PluginInterface, LogShipper {
             submitError.getMessage(),
             submitError);
       }
+    }
+  }
+
+  @Override
+  public void setLogLevel(String jobId, StreamJobsResponse.SetLogLevelRequest setLogLevelRequest) {
+    log.info(
+        "Tenant: {} - Setting log level for job {} and logger {} to level {}",
+        tenantKey,
+        jobId,
+        setLogLevelRequest.getLog(),
+        setLogLevelRequest.getLogLevel());
+
+    try {
+      build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.SetLogLevelResult
+          setLogLevelResult = null;
+      if (diagnosticsService != null) {
+        setLogLevelResult = diagnosticsService.setLogLevelWithTenant(setLogLevelRequest, tenantKey);
+      } else {
+        log.warn("DiagnosticsService is null, cannot set log level");
+
+        java.time.Instant now = java.time.Instant.now();
+        com.google.protobuf.Timestamp updateTime =
+            com.google.protobuf.Timestamp.newBuilder()
+                .setSeconds(now.getEpochSecond())
+                .setNanos(now.getNano())
+                .build();
+
+        SubmitJobResultsRequest.SetLogLevelResult.Tenant tenant =
+            SubmitJobResultsRequest.SetLogLevelResult.Tenant.newBuilder()
+                .setName(tenantKey)
+                .setSatiVersion(com.tcn.exile.gateclients.v2.BuildVersion.getBuildVersion())
+                .setPluginVersion(getVersion())
+                .setUpdateTime(updateTime)
+                .setConnectedGate(getServerName())
+                .build();
+
+        setLogLevelResult =
+            SubmitJobResultsRequest.SetLogLevelResult.newBuilder().setTenant(tenant).build();
+      }
+
+      // Submit results back to gate
+      gateClient.submitJobResults(
+          SubmitJobResultsRequest.newBuilder()
+              .setJobId(jobId)
+              .setEndOfTransmission(true)
+              .setSetLogLevelResult(setLogLevelResult)
+              .build());
+    } catch (Exception e) {
+      log.error("Error setting log level for job {}: {}", jobId, e.getMessage(), e);
+      // Return empty result on error
+      gateClient.submitJobResults(
+          SubmitJobResultsRequest.newBuilder()
+              .setJobId(jobId)
+              .setEndOfTransmission(true)
+              .setSetLogLevelResult(SubmitJobResultsRequest.SetLogLevelResult.newBuilder().build())
+              .build());
     }
   }
 }
