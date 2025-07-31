@@ -667,13 +667,34 @@ public class DiagnosticsService {
     try {
       if (osBean.getClass().getName().contains("com.sun.management")) {
         // Use reflection to access com.sun.management.OperatingSystemMXBean methods
-        totalPhysicalMemory =
-            (Long) osBean.getClass().getMethod("getTotalPhysicalMemorySize").invoke(osBean);
-        availablePhysicalMemory =
-            (Long) osBean.getClass().getMethod("getFreePhysicalMemorySize").invoke(osBean);
-        totalSwapSpace = (Long) osBean.getClass().getMethod("getTotalSwapSpaceSize").invoke(osBean);
-        availableSwapSpace =
-            (Long) osBean.getClass().getMethod("getFreeSwapSpaceSize").invoke(osBean);
+        // Handle each method call separately to avoid one failure affecting others
+        try {
+          totalPhysicalMemory =
+              (Long) osBean.getClass().getMethod("getTotalPhysicalMemorySize").invoke(osBean);
+        } catch (Exception e) {
+          log.debug("Could not access getTotalPhysicalMemorySize: {}", e.getMessage());
+        }
+
+        try {
+          availablePhysicalMemory =
+              (Long) osBean.getClass().getMethod("getFreePhysicalMemorySize").invoke(osBean);
+        } catch (Exception e) {
+          log.debug("Could not access getFreePhysicalMemorySize: {}", e.getMessage());
+        }
+
+        try {
+          totalSwapSpace =
+              (Long) osBean.getClass().getMethod("getTotalSwapSpaceSize").invoke(osBean);
+        } catch (Exception e) {
+          log.debug("Could not access getTotalSwapSpaceSize: {}", e.getMessage());
+        }
+
+        try {
+          availableSwapSpace =
+              (Long) osBean.getClass().getMethod("getFreeSwapSpaceSize").invoke(osBean);
+        } catch (Exception e) {
+          log.debug("Could not access getFreeSwapSpaceSize: {}", e.getMessage());
+        }
       }
     } catch (Exception e) {
       log.debug("Could not access extended OS MXBean methods", e);
