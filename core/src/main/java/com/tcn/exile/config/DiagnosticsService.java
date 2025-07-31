@@ -246,9 +246,8 @@ public class DiagnosticsService {
           timeRange.setStartTime(java.time.Instant.ofEpochMilli(startTimeMs));
           timeRange.setEndTime(java.time.Instant.ofEpochMilli(endTimeMs));
         } else {
-          // Fallback to a default 1-hour window when no filtering was applied
           java.time.Instant now = java.time.Instant.now();
-          java.time.Instant oneHourAgo = now.minusSeconds(3600); // 1 hour ago
+          java.time.Instant oneHourAgo = now.minusSeconds(600);
           timeRange.setStartTime(oneHourAgo);
           timeRange.setEndTime(now);
         }
@@ -257,11 +256,6 @@ public class DiagnosticsService {
         // Detect log levels by logger name from the actual logs
         Map<String, com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel> logLevels =
             detectSerializableLogLevelsByLogger();
-
-        // If no loggers were detected, provide a default
-        if (logLevels.isEmpty()) {
-          logLevels.put("memory", com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel.INFO);
-        }
 
         logGroup.setLogLevels(logLevels);
 
