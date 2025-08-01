@@ -169,10 +169,21 @@ public class DiagnosticsService {
         }
 
         // Detect log levels from the actual logs
-        build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
-                .LogLevel
-            detectedLevel = detectLogLevelFromLogs(result.logs);
-        logGroupBuilder.putLogLevels("memory", detectedLevel);
+        Map<
+                String,
+                build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+                    .LogGroup.LogLevel>
+            detectedLevels = detectLogLevelsByLogger();
+
+        // If no loggers were detected, provide a default
+        if (detectedLevels.isEmpty()) {
+          detectedLevels.put(
+              "memory",
+              build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+                  .LogGroup.LogLevel.INFO);
+        }
+
+        detectedLevels.forEach(logGroupBuilder::putLogLevels);
 
         resultBuilder.addLogGroups(logGroupBuilder.build());
       }
@@ -226,20 +237,26 @@ public class DiagnosticsService {
         logGroup.setName("logGroups/memory-logs");
         logGroup.setLogs(result.logs);
 
-        // Set time range
-        java.time.Instant now = java.time.Instant.now();
-        java.time.Instant oneHourAgo = now.minusSeconds(3600); // 1 hour ago
-
+        // Set time range based on actual parameters used for filtering
         com.tcn.exile.models.TenantLogsResult.LogGroup.TimeRange timeRange =
             new com.tcn.exile.models.TenantLogsResult.LogGroup.TimeRange();
-        timeRange.setStartTime(oneHourAgo);
-        timeRange.setEndTime(now);
+
+        if (startTimeMs != null && endTimeMs != null) {
+          // Use the actual time parameters that were used for filtering
+          timeRange.setStartTime(java.time.Instant.ofEpochMilli(startTimeMs));
+          timeRange.setEndTime(java.time.Instant.ofEpochMilli(endTimeMs));
+        } else {
+          java.time.Instant now = java.time.Instant.now();
+          java.time.Instant oneHourAgo = now.minusSeconds(600);
+          timeRange.setStartTime(oneHourAgo);
+          timeRange.setEndTime(now);
+        }
         logGroup.setTimeRange(timeRange);
 
-        // Set log levels (default to INFO for all components)
+        // Detect log levels by logger name from the actual logs
         Map<String, com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel> logLevels =
-            new HashMap<>();
-        logLevels.put("memory", com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel.INFO);
+            detectSerializableLogLevelsByLogger();
+
         logGroup.setLogLevels(logLevels);
 
         logGroups.add(logGroup);
@@ -263,47 +280,174 @@ public class DiagnosticsService {
   }
 
   /**
-   * Detects the most verbose log level from a collection of log messages. Returns the highest level
-   * found (DEBUG > INFO > WARN > ERROR).
+   * Detects log levels by logger name from the LoggerContext system configuration. This method
+   * retrieves actual configured log levels rather than parsing from log output.
+   *
+   * @return Map of logger names to their configured log levels
    */
-  private build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
-          .LogLevel
-      detectLogLevelFromLogs(List<String> logs) {
-    boolean hasDebug = false;
-    boolean hasInfo = false;
-    boolean hasWarn = false;
-    boolean hasError = false;
+  private Map<
+          String,
+          build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
+              .LogLevel>
+      detectLogLevelsByLogger() {
+    Map<
+            String,
+            build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
+                .LogLevel>
+        result = new HashMap<>();
 
-    for (String logLine : logs) {
-      String upperLogLine = logLine.toUpperCase();
-      if (upperLogLine.contains(" DEBUG ")) {
-        hasDebug = true;
-      } else if (upperLogLine.contains(" INFO ")) {
-        hasInfo = true;
-      } else if (upperLogLine.contains(" WARN ")) {
-        hasWarn = true;
-      } else if (upperLogLine.contains(" ERROR ")) {
-        hasError = true;
+    try {
+      // Get the logback logger context
+      LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+
+      // Get all configured loggers
+      List<ch.qos.logback.classic.Logger> loggers = loggerContext.getLoggerList();
+
+      for (ch.qos.logback.classic.Logger logger : loggers) {
+        String loggerName = logger.getName();
+        ch.qos.logback.classic.Level level = logger.getLevel();
+
+        // Skip loggers without explicit levels (they inherit from parent)
+        if (level != null) {
+          build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
+                  .LogLevel
+              protobufLevel = convertLogbackLevelToProtobuf(level);
+          result.put(loggerName, protobufLevel);
+        } else {
+          // For loggers without explicit levels, check effective level
+          ch.qos.logback.classic.Level effectiveLevel = logger.getEffectiveLevel();
+          if (effectiveLevel != null) {
+            build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
+                    .LogLevel
+                protobufLevel = convertLogbackLevelToProtobuf(effectiveLevel);
+            result.put(loggerName + " (inherited)", protobufLevel);
+          }
+        }
       }
+
+      // Always include root logger information
+      ch.qos.logback.classic.Logger rootLogger =
+          loggerContext.getLogger(ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME);
+      if (rootLogger != null) {
+        ch.qos.logback.classic.Level rootLevel = rootLogger.getLevel();
+        if (rootLevel != null) {
+          build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
+                  .LogLevel
+              protobufLevel = convertLogbackLevelToProtobuf(rootLevel);
+          result.put("ROOT", protobufLevel);
+        }
+      }
+
+    } catch (Exception e) {
+      log.warn("Error detecting log levels from LoggerContext: {}", e.getMessage(), e);
+      // Fallback to default
+      result.put(
+          "system.default",
+          build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
+              .LogLevel.INFO);
     }
 
-    // Return the most verbose level found
-    if (hasDebug) {
-      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
-          .LogGroup.LogLevel.DEBUG;
-    } else if (hasInfo) {
-      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
-          .LogGroup.LogLevel.INFO;
-    } else if (hasWarn) {
-      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
-          .LogGroup.LogLevel.WARNING;
-    } else if (hasError) {
-      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
-          .LogGroup.LogLevel.ERROR;
-    } else {
-      // Default to INFO if no recognizable log level found
-      return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
-          .LogGroup.LogLevel.INFO;
+    return result;
+  }
+
+  /**
+   * Detects log levels by logger name from the LoggerContext system configuration for serializable
+   * results. This method retrieves actual configured log levels rather than parsing from log
+   * output.
+   *
+   * @return Map of logger names to their configured log levels
+   */
+  private Map<String, com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel>
+      detectSerializableLogLevelsByLogger() {
+    Map<String, com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel> result = new HashMap<>();
+
+    try {
+      // Get the logback logger context
+      LoggerContext loggerContext = (LoggerContext) LoggerFactory.getILoggerFactory();
+
+      // Get all configured loggers
+      List<ch.qos.logback.classic.Logger> loggers = loggerContext.getLoggerList();
+
+      for (ch.qos.logback.classic.Logger logger : loggers) {
+        String loggerName = logger.getName();
+        ch.qos.logback.classic.Level level = logger.getLevel();
+
+        // Skip loggers without explicit levels (they inherit from parent)
+        if (level != null) {
+          com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel serializableLevel =
+              convertLogbackLevelToSerializable(level);
+          result.put(loggerName, serializableLevel);
+        } else {
+          // For loggers without explicit levels, check effective level
+          ch.qos.logback.classic.Level effectiveLevel = logger.getEffectiveLevel();
+          if (effectiveLevel != null) {
+            com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel serializableLevel =
+                convertLogbackLevelToSerializable(effectiveLevel);
+            result.put(loggerName + " (inherited)", serializableLevel);
+          }
+        }
+      }
+
+      // Always include root logger information
+      ch.qos.logback.classic.Logger rootLogger =
+          loggerContext.getLogger(ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME);
+      if (rootLogger != null) {
+        ch.qos.logback.classic.Level rootLevel = rootLogger.getLevel();
+        if (rootLevel != null) {
+          com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel serializableLevel =
+              convertLogbackLevelToSerializable(rootLevel);
+          result.put("ROOT", serializableLevel);
+        }
+      }
+
+    } catch (Exception e) {
+      log.warn("Error detecting log levels from LoggerContext: {}", e.getMessage(), e);
+      // Fallback to default
+      result.put("system.default", com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel.INFO);
+    }
+
+    return result;
+  }
+
+  /** Converts logback Level to protobuf LogLevel enum. */
+  private build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult.LogGroup
+          .LogLevel
+      convertLogbackLevelToProtobuf(ch.qos.logback.classic.Level logbackLevel) {
+    switch (logbackLevel.toInt()) {
+      case ch.qos.logback.classic.Level.TRACE_INT:
+      case ch.qos.logback.classic.Level.DEBUG_INT:
+        return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+            .LogGroup.LogLevel.DEBUG;
+      case ch.qos.logback.classic.Level.INFO_INT:
+        return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+            .LogGroup.LogLevel.INFO;
+      case ch.qos.logback.classic.Level.WARN_INT:
+        return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+            .LogGroup.LogLevel.WARNING;
+      case ch.qos.logback.classic.Level.ERROR_INT:
+        return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+            .LogGroup.LogLevel.ERROR;
+      default:
+        return build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.ListTenantLogsResult
+            .LogGroup.LogLevel.INFO;
+    }
+  }
+
+  /** Converts logback Level to serializable LogLevel enum. */
+  private com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel convertLogbackLevelToSerializable(
+      ch.qos.logback.classic.Level logbackLevel) {
+    switch (logbackLevel.toInt()) {
+      case ch.qos.logback.classic.Level.TRACE_INT:
+      case ch.qos.logback.classic.Level.DEBUG_INT:
+        return com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel.DEBUG;
+      case ch.qos.logback.classic.Level.INFO_INT:
+        return com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel.INFO;
+      case ch.qos.logback.classic.Level.WARN_INT:
+        return com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel.WARNING;
+      case ch.qos.logback.classic.Level.ERROR_INT:
+        return com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel.ERROR;
+      default:
+        return com.tcn.exile.models.TenantLogsResult.LogGroup.LogLevel.INFO;
     }
   }
 
@@ -523,13 +667,34 @@ public class DiagnosticsService {
     try {
       if (osBean.getClass().getName().contains("com.sun.management")) {
         // Use reflection to access com.sun.management.OperatingSystemMXBean methods
-        totalPhysicalMemory =
-            (Long) osBean.getClass().getMethod("getTotalPhysicalMemorySize").invoke(osBean);
-        availablePhysicalMemory =
-            (Long) osBean.getClass().getMethod("getFreePhysicalMemorySize").invoke(osBean);
-        totalSwapSpace = (Long) osBean.getClass().getMethod("getTotalSwapSpaceSize").invoke(osBean);
-        availableSwapSpace =
-            (Long) osBean.getClass().getMethod("getFreeSwapSpaceSize").invoke(osBean);
+        // Handle each method call separately to avoid one failure affecting others
+        try {
+          totalPhysicalMemory =
+              (Long) osBean.getClass().getMethod("getTotalPhysicalMemorySize").invoke(osBean);
+        } catch (Exception e) {
+          log.debug("Could not access getTotalPhysicalMemorySize: {}", e.getMessage());
+        }
+
+        try {
+          availablePhysicalMemory =
+              (Long) osBean.getClass().getMethod("getFreePhysicalMemorySize").invoke(osBean);
+        } catch (Exception e) {
+          log.debug("Could not access getFreePhysicalMemorySize: {}", e.getMessage());
+        }
+
+        try {
+          totalSwapSpace =
+              (Long) osBean.getClass().getMethod("getTotalSwapSpaceSize").invoke(osBean);
+        } catch (Exception e) {
+          log.debug("Could not access getTotalSwapSpaceSize: {}", e.getMessage());
+        }
+
+        try {
+          availableSwapSpace =
+              (Long) osBean.getClass().getMethod("getFreeSwapSpaceSize").invoke(osBean);
+        } catch (Exception e) {
+          log.debug("Could not access getFreeSwapSpaceSize: {}", e.getMessage());
+        }
       }
     } catch (Exception e) {
       log.debug("Could not access extended OS MXBean methods", e);

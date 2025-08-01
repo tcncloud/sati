@@ -19,6 +19,7 @@ package com.tcn.exile.demo.single;
 import io.micronaut.runtime.Micronaut;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.info.Info;
+import java.util.TimeZone;
 
 @OpenAPIDefinition(
     info =
@@ -28,6 +29,10 @@ import io.swagger.v3.oas.annotations.info.Info;
             description = "Demo API for Sati with Swagger UI"))
 public class Application {
   public static void main(String[] args) {
+    // Set timezone to UTC for consistency with containerized deployments
+    System.setProperty("user.timezone", "UTC");
+    TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+
     Micronaut.run(Application.class, args);
   }
 }
