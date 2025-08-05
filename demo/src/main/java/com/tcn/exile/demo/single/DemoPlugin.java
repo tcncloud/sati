@@ -31,6 +31,7 @@ import com.tcn.exile.memlogger.MemoryAppenderInstance;
 import com.tcn.exile.models.PluginConfigEvent;
 import com.tcn.exile.plugin.PluginInterface;
 import com.tcn.exile.plugin.PluginStatus;
+import io.micronaut.context.ApplicationContext;
 import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.List;
@@ -46,11 +47,12 @@ public class DemoPlugin implements PluginInterface, LogShipper {
   private String tenantKey;
   private DiagnosticsService diagnosticsService;
 
-  public DemoPlugin(String tenantKey, GateClient gateClient) {
+  public DemoPlugin(
+      String tenantKey, GateClient gateClient, ApplicationContext applicationContext) {
     this.gateClient = gateClient;
     this.running = true;
     this.tenantKey = tenantKey;
-    this.diagnosticsService = new DiagnosticsService();
+    this.diagnosticsService = new DiagnosticsService(applicationContext);
   }
 
   @Override
@@ -445,6 +447,7 @@ public class DemoPlugin implements PluginInterface, LogShipper {
       build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.DiagnosticsResult diagnostics =
           null;
       if (diagnosticsService != null) {
+        // Then collect system diagnostics for the response
         diagnostics = diagnosticsService.collectSystemDiagnostics();
       } else {
         log.warn("DiagnosticsService is null, cannot collect system diagnostics");

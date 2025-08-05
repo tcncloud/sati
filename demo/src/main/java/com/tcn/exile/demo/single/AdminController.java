@@ -54,9 +54,6 @@ public class AdminController {
   public HttpResponse<DiagnosticsResult> getDiagnostics() {
     log.info("Collecting diagnostics information");
     try {
-      // First try to call printDiagnosticsToTerminal which might fail but shows detailed error info
-      diagnosticsService.printDiagnosticsToTerminal();
-
       // Then get the serializable diagnostics result
       DiagnosticsResult result = diagnosticsService.collectSerdeableDiagnostics();
       return HttpResponse.ok(result);

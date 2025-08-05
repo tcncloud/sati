@@ -191,7 +191,7 @@ public class ConfigChangeWatcher implements ApplicationEventListener<StartupEven
     log.info("creating bean for org {}", this.currentConfig.getOrg());
     var tenantKey = this.currentConfig.getOrg();
     var gateClient = new GateClient(tenantKey, this.currentConfig);
-    var demoPlugin = new DemoPlugin(tenantKey, gateClient);
+    var demoPlugin = new DemoPlugin(tenantKey, gateClient, context);
     var gateClientJobStream = new GateClientJobStream(tenantKey, this.currentConfig, demoPlugin);
 
     var gateClientPollEvents = new GateClientPollEvents(tenantKey, this.currentConfig, demoPlugin);
