@@ -20,6 +20,8 @@ import build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.DiagnosticsRes
 import build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest.DiagnosticsResult.*;
 import ch.qos.logback.classic.LoggerContext;
 import com.google.protobuf.Timestamp;
+import com.tcn.exile.plugin.PluginInterface;
+import io.micronaut.context.ApplicationContext;
 import jakarta.inject.Singleton;
 import java.io.File;
 import java.io.IOException;
@@ -47,6 +49,12 @@ public class DiagnosticsService {
       Pattern.compile(".*docker.*", Pattern.CASE_INSENSITIVE);
   private static final Pattern KUBERNETES_PATTERN =
       Pattern.compile(".*k8s.*|.*kube.*", Pattern.CASE_INSENSITIVE);
+
+  private final ApplicationContext applicationContext;
+
+  public DiagnosticsService(ApplicationContext applicationContext) {
+    this.applicationContext = applicationContext;
+  }
 
   // Helper class to hold log collection results
   private static class LogCollectionResult {
@@ -77,9 +85,10 @@ public class DiagnosticsService {
       Timestamp timestamp =
           Timestamp.newBuilder().setSeconds(now.getEpochSecond()).setNanos(now.getNano()).build();
 
-      // Collect Hikari metrics and config details
+      // Collect Hikari metrics, config details, and event stream stats
       List<HikariPoolMetrics> hikariPoolMetrics = collectHikariMetrics();
       ConfigDetails configDetails = collectConfigDetails();
+      EventStreamStats eventStreamStats = collectEventStreamStats();
 
       return DiagnosticsResult.newBuilder()
           .setTimestamp(timestamp)
@@ -94,6 +103,7 @@ public class DiagnosticsService {
           .setSystemProperties(collectSystemProperties())
           .addAllHikariPoolMetrics(hikariPoolMetrics)
           .setConfigDetails(configDetails)
+          .setEventStreamStats(eventStreamStats)
           .build();
     } catch (Exception e) {
       log.error("Error collecting system diagnostics", e);
@@ -1121,7 +1131,6 @@ public class DiagnosticsService {
   }
 
   public com.tcn.exile.models.DiagnosticsResult collectSerdeableDiagnostics() {
-    printDiagnosticsToTerminal();
     return com.tcn.exile.models.DiagnosticsResult.fromProto(collectSystemDiagnostics());
   }
 
@@ -1281,14 +1290,34 @@ public class DiagnosticsService {
                       .setMaximumPoolSize(maximumPoolSize)
                       .setLeakDetectionThreshold(leakDetectionThreshold);
 
-              // Try to get JDBC URL and username
+              // Get JDBC URL and username from plugin configuration
+              String jdbcUrl = "";
+              String username = "";
               try {
-                String jdbcUrl = (String) mBeanServer.getAttribute(configName, "JdbcUrl");
-                String username = (String) mBeanServer.getAttribute(configName, "Username");
-                configBuilder.setJdbcUrl(jdbcUrl).setUsername(username);
+                Collection<PluginInterface> plugins =
+                    applicationContext.getBeansOfType(PluginInterface.class);
+                for (PluginInterface plugin : plugins) {
+                  var pluginStatus = plugin.getPluginStatus();
+                  Map<String, Object> internalConfig = pluginStatus.internalConfig();
+
+                  if (internalConfig != null && !internalConfig.isEmpty()) {
+                    Object jdbcUrlObj = internalConfig.get("jdbc_url");
+                    Object jdbcUserObj = internalConfig.get("jdbc_user");
+
+                    if (jdbcUrlObj != null && jdbcUserObj != null) {
+                      jdbcUrl = jdbcUrlObj.toString();
+                      username = jdbcUserObj.toString();
+                      log.debug(
+                          "Retrieved JDBC config from plugin: url={}, user={}", jdbcUrl, username);
+                      break;
+                    }
+                  }
+                }
               } catch (Exception e) {
-                log.debug("JDBC URL and Username not accessible via JMX: {}", e.getMessage());
+                log.warn("Failed to get JDBC config from plugins: {}", e.getMessage());
               }
+
+              configBuilder.setJdbcUrl(jdbcUrl).setUsername(username);
 
               poolMetricBuilder.setPoolConfig(configBuilder);
             }
@@ -1470,7 +1499,7 @@ public class DiagnosticsService {
   }
 
   /**
-   * Get event stream statistics.
+   * Get event stream statistics from Plugin instances directly.
    *
    * @return Map containing event stream stats
    */
@@ -1478,118 +1507,146 @@ public class DiagnosticsService {
     Map<String, Object> eventStreamStats = new HashMap<>();
 
     try {
-      MBeanServer mBeanServer = ManagementFactory.getPlatformMBeanServer();
+      // Get all Plugin instances from the application context
+      Collection<PluginInterface> plugins =
+          applicationContext.getBeansOfType(PluginInterface.class);
 
-      // Check for event stream MBeans
-      Set<ObjectName> eventStreamMBeans =
-          mBeanServer.queryNames(new ObjectName("com.tcn.exile:type=EventStream,*"), null);
-
-      if (eventStreamMBeans.isEmpty()) {
-        // Try alternative MBean domain pattern
-        eventStreamMBeans = mBeanServer.queryNames(new ObjectName("exile.eventstream:*"), null);
-      }
-
-      if (!eventStreamMBeans.isEmpty()) {
-        for (ObjectName streamName : eventStreamMBeans) {
-          Map<String, Object> streamInfo = new HashMap<>();
-
-          // Get basic stream information
-          try {
-            streamInfo.put("status", mBeanServer.getAttribute(streamName, "Status"));
-          } catch (Exception e) {
-            streamInfo.put("status", "Unknown");
-          }
-
-          try {
-            streamInfo.put("maxJobs", mBeanServer.getAttribute(streamName, "MaxJobs"));
-          } catch (Exception e) {
-            streamInfo.put("maxJobs", -1);
-          }
-
-          try {
-            streamInfo.put("runningJobs", mBeanServer.getAttribute(streamName, "RunningJobs"));
-          } catch (Exception e) {
-            streamInfo.put("runningJobs", -1);
-          }
-
-          try {
-            streamInfo.put("completedJobs", mBeanServer.getAttribute(streamName, "CompletedJobs"));
-          } catch (Exception e) {
-            streamInfo.put("completedJobs", -1);
-          }
-
-          try {
-            streamInfo.put("queuedJobs", mBeanServer.getAttribute(streamName, "QueuedJobs"));
-          } catch (Exception e) {
-            streamInfo.put("queuedJobs", -1);
-          }
-
-          String streamKey =
-              streamName.getKeyProperty("name") != null
-                  ? streamName.getKeyProperty("name")
-                  : "defaultStream";
-          eventStreamStats.put(streamKey, streamInfo);
-        }
-      } else {
-        log.info("No event stream MBeans found");
+      if (plugins.isEmpty()) {
+        log.info("No Plugin instances found");
         eventStreamStats.put("status", "Not available");
+        return eventStreamStats;
       }
+
+      log.info("Found {} plugin instance(s)", plugins.size());
+
+      for (PluginInterface plugin : plugins) {
+        try {
+          var pluginStatus = plugin.getPluginStatus();
+          String pluginName = pluginStatus.name(); // PluginStatus is a record
+
+          Map<String, Object> streamInfo = new HashMap<>();
+          streamInfo.put("status", pluginStatus.running() ? "running" : "stopped");
+          streamInfo.put("maxJobs", pluginStatus.queueMaxSize());
+          streamInfo.put("runningJobs", pluginStatus.queueActiveCount());
+          streamInfo.put("completedJobs", pluginStatus.queueCompletedJobs());
+          streamInfo.put("queuedJobs", pluginStatus.queueActiveCount());
+
+          eventStreamStats.put(pluginName + "-plugin", streamInfo);
+
+          log.debug(
+              "Collected stats for plugin {}: running={}, maxJobs={}, activeJobs={}, completedJobs={}",
+              pluginName,
+              pluginStatus.running(),
+              pluginStatus.queueMaxSize(),
+              pluginStatus.queueActiveCount(),
+              pluginStatus.queueCompletedJobs());
+
+        } catch (Exception e) {
+          log.error("Error getting stats for plugin: {}", e.getMessage(), e);
+        }
+      }
+
     } catch (Exception e) {
-      log.error("Error collecting event stream stats", e);
+      log.error("Error collecting plugin-based event stream stats", e);
       eventStreamStats.put("error", e.getMessage());
     }
 
     return eventStreamStats;
   }
 
-  /** Outputs JDBC connection details and event stream statistics to the terminal. */
-  public void printDiagnosticsToTerminal() {
-    // Get JDBC connection details
-    Map<String, Object> jdbcDetails = getJdbcConnectionDetails();
+  /**
+   * Collects event stream statistics for the application's event stream.
+   *
+   * @return EventStreamStats object with aggregated data about the application's event stream
+   */
+  private EventStreamStats collectEventStreamStats() {
+    log.info("Collecting event stream statistics...");
 
-    System.out.println("\n========== JDBC CONNECTION DETAILS ==========");
-    if (jdbcDetails.isEmpty()) {
-      System.out.println("No JDBC connections found.");
-    } else {
-      jdbcDetails.forEach(
-          (poolName, details) -> {
-            System.out.println("\nPool: " + poolName);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> poolInfo = (Map<String, Object>) details;
+    try {
+      // Get all Plugin instances from the application context
+      Collection<PluginInterface> plugins =
+          applicationContext.getBeansOfType(PluginInterface.class);
 
-            System.out.println("  JDBC URL: " + poolInfo.getOrDefault("jdbcUrl", "Unknown"));
-            System.out.println("  Driver: " + poolInfo.getOrDefault("driverClassName", "Unknown"));
-            System.out.println("  Username: " + poolInfo.getOrDefault("username", "Unknown"));
-            System.out.println(
-                "  Total Connections: " + poolInfo.getOrDefault("totalConnections", -1));
-            System.out.println(
-                "  Active Connections: " + poolInfo.getOrDefault("activeConnections", -1));
-            System.out.println(
-                "  Idle Connections: " + poolInfo.getOrDefault("idleConnections", -1));
-          });
+      if (plugins.isEmpty()) {
+        log.info("No Plugin instances found");
+        return EventStreamStats.newBuilder()
+            .setStreamName("application")
+            .setStatus("not available")
+            .setMaxJobs(-1)
+            .setRunningJobs(-1)
+            .setCompletedJobs(-1)
+            .setQueuedJobs(-1)
+            .build();
+      }
+
+      log.info("Found {} plugin instance(s)", plugins.size());
+
+      // Aggregate stats from all plugins
+      String overallStatus = "stopped";
+      int totalMaxJobs = 0;
+      int totalRunningJobs = 0;
+      long totalCompletedJobs = 0;
+      int totalQueuedJobs = 0;
+      boolean anyPluginRunning = false;
+
+      for (PluginInterface plugin : plugins) {
+        try {
+          var pluginStatus = plugin.getPluginStatus();
+
+          if (pluginStatus.running()) {
+            anyPluginRunning = true;
+          }
+
+          totalMaxJobs += pluginStatus.queueMaxSize();
+          totalRunningJobs += pluginStatus.queueActiveCount();
+          totalCompletedJobs += pluginStatus.queueCompletedJobs();
+
+          // Calculate queued jobs as max - active
+          int queuedJobs =
+              Math.max(0, pluginStatus.queueMaxSize() - pluginStatus.queueActiveCount());
+          totalQueuedJobs += queuedJobs;
+
+          log.debug(
+              "Plugin stats: running={}, maxJobs={}, activeJobs={}, completedJobs={}",
+              pluginStatus.running(),
+              pluginStatus.queueMaxSize(),
+              pluginStatus.queueActiveCount(),
+              pluginStatus.queueCompletedJobs());
+
+        } catch (Exception e) {
+          log.error("Error getting stats for plugin: {}", e.getMessage(), e);
+        }
+      }
+
+      // Determine overall status
+      if (anyPluginRunning) {
+        overallStatus = "running";
+      } else if (totalMaxJobs > 0) {
+        overallStatus = "stopped";
+      } else {
+        overallStatus = "not configured";
+      }
+
+      // Create aggregated EventStreamStats
+      return EventStreamStats.newBuilder()
+          .setStreamName("application")
+          .setStatus(overallStatus)
+          .setMaxJobs(totalMaxJobs)
+          .setRunningJobs(totalRunningJobs)
+          .setCompletedJobs(totalCompletedJobs)
+          .setQueuedJobs(totalQueuedJobs)
+          .build();
+
+    } catch (Exception e) {
+      log.error("Error collecting event stream statistics", e);
+      return EventStreamStats.newBuilder()
+          .setStreamName("application")
+          .setStatus("error: " + e.getMessage())
+          .setMaxJobs(-1)
+          .setRunningJobs(-1)
+          .setCompletedJobs(-1)
+          .setQueuedJobs(-1)
+          .build();
     }
-
-    // Get event stream stats
-    Map<String, Object> eventStreamStats = getEventStreamStats();
-
-    System.out.println("\n========== EVENT STREAM STATISTICS ==========");
-    if (eventStreamStats.isEmpty() || eventStreamStats.containsKey("status")) {
-      System.out.println("No event streams found or not available.");
-    } else {
-      eventStreamStats.forEach(
-          (streamName, stats) -> {
-            System.out.println("\nStream: " + streamName);
-            @SuppressWarnings("unchecked")
-            Map<String, Object> streamInfo = (Map<String, Object>) stats;
-
-            System.out.println("  Status: " + streamInfo.getOrDefault("status", "Unknown"));
-            System.out.println("  Max Jobs: " + streamInfo.getOrDefault("maxJobs", -1));
-            System.out.println("  Running Jobs: " + streamInfo.getOrDefault("runningJobs", -1));
-            System.out.println("  Completed Jobs: " + streamInfo.getOrDefault("completedJobs", -1));
-            System.out.println("  Queued Jobs: " + streamInfo.getOrDefault("queuedJobs", -1));
-          });
-    }
-
-    System.out.println("\n=============================================");
   }
 }
