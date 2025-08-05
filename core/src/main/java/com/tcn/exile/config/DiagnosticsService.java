@@ -1290,14 +1290,34 @@ public class DiagnosticsService {
                       .setMaximumPoolSize(maximumPoolSize)
                       .setLeakDetectionThreshold(leakDetectionThreshold);
 
-              // Try to get JDBC URL and username
+              // Get JDBC URL and username from plugin configuration
+              String jdbcUrl = "";
+              String username = "";
               try {
-                String jdbcUrl = (String) mBeanServer.getAttribute(configName, "JdbcUrl");
-                String username = (String) mBeanServer.getAttribute(configName, "Username");
-                configBuilder.setJdbcUrl(jdbcUrl).setUsername(username);
+                Collection<PluginInterface> plugins =
+                    applicationContext.getBeansOfType(PluginInterface.class);
+                for (PluginInterface plugin : plugins) {
+                  var pluginStatus = plugin.getPluginStatus();
+                  Map<String, Object> internalConfig = pluginStatus.internalConfig();
+
+                  if (internalConfig != null && !internalConfig.isEmpty()) {
+                    Object jdbcUrlObj = internalConfig.get("jdbc_url");
+                    Object jdbcUserObj = internalConfig.get("jdbc_user");
+
+                    if (jdbcUrlObj != null && jdbcUserObj != null) {
+                      jdbcUrl = jdbcUrlObj.toString();
+                      username = jdbcUserObj.toString();
+                      log.debug(
+                          "Retrieved JDBC config from plugin: url={}, user={}", jdbcUrl, username);
+                      break;
+                    }
+                  }
+                }
               } catch (Exception e) {
-                log.debug("JDBC URL and Username not accessible via JMX: {}", e.getMessage());
+                log.warn("Failed to get JDBC config from plugins: {}", e.getMessage());
               }
+
+              configBuilder.setJdbcUrl(jdbcUrl).setUsername(username);
 
               poolMetricBuilder.setPoolConfig(configBuilder);
             }
