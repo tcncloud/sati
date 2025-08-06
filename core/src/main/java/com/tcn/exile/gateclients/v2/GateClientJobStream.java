@@ -246,9 +246,10 @@ public class GateClientJobStream extends GateClientAbstract
       log.error(
           LogCategory.GRPC,
           "StreamError",
-          "Job stream onError: Status={}, Message={}",
-          statusEx.getStatus(),
-          statusEx.getMessage(),
+          "Job stream onError: Status="
+              + statusEx.getStatus()
+              + ", Message="
+              + statusEx.getMessage(),
           statusEx);
 
       if (statusEx.getStatus().getCode() == Status.Code.CANCELLED) {
