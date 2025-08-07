@@ -170,7 +170,7 @@ public class GateClientJobStream extends GateClientAbstract
         log.error(
             LogCategory.GRPC,
             "Error",
-            "Error in job stream: {} ({})",
+            "Error in job stream: %s (%s)",
             e.getMessage(),
             e.getStatus().getCode());
       }
@@ -186,7 +186,7 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onNext(StreamJobsResponse value) {
-    log.debug(LogCategory.GRPC, "JobReceived", "Received job: {}", value.getJobId());
+    log.debug(LogCategory.GRPC, "JobReceived", "Received job: %s", value.getJobId());
     try {
       if (value.hasListPools()) {
         plugin.listPools(value.getJobId(), value.getListPools());
@@ -220,20 +220,20 @@ public class GateClientJobStream extends GateClientAbstract
         plugin.setLogLevel(value.getJobId(), value.getSetLogLevel());
       } else {
         log.error(
-            LogCategory.GRPC, "UnknownJobType", "Unknown job type: {}", value.getUnknownFields());
+            LogCategory.GRPC, "UnknownJobType", "Unknown job type: %s", value.getUnknownFields());
       }
     } catch (UnconfiguredException e) {
       log.error(
           LogCategory.GRPC,
           "JobHandlingError",
-          "Error while handling job: {}",
+          "Error while handling job: %s",
           value.getJobId(),
           e);
     } catch (Exception e) {
       log.error(
           LogCategory.GRPC,
           "UnexpectedJobError",
-          "Unexpected error while handling job: {}",
+          "Unexpected error while handling job: %s",
           value.getJobId(),
           e);
     }
@@ -267,7 +267,7 @@ public class GateClientJobStream extends GateClientAbstract
         log.error(
             LogCategory.GRPC,
             "UnhandledStatusError",
-            "Unhandled StatusRuntimeException in job stream. Status: {}, Message: {}",
+            "Unhandled StatusRuntimeException in job stream. Status: %s, Message: %s",
             statusEx.getStatus(),
             statusEx.getMessage());
       }
