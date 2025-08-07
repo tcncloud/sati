@@ -24,17 +24,20 @@ import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.log.LogCategory;
 import com.tcn.exile.log.StructuredLogger;
 import com.tcn.exile.plugin.PluginInterface;
-import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
 import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
 import jakarta.annotation.PreDestroy;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Context
@@ -50,6 +53,20 @@ public class GateClientJobStream extends GateClientAbstract
   private final AtomicReference<Thread> streamThreadRef = new AtomicReference<>();
   private final AtomicReference<GateServiceGrpc.GateServiceStub> clientRef =
       new AtomicReference<>();
+
+  // Connection timing tracking
+  private final AtomicReference<Instant> lastDisconnectTime = new AtomicReference<>();
+  private final AtomicReference<Instant> reconnectionStartTime = new AtomicReference<>();
+  private final AtomicReference<Instant> connectionEstablishedTime = new AtomicReference<>();
+  private final AtomicLong totalReconnectionAttempts = new AtomicLong(0);
+  private final AtomicLong successfulReconnections = new AtomicLong(0);
+  private final AtomicReference<String> lastErrorType = new AtomicReference<>();
+  private final AtomicLong consecutiveFailures = new AtomicLong(0);
+
+  // Reconnection strategy constants
+  private static final long INITIAL_RECONNECT_DELAY_MS = 1000; // 1 second
+  private static final long MAX_RECONNECT_DELAY_MS = 30000; // 30 seconds max
+  private static final long IMMEDIATE_RECONNECT_DELAY_MS = 100; // 100ms for network errors
 
   public GateClientJobStream(String tenant, Config currentConfig, PluginInterface plugin) {
     super(tenant, currentConfig);
@@ -98,29 +115,89 @@ public class GateClientJobStream extends GateClientAbstract
   private void maintainConnection() {
     while (shouldReconnect.get() && isRunning.get()) {
       try {
-        log.info(LogCategory.GRPC, "EstablishingConnection", "Establishing job stream connection");
+        long attemptNumber = totalReconnectionAttempts.incrementAndGet();
+        Instant reconnectStart = Instant.now();
+        reconnectionStartTime.set(reconnectStart);
+
+        // Calculate time since last disconnect if available
+        Instant lastDisconnect = lastDisconnectTime.get();
+        String disconnectTimingInfo = "";
+        if (lastDisconnect != null) {
+          Duration timeSinceDisconnect = Duration.between(lastDisconnect, reconnectStart);
+          disconnectTimingInfo =
+              String.format(
+                  " (%.3f seconds since last disconnect)", timeSinceDisconnect.toMillis() / 1000.0);
+        }
+
+        log.info(
+            LogCategory.GRPC,
+            "EstablishingConnection",
+            "Establishing job stream connection - attempt #%d%s",
+            attemptNumber,
+            disconnectTimingInfo);
+
         establishJobStream();
+
+        // Connection successful
+        Instant connectionSuccess = Instant.now();
+        connectionEstablishedTime.set(connectionSuccess);
+        successfulReconnections.incrementAndGet();
+
+        // Clear error type on successful connection
+        lastErrorType.set(null);
+        consecutiveFailures.set(0); // Reset consecutive failure counter on success
+
+        Duration totalReconnectionTime = Duration.between(reconnectStart, connectionSuccess);
+        log.info(
+            LogCategory.GRPC,
+            "ConnectionEstablished",
+            "Job stream connection established successfully in %.3f seconds - attempt #%d (total successful: %d)",
+            totalReconnectionTime.toMillis() / 1000.0,
+            attemptNumber,
+            successfulReconnections.get());
+
       } catch (UnconfiguredException e) {
         log.error(
             LogCategory.GRPC,
             "ConfigurationError",
-            "Configuration error in job stream, stopping reconnection attempts");
+            "Configuration error in job stream, stopping reconnection attempts - attempt #%d",
+            totalReconnectionAttempts.get());
         shouldReconnect.set(false);
         break;
       } catch (Exception e) {
-        log.error(LogCategory.GRPC, "UnexpectedError", "Unexpected error in job stream connection");
-        if (shouldReconnect.get()) {
-          log.info(
+        Instant failureTime = Instant.now();
+        Instant reconnectStart = reconnectionStartTime.get();
+
+        if (reconnectStart != null) {
+          Duration attemptDuration = Duration.between(reconnectStart, failureTime);
+          log.error(
               LogCategory.GRPC,
-              "WaitingReconnectionAttempt",
-              "Waiting 30 seconds before reconnection attempt");
+              "ConnectionAttemptFailed",
+              "Job stream connection attempt #%d failed after %.3f seconds: %s",
+              totalReconnectionAttempts.get(),
+              attemptDuration.toMillis() / 1000.0,
+              e.getMessage());
+        } else {
+          log.error(
+              LogCategory.GRPC,
+              "UnexpectedError",
+              "Unexpected error in job stream connection - attempt #%d: %s",
+              totalReconnectionAttempts.get(),
+              e.getMessage());
+        }
+
+        if (shouldReconnect.get()) {
+          long consecutiveFailureCount = consecutiveFailures.incrementAndGet();
+          long delay = calculateReconnectDelay(consecutiveFailureCount, lastErrorType.get());
           try {
-            Thread.sleep(30000);
+            waitBeforeReconnect(delay, totalReconnectionAttempts.get());
           } catch (InterruptedException ie) {
             log.info(
                 LogCategory.GRPC,
                 "ReconnectionWaitInterrupted",
-                "Reconnection wait interrupted, stopping");
+                "Reconnection wait interrupted, stopping after %d attempts (%d successful)",
+                totalReconnectionAttempts.get(),
+                successfulReconnections.get());
             Thread.currentThread().interrupt();
             break;
           }
@@ -130,10 +207,66 @@ public class GateClientJobStream extends GateClientAbstract
     log.info(
         LogCategory.GRPC,
         "JobStreamMaintenanceLoopEnded",
-        "Job stream connection maintenance loop ended");
+        "Job stream connection maintenance loop ended - total attempts: %d, successful: %d",
+        totalReconnectionAttempts.get(),
+        successfulReconnections.get());
+  }
+
+  /** Calculate reconnection delay based on attempt number and last error type */
+  private long calculateReconnectDelay(long attemptNumber, String lastError) {
+    // For network errors (UNAVAILABLE), reconnect almost immediately
+    if ("UNAVAILABLE".equals(lastError)) {
+      return IMMEDIATE_RECONNECT_DELAY_MS;
+    }
+
+    // For CANCELLED (server closed connection), use short delay
+    if ("CANCELLED".equals(lastError)) {
+      return Math.min(2000, INITIAL_RECONNECT_DELAY_MS * 2); // 2 seconds max
+    }
+
+    // For other errors, use exponential backoff with jitter
+    long baseDelay =
+        Math.min(
+            INITIAL_RECONNECT_DELAY_MS * (1L << Math.min(attemptNumber - 1, 5)),
+            MAX_RECONNECT_DELAY_MS);
+
+    // Add jitter to prevent thundering herd (10% of base delay)
+    long jitter = (long) (baseDelay * 0.1 * Math.random());
+    return baseDelay + jitter;
+  }
+
+  private void waitBeforeReconnect(long delayMs, long attemptNumber) throws InterruptedException {
+    String lastError = lastErrorType.get();
+    String delayReason = getDelayReason(lastError, delayMs);
+
+    log.info(
+        LogCategory.GRPC,
+        "WaitingReconnectionAttempt",
+        "Waiting %.3f seconds before reconnection attempt #%d (%s) - total attempts: %d, successful: %d",
+        delayMs / 1000.0,
+        attemptNumber,
+        delayReason,
+        totalReconnectionAttempts.get(),
+        successfulReconnections.get());
+
+    Thread.sleep(delayMs);
+  }
+
+  private String getDelayReason(String errorType, long delayMs) {
+    if ("UNAVAILABLE".equals(errorType)) {
+      return "immediate retry for network error";
+    } else if ("CANCELLED".equals(errorType)) {
+      return "short delay for server disconnect";
+    } else if (delayMs >= MAX_RECONNECT_DELAY_MS) {
+      return "max delay reached";
+    } else {
+      return "exponential backoff";
+    }
   }
 
   private void establishJobStream() throws UnconfiguredException {
+    Instant streamSetupStart = Instant.now();
+
     GateServiceGrpc.GateServiceStub client =
         GateServiceGrpc.newStub(getChannel())
             .withDeadlineAfter(30, TimeUnit.SECONDS)
@@ -144,7 +277,17 @@ public class GateClientJobStream extends GateClientAbstract
 
     try {
       log.debug(LogCategory.GRPC, "CreatingStream", "Creating job stream");
+
+      Instant streamCallStart = Instant.now();
       client.streamJobs(StreamJobsRequest.newBuilder().build(), this);
+
+      Instant streamCallComplete = Instant.now();
+      Duration streamSetupDuration = Duration.between(streamSetupStart, streamCallComplete);
+      log.debug(
+          LogCategory.GRPC,
+          "StreamCallCompleted",
+          "Stream jobs call completed in %.3f seconds",
+          streamSetupDuration.toMillis() / 1000.0);
 
       // Keep the stream alive while we should be connected
       while (shouldReconnect.get() && isRunning.get() && !Thread.currentThread().isInterrupted()) {
@@ -161,22 +304,36 @@ public class GateClientJobStream extends GateClientAbstract
       }
 
     } catch (StatusRuntimeException e) {
+      Instant errorTime = Instant.now();
+      Duration streamLifetime = Duration.between(streamSetupStart, errorTime);
+
       if (handleStatusRuntimeException(e)) {
         log.warn(
             LogCategory.GRPC,
             "ConnectionUnavailable",
-            "Connection unavailable in job stream, channel reset");
+            "Connection unavailable in job stream after %.3f seconds, channel reset: %s (%s)",
+            streamLifetime.toMillis() / 1000.0,
+            e.getMessage(),
+            e.getStatus().getCode());
       } else {
         log.error(
             LogCategory.GRPC,
             "Error",
-            "Error in job stream: %s (%s)",
+            "Error in job stream after %.3f seconds: %s (%s)",
+            streamLifetime.toMillis() / 1000.0,
             e.getMessage(),
             e.getStatus().getCode());
       }
       throw e;
     } catch (Exception e) {
-      log.error(LogCategory.GRPC, "UnexpectedError", "Unexpected error in job stream");
+      Instant errorTime = Instant.now();
+      Duration streamLifetime = Duration.between(streamSetupStart, errorTime);
+      log.error(
+          LogCategory.GRPC,
+          "UnexpectedError",
+          "Unexpected error in job stream after %.3f seconds: %s",
+          streamLifetime.toMillis() / 1000.0,
+          e.getMessage());
       throw e;
     } finally {
       clientRef.set(null);
@@ -241,39 +398,74 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onError(Throwable t) {
+    Instant disconnectTime = Instant.now();
+    lastDisconnectTime.set(disconnectTime);
+
+    // Calculate connection uptime if we have connection establishment time
+    Instant connectionTime = connectionEstablishedTime.get();
+    String uptimeInfo = "";
+    if (connectionTime != null) {
+      Duration uptime = Duration.between(connectionTime, disconnectTime);
+      uptimeInfo =
+          String.format(" (connection was up for %.3f seconds)", uptime.toMillis() / 1000.0);
+    }
+
     if (t instanceof StatusRuntimeException) {
       StatusRuntimeException statusEx = (StatusRuntimeException) t;
+
+      // Capture error type for reconnection strategy
+      String errorCode = statusEx.getStatus().getCode().toString();
+      lastErrorType.set(errorCode);
+
       log.error(
           LogCategory.GRPC,
           "StreamError",
           "Job stream onError: Status="
               + statusEx.getStatus()
               + ", Message="
-              + statusEx.getMessage(),
+              + statusEx.getMessage()
+              + uptimeInfo,
           statusEx);
 
-      if (statusEx.getStatus().getCode() == Status.Code.CANCELLED) {
+      if (statusEx.getStatus().getCode().toString().equals("CANCELLED")) {
         log.warn(
             LogCategory.GRPC,
             "StreamCancelled",
-            "Stream cancelled by server or network issue, will attempt reconnect if enabled");
-      } else if (statusEx.getStatus().getCode() == Status.Code.UNAVAILABLE) {
+            "Stream cancelled by server or network issue%s, will attempt fast reconnect (total attempts: %d, successful: %d)",
+            uptimeInfo,
+            totalReconnectionAttempts.get(),
+            successfulReconnections.get());
+      } else if (statusEx.getStatus().getCode().toString().equals("UNAVAILABLE")) {
         log.warn(
             LogCategory.GRPC,
             "StreamUnavailable",
-            "Stream unavailable, likely network issue or server restart. Will attempt reconnect if enabled");
+            "Stream unavailable, likely network issue or server restart%s. Will attempt immediate reconnect (total attempts: %d, successful: %d)",
+            uptimeInfo,
+            totalReconnectionAttempts.get(),
+            successfulReconnections.get());
         resetChannel(); // Reset channel for unavailable errors
       } else {
         log.error(
             LogCategory.GRPC,
             "UnhandledStatusError",
-            "Unhandled StatusRuntimeException in job stream. Status: %s, Message: %s",
+            "Unhandled StatusRuntimeException in job stream%s. Status: %s, Message: %s (total attempts: %d, successful: %d)",
+            uptimeInfo,
             statusEx.getStatus(),
-            statusEx.getMessage());
+            statusEx.getMessage(),
+            totalReconnectionAttempts.get(),
+            successfulReconnections.get());
       }
     } else {
+      // For non-gRPC errors, use default backoff
+      lastErrorType.set("OTHER");
       log.error(
-          LogCategory.GRPC, "NonStatusError", "Job stream onError: Non-StatusRuntimeException", t);
+          LogCategory.GRPC,
+          "NonStatusError",
+          "Job stream onError: Non-StatusRuntimeException%s (total attempts: %d, successful: %d)",
+          uptimeInfo,
+          totalReconnectionAttempts.get(),
+          successfulReconnections.get(),
+          t);
     }
 
     // Clear client reference
@@ -284,10 +476,25 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onCompleted() {
+    Instant disconnectTime = Instant.now();
+    lastDisconnectTime.set(disconnectTime);
+
+    // Calculate connection uptime if we have connection establishment time
+    Instant connectionTime = connectionEstablishedTime.get();
+    String uptimeInfo = "";
+    if (connectionTime != null) {
+      Duration uptime = Duration.between(connectionTime, disconnectTime);
+      uptimeInfo =
+          String.format(" (connection was up for %.3f seconds)", uptime.toMillis() / 1000.0);
+    }
+
     log.info(
         LogCategory.GRPC,
         "StreamCompleted",
-        "Job stream onCompleted: Server closed the stream gracefully.");
+        "Job stream onCompleted: Server closed the stream gracefully%s (total attempts: %d, successful: %d)",
+        uptimeInfo,
+        totalReconnectionAttempts.get(),
+        successfulReconnections.get());
     clientRef.set(null);
     isRunning.set(false);
     shouldReconnect.set(true);
@@ -302,7 +509,12 @@ public class GateClientJobStream extends GateClientAbstract
   }
 
   public void stop() {
-    log.info(LogCategory.GRPC, "Stopping", "Stopping GateClientJobStream");
+    log.info(
+        LogCategory.GRPC,
+        "Stopping",
+        "Stopping GateClientJobStream (total attempts: %d, successful: %d)",
+        totalReconnectionAttempts.get(),
+        successfulReconnections.get());
 
     shouldReconnect.set(false);
     isRunning.set(false);
@@ -367,20 +579,29 @@ public class GateClientJobStream extends GateClientAbstract
     Thread streamThread = streamThreadRef.get();
     GateServiceGrpc.GateServiceStub client = clientRef.get();
 
-    return Map.of(
-        "isRunning",
-        isRunning.get(),
-        "shouldReconnect",
-        shouldReconnect.get(),
-        "executorShutdown",
-        executor == null || executor.isShutdown(),
-        "executorTerminated",
-        executor == null || executor.isTerminated(),
-        "streamThreadAlive",
-        streamThread != null && streamThread.isAlive(),
-        "streamThreadInterrupted",
-        streamThread != null && streamThread.isInterrupted(),
-        "clientActive",
-        client != null);
+    // Add timing information to status
+    Instant lastDisconnect = lastDisconnectTime.get();
+    Instant connectionEstablished = connectionEstablishedTime.get();
+    Instant reconnectStart = reconnectionStartTime.get();
+
+    Map<String, Object> status = new HashMap<>();
+    status.put("isRunning", isRunning.get());
+    status.put("shouldReconnect", shouldReconnect.get());
+    status.put("executorShutdown", executor == null || executor.isShutdown());
+    status.put("executorTerminated", executor == null || executor.isTerminated());
+    status.put("streamThreadAlive", streamThread != null && streamThread.isAlive());
+    status.put("streamThreadInterrupted", streamThread != null && streamThread.isInterrupted());
+    status.put("clientActive", client != null);
+    status.put("totalReconnectionAttempts", totalReconnectionAttempts.get());
+    status.put("successfulReconnections", successfulReconnections.get());
+    status.put("consecutiveFailures", consecutiveFailures.get());
+    status.put("lastDisconnectTime", lastDisconnect != null ? lastDisconnect.toString() : null);
+    status.put(
+        "connectionEstablishedTime",
+        connectionEstablished != null ? connectionEstablished.toString() : null);
+    status.put("reconnectionStartTime", reconnectStart != null ? reconnectStart.toString() : null);
+    status.put("lastErrorType", lastErrorType.get());
+
+    return status;
   }
 }
