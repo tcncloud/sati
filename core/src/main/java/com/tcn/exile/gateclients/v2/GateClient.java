@@ -57,7 +57,7 @@ public class GateClient extends GateClientAbstract {
       log.error(
           LogCategory.GRPC,
           "OperationFailed",
-          "Failed to execute {} operation: {}",
+          "Failed to execute %s operation: %s",
           operationName,
           e.getMessage());
       throw new RuntimeException(e);
@@ -66,7 +66,7 @@ public class GateClient extends GateClientAbstract {
         log.warn(
             LogCategory.GRPC,
             "ConnectionIssue",
-            "Connection issue during {} operation, channel reset: {}",
+            "Connection issue during %s operation, channel reset: %s",
             operationName,
             e.getMessage());
         throw new RuntimeException(
@@ -75,7 +75,7 @@ public class GateClient extends GateClientAbstract {
       log.error(
           LogCategory.GRPC,
           "GrpcError",
-          "gRPC error during {} operation: {} ({})",
+          "gRPC error during %s operation: %s (%s)",
           operationName,
           e.getMessage(),
           e.getStatus().getCode());
@@ -84,7 +84,7 @@ public class GateClient extends GateClientAbstract {
       log.error(
           LogCategory.GRPC,
           "UnexpectedError",
-          "Unexpected error during {} operation: {}",
+          "Unexpected error during %s operation: %s",
           operationName,
           e.getMessage());
       throw new RuntimeException("Failed to execute " + operationName, e);
@@ -111,7 +111,7 @@ public class GateClient extends GateClientAbstract {
     log.info(
         LogCategory.GRPC,
         "SubmitJobResults",
-        "GateClient submit job results request: {}",
+        "GateClient submit job results request: %s",
         request.getJobId());
     try {
       return executeRequest(
@@ -127,7 +127,7 @@ public class GateClient extends GateClientAbstract {
       log.error(
           LogCategory.GRPC,
           "SubmitJobResultsFailed",
-          "Failed to submit job results for job {}: {}",
+          "Failed to submit job results for job %s: %s",
           request.getJobId(),
           e.getMessage());
       throw new RuntimeException("Failed to submit job results", e);
