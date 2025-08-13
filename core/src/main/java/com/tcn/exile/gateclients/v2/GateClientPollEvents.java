@@ -90,6 +90,14 @@ public class GateClientPollEvents extends GateClientAbstract {
                       event.getTelephonyResult().getCallType());
                   plugin.handleTelephonyResult(event.getTelephonyResult());
                 }
+
+                if (event.hasTransferInstance()) {
+                  log.debug(
+                      "Tenant: {} - Received transfer instance event {}",
+                      tenant,
+                      event.getTransferInstance().getTransferInstanceId());
+                  plugin.handleTransferInstance(event.getTransferInstance());
+                }
               });
       long end = System.currentTimeMillis();
       // if we take longer than 1 second on average to process an event, log something

@@ -127,4 +127,6 @@ public interface PluginInterface {
   void setLogLevel(String jobId, StreamJobsResponse.SetLogLevelRequest setLogLevelRequest);
 
   void setConfig(PluginConfigEvent config);
+
+  void handleTransferInstance(ExileTransferInstance exileTransferInstance);
 }
