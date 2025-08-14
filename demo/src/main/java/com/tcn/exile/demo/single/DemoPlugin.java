@@ -159,6 +159,12 @@ public class DemoPlugin implements PluginInterface, LogShipper {
   }
 
   @Override
+  public void handleTransferInstance(
+      build.buf.gen.tcnapi.exile.gate.v2.ExileTransferInstance exileTransferInstance) {
+    log.info("Tenant: {} - Handling transfer instance for {}", tenantKey, exileTransferInstance);
+  }
+
+  @Override
   public void searchRecords(String jobId, StreamJobsResponse.SearchRecordsRequest searchRecords) {}
 
   @Override

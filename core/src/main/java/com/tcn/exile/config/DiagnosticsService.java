@@ -682,32 +682,32 @@ public class DiagnosticsService {
           totalPhysicalMemory =
               (Long) osBean.getClass().getMethod("getTotalPhysicalMemorySize").invoke(osBean);
         } catch (Exception e) {
-          log.debug("Could not access getTotalPhysicalMemorySize: {}", e.getMessage());
+          // Suppress: fall back to default -1 when restricted
         }
 
         try {
           availablePhysicalMemory =
               (Long) osBean.getClass().getMethod("getFreePhysicalMemorySize").invoke(osBean);
         } catch (Exception e) {
-          log.debug("Could not access getFreePhysicalMemorySize: {}", e.getMessage());
+          // Suppress: fall back to default -1 when restricted
         }
 
         try {
           totalSwapSpace =
               (Long) osBean.getClass().getMethod("getTotalSwapSpaceSize").invoke(osBean);
         } catch (Exception e) {
-          log.debug("Could not access getTotalSwapSpaceSize: {}", e.getMessage());
+          // Suppress: fall back to default -1 when restricted
         }
 
         try {
           availableSwapSpace =
               (Long) osBean.getClass().getMethod("getFreeSwapSpaceSize").invoke(osBean);
         } catch (Exception e) {
-          log.debug("Could not access getFreeSwapSpaceSize: {}", e.getMessage());
+          // Suppress: fall back to default -1 when restricted
         }
       }
     } catch (Exception e) {
-      log.debug("Could not access extended OS MXBean methods", e);
+      // Suppress overarching reflection access issues
     }
 
     return OperatingSystem.newBuilder()
@@ -774,7 +774,7 @@ public class DiagnosticsService {
         uuid = readFileContent("/sys/devices/virtual/dmi/id/product_uuid", uuid);
       }
     } catch (Exception e) {
-      log.debug("Could not read hardware info from system files", e);
+      // Suppress diagnostic noise when hardware sysfs is inaccessible in containers
     }
 
     return Hardware.newBuilder()
@@ -1125,7 +1125,7 @@ public class DiagnosticsService {
         return Files.readString(path).trim();
       }
     } catch (IOException e) {
-      log.debug("Could not read file: " + filePath, e);
+      // Intentionally suppress logs for unreadable or restricted system files
     }
     return defaultValue;
   }
