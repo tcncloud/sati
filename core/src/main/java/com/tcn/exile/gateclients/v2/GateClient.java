@@ -28,7 +28,7 @@ import java.util.concurrent.TimeUnit;
 
 public class GateClient extends GateClientAbstract {
   private static final StructuredLogger log = new StructuredLogger(GateClient.class);
-  private static final int DEFAULT_TIMEOUT_SECONDS = 30;
+  private static final int DEFAULT_TIMEOUT_SECONDS = 300;
 
   public GateClient(String tenant, Config currentConfig) {
     super(tenant, currentConfig);

@@ -47,7 +47,7 @@ public class GateClientConfiguration extends GateClientAbstract {
     try {
       var client =
           GateServiceGrpc.newBlockingStub(getChannel())
-              .withDeadlineAfter(30, TimeUnit.SECONDS)
+              .withDeadlineAfter(300, TimeUnit.SECONDS)
               .withWaitForReady();
       GetClientConfigurationResponse response =
           client.getClientConfiguration(GetClientConfigurationRequest.newBuilder().build());
