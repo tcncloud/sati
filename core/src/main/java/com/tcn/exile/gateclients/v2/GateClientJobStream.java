@@ -53,6 +53,7 @@ public class GateClientJobStream extends GateClientAbstract
   private final AtomicReference<Thread> streamThreadRef = new AtomicReference<>();
   private final AtomicReference<GateServiceGrpc.GateServiceStub> clientRef =
       new AtomicReference<>();
+  private final AtomicBoolean establishedForCurrentAttempt = new AtomicBoolean(false);
 
   // Connection timing tracking
   private final AtomicReference<Instant> lastDisconnectTime = new AtomicReference<>();
@@ -118,6 +119,8 @@ public class GateClientJobStream extends GateClientAbstract
         long attemptNumber = totalReconnectionAttempts.incrementAndGet();
         Instant reconnectStart = Instant.now();
         reconnectionStartTime.set(reconnectStart);
+        establishedForCurrentAttempt.set(false);
+        connectionEstablishedTime.set(null);
 
         // Calculate time since last disconnect if available
         Instant lastDisconnect = lastDisconnectTime.get();
@@ -138,23 +141,26 @@ public class GateClientJobStream extends GateClientAbstract
 
         establishJobStream();
 
-        // Connection successful
-        Instant connectionSuccess = Instant.now();
-        connectionEstablishedTime.set(connectionSuccess);
-        successfulReconnections.incrementAndGet();
-
-        // Clear error type on successful connection
-        lastErrorType.set(null);
-        consecutiveFailures.set(0); // Reset consecutive failure counter on success
-
-        Duration totalReconnectionTime = Duration.between(reconnectStart, connectionSuccess);
-        log.info(
-            LogCategory.GRPC,
-            "ConnectionEstablished",
-            "Job stream connection established successfully in %.3f seconds - attempt #%d (total successful: %d)",
-            totalReconnectionTime.toMillis() / 1000.0,
-            attemptNumber,
-            successfulReconnections.get());
+        // Stream returned (ended). Report uptime if it was established.
+        Instant streamEnd = Instant.now();
+        Instant establishedAt = connectionEstablishedTime.get();
+        if (establishedAt != null && establishedForCurrentAttempt.get()) {
+          Duration uptime = Duration.between(establishedAt, streamEnd);
+          log.info(
+              LogCategory.GRPC,
+              "StreamEnded",
+              "Job stream ended after %.3f seconds of uptime - attempt #%d (total successful: %d)",
+              uptime.toMillis() / 1000.0,
+              attemptNumber,
+              successfulReconnections.get());
+        } else {
+          log.info(
+              LogCategory.GRPC,
+              "StreamEndedBeforeEstablish",
+              "Job stream ended before establishment - attempt #%d (total successful: %d)",
+              attemptNumber,
+              successfulReconnections.get());
+        }
 
       } catch (UnconfiguredException e) {
         log.error(
@@ -269,7 +275,7 @@ public class GateClientJobStream extends GateClientAbstract
 
     GateServiceGrpc.GateServiceStub client =
         GateServiceGrpc.newStub(getChannel())
-            .withDeadlineAfter(30, TimeUnit.SECONDS)
+            .withDeadlineAfter(300, TimeUnit.SECONDS)
             .withWaitForReady();
 
     clientRef.set(client);
@@ -343,7 +349,29 @@ public class GateClientJobStream extends GateClientAbstract
 
   @Override
   public void onNext(StreamJobsResponse value) {
+    long jobStartTime = System.currentTimeMillis();
     log.debug(LogCategory.GRPC, "JobReceived", "Received job: %s", value.getJobId());
+    if (establishedForCurrentAttempt.compareAndSet(false, true)) {
+      Instant now = Instant.now();
+      connectionEstablishedTime.set(now);
+      successfulReconnections.incrementAndGet();
+      lastErrorType.set(null);
+      consecutiveFailures.set(0);
+
+      Instant reconnectStart = reconnectionStartTime.get();
+      double secondsToEstablish = 0.0;
+      if (reconnectStart != null) {
+        secondsToEstablish = Duration.between(reconnectStart, now).toMillis() / 1000.0;
+      }
+      long attemptNumber = totalReconnectionAttempts.get();
+      log.info(
+          LogCategory.GRPC,
+          "ConnectionEstablished",
+          "Job stream connection established successfully in %.3f seconds - attempt #%d (total successful: %d)",
+          secondsToEstablish,
+          attemptNumber,
+          successfulReconnections.get());
+    }
     try {
       if (value.hasListPools()) {
         plugin.listPools(value.getJobId(), value.getListPools());
@@ -380,18 +408,22 @@ public class GateClientJobStream extends GateClientAbstract
             LogCategory.GRPC, "UnknownJobType", "Unknown job type: %s", value.getUnknownFields());
       }
     } catch (UnconfiguredException e) {
+      long jobDuration = System.currentTimeMillis() - jobStartTime;
       log.error(
           LogCategory.GRPC,
           "JobHandlingError",
-          "Error while handling job: %s",
+          "Error while handling job: %s (took %d ms)",
           value.getJobId(),
+          jobDuration,
           e);
     } catch (Exception e) {
+      long jobDuration = System.currentTimeMillis() - jobStartTime;
       log.error(
           LogCategory.GRPC,
           "UnexpectedJobError",
-          "Unexpected error while handling job: %s",
+          "Unexpected error while handling job: %s (took %d ms)",
           value.getJobId(),
+          jobDuration,
           e);
     }
   }
@@ -417,16 +449,6 @@ public class GateClientJobStream extends GateClientAbstract
       String errorCode = statusEx.getStatus().getCode().toString();
       lastErrorType.set(errorCode);
 
-      log.error(
-          LogCategory.GRPC,
-          "StreamError",
-          "Job stream onError: Status="
-              + statusEx.getStatus()
-              + ", Message="
-              + statusEx.getMessage()
-              + uptimeInfo,
-          statusEx);
-
       if (statusEx.getStatus().getCode().toString().equals("CANCELLED")) {
         log.warn(
             LogCategory.GRPC,
@@ -444,7 +466,17 @@ public class GateClientJobStream extends GateClientAbstract
             totalReconnectionAttempts.get(),
             successfulReconnections.get());
         resetChannel(); // Reset channel for unavailable errors
+      } else if (statusEx.getStatus().getCode().toString().equals("DEADLINE_EXCEEDED")) {
+        log.error(
+            LogCategory.GRPC,
+            "StreamDeadlineExceeded",
+            "Stream deadline exceeded %s - (total attempts: %d, successful: %d)",
+            uptimeInfo,
+            totalReconnectionAttempts.get(),
+            successfulReconnections.get(),
+            statusEx);
       } else {
+        // All other StatusRuntimeExceptions are unexpected and should be logged
         log.error(
             LogCategory.GRPC,
             "UnhandledStatusError",
@@ -453,7 +485,8 @@ public class GateClientJobStream extends GateClientAbstract
             statusEx.getStatus(),
             statusEx.getMessage(),
             totalReconnectionAttempts.get(),
-            successfulReconnections.get());
+            successfulReconnections.get(),
+            statusEx);
       }
     } else {
       // For non-gRPC errors, use default backoff

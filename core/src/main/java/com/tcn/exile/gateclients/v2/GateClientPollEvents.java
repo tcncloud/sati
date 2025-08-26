@@ -52,7 +52,7 @@ public class GateClientPollEvents extends GateClientAbstract {
       }
       var client =
           GateServiceGrpc.newBlockingStub(getChannel())
-              .withDeadlineAfter(30, TimeUnit.SECONDS)
+              .withDeadlineAfter(300, TimeUnit.SECONDS)
               .withWaitForReady();
       var response = client.pollEvents(PollEventsRequest.newBuilder().build());
       if (response.getEventsCount() == 0) {
