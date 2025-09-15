@@ -261,4 +261,8 @@ public class GateClient extends GateClientAbstract {
   public UnassignAgentSkillResponse UnassignAgentSkill(UnassignAgentSkillRequest request) {
     return executeRequest("unassignAgentSkill", client -> client.unassignAgentSkill(request));
   }
+
+  public TransferResponse transfer(TransferRequest request) {
+    return executeRequest("transfer", client -> client.transfer(request));
+  }
 }
