@@ -35,61 +35,66 @@ public class GateClientConfiguration extends GateClientAbstract {
   protected static final org.slf4j.Logger log =
       org.slf4j.LoggerFactory.getLogger(GateClientConfiguration.class);
 
-  /**
-   * Redacts sensitive information from JSON configuration payload.
-   */
+  /** Redacts sensitive information from JSON configuration payload. */
   private String redactConfigPayloadForLogging(String payload) {
     if (payload == null || payload.isBlank()) {
       return payload;
     }
-    
+
     // Redact password field
-    String redacted = payload.replaceAll("\"database_password\"\\s*:\\s*\"[^\"]*\"", "\"database_password\":\"***REDACTED***\"");
-    
+    String redacted =
+        payload.replaceAll(
+            "\"database_password\"\\s*:\\s*\"[^\"]*\"", "\"database_password\":\"***REDACTED***\"");
+
     // Redact username field
-    redacted = redacted.replaceAll("\"database_username\"\\s*:\\s*\"[^\"]*\"", "\"database_username\":\"***REDACTED***\"");
-    
+    redacted =
+        redacted.replaceAll(
+            "\"database_username\"\\s*:\\s*\"[^\"]*\"", "\"database_username\":\"***REDACTED***\"");
+
     // Redact jdbcUser field
-    redacted = redacted.replaceAll("\"jdbcUser\"\\s*:\\s*\"[^\"]*\"", "\"jdbcUser\":\"***REDACTED***\"");
-    
+    redacted =
+        redacted.replaceAll("\"jdbcUser\"\\s*:\\s*\"[^\"]*\"", "\"jdbcUser\":\"***REDACTED***\"");
+
     // Redact certificate fields
-    redacted = redacted.replaceAll("\"trust_store_cert\"\\s*:\\s*\"[^\"]*\"", "\"trust_store_cert\":\"***CERTIFICATE_REDACTED***\"");
-    redacted = redacted.replaceAll("\"key_store_cert\"\\s*:\\s*\"[^\"]*\"", "\"key_store_cert\":\"***CERTIFICATE_REDACTED***\"");
-    
+    redacted =
+        redacted.replaceAll(
+            "\"trust_store_cert\"\\s*:\\s*\"[^\"]*\"",
+            "\"trust_store_cert\":\"***CERTIFICATE_REDACTED***\"");
+    redacted =
+        redacted.replaceAll(
+            "\"key_store_cert\"\\s*:\\s*\"[^\"]*\"",
+            "\"key_store_cert\":\"***CERTIFICATE_REDACTED***\"");
+
     return redacted;
   }
 
-  /**
-   * Creates a redacted version of PluginConfigEvent for safe logging.
-   */
+  /** Creates a redacted version of PluginConfigEvent for safe logging. */
   private String redactEventForLogging(PluginConfigEvent event) {
     if (event == null) {
       return "null";
     }
-    
-    return String.format("PluginConfigEvent{orgId='%s', orgName='%s', configurationName='%s', configurationPayload='%s', unconfigured=%s}",
+
+    return String.format(
+        "PluginConfigEvent{orgId='%s', orgName='%s', configurationName='%s', configurationPayload='%s', unconfigured=%s}",
         event.getOrgId(),
         event.getOrgName(),
         event.getConfigurationName(),
         redactConfigPayloadForLogging(event.getConfigurationPayload()),
-        event.isUnconfigured()
-    );
+        event.isUnconfigured());
   }
 
-  /**
-   * Creates a redacted version of GetClientConfigurationResponse for safe logging.
-   */
+  /** Creates a redacted version of GetClientConfigurationResponse for safe logging. */
   private String redactResponseForLogging(GetClientConfigurationResponse response) {
     if (response == null) {
       return "null";
     }
-    
-    return String.format("GetClientConfigurationResponse{orgId='%s', orgName='%s', configName='%s', configPayload='%s'}",
+
+    return String.format(
+        "GetClientConfigurationResponse{orgId='%s', orgName='%s', configName='%s', configPayload='%s'}",
         response.getOrgId(),
         response.getOrgName(),
         response.getConfigName(),
-        redactConfigPayloadForLogging(response.getConfigPayload())
-    );
+        redactConfigPayloadForLogging(response.getConfigPayload()));
   }
 
   public GateClientConfiguration(String tenant, Config currentConfig, PluginInterface plugin) {
