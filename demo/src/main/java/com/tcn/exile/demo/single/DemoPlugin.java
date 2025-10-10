@@ -165,6 +165,12 @@ public class DemoPlugin implements PluginInterface, LogShipper {
   }
 
   @Override
+  public void handleCallRecording(
+      build.buf.gen.tcnapi.exile.gate.v2.ExileCallRecording exileCallRecording) {
+    log.info("Tenant: {} - Handling call recording for {}", tenantKey, exileCallRecording);
+  }
+
+  @Override
   public void searchRecords(String jobId, StreamJobsResponse.SearchRecordsRequest searchRecords) {}
 
   @Override
