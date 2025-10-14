@@ -26,4 +26,7 @@ public record Agent(
     @Nullable String partnerAgentId,
     @NotEmpty String username,
     @Nullable String firstName,
-    @Nullable String lastName) {}
+    @Nullable String lastName,
+    @Nullable Long currentSessionId,
+    @Nullable AgentState agentState,
+    @Nullable Boolean isLoggedIn) {}
