@@ -98,6 +98,14 @@ public class GateClientPollEvents extends GateClientAbstract {
                       event.getTransferInstance().getTransferInstanceId());
                   plugin.handleTransferInstance(event.getTransferInstance());
                 }
+
+                if (event.hasCallRecording()) {
+                  log.debug(
+                      "Tenant: {} - Received call recording event {}",
+                      tenant,
+                      event.getCallRecording().getRecordingId());
+                  plugin.handleCallRecording(event.getCallRecording());
+                }
               });
       long end = System.currentTimeMillis();
       // if we take longer than 1 second on average to process an event, log something

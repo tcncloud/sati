@@ -129,4 +129,6 @@ public interface PluginInterface {
   void setConfig(PluginConfigEvent config);
 
   void handleTransferInstance(ExileTransferInstance exileTransferInstance);
+
+  void handleCallRecording(ExileCallRecording exileCallRecording);
 }
