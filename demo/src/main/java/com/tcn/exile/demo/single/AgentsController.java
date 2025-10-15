@@ -31,6 +31,8 @@ import io.micronaut.http.HttpStatus;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.*;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.inject.Inject;
 import java.util.ArrayList;
@@ -51,7 +53,9 @@ public class AgentsController {
   @Get
   @Tag(name = "agents")
   public HttpResponse<?> listAgents(
+      @Parameter(description = "Filter agents by logged-in status")
       @QueryValue(value = "logged_in", defaultValue = "") Optional<Boolean> loggedIn,
+      @Parameter(description = "Filter agents by state (e.g., READY, PAUSED, IDLE). Accepts with or without AGENT_STATE_ prefix.")
       @QueryValue(value = "state", defaultValue = "") Optional<String> stateParam)
       throws UnconfiguredException {
     log.debug("listAgents with logged_in={}, state={}", loggedIn, stateParam);
@@ -97,10 +101,7 @@ public class AgentsController {
               agent.getFirstName(),
               agent.getLastName(),
               agent.getCurrentSessionId() != 0 ? agent.getCurrentSessionId() : null,
-              agent.getAgentState()
-                      != build.buf.gen.tcnapi.exile.gate.v2.AgentState.AGENT_STATE_UNAVALIABLE
-                  ? AgentState.values()[agent.getAgentState().getNumber()]
-                  : null,
+              AgentState.values()[agent.getAgentState().getNumber()],
               agent.getIsLoggedIn()));
     }
 
@@ -139,11 +140,13 @@ public class AgentsController {
 
   /**
    * Get list of valid state names (without AGENT_STATE_ prefix) for error messages.
+   * Filters out internal/invalid states like UNRECOGNIZED.
    *
    * @return List of valid state names
    */
   private List<String> getValidStateNames() {
     return Arrays.stream(build.buf.gen.tcnapi.exile.gate.v2.AgentState.values())
+        .filter(state -> state != build.buf.gen.tcnapi.exile.gate.v2.AgentState.UNRECOGNIZED)
         .map(state -> state.name().replace("AGENT_STATE_", ""))
         .collect(Collectors.toList());
   }
@@ -177,10 +180,7 @@ public class AgentsController {
           ret.getAgent().getFirstName(),
           ret.getAgent().getLastName(),
           ret.getAgent().getCurrentSessionId() != 0 ? ret.getAgent().getCurrentSessionId() : null,
-          ret.getAgent().getAgentState()
-                  != build.buf.gen.tcnapi.exile.gate.v2.AgentState.AGENT_STATE_UNAVALIABLE
-              ? AgentState.values()[ret.getAgent().getAgentState().getNumber()]
-              : null,
+          AgentState.values()[ret.getAgent().getAgentState().getNumber()],
           ret.getAgent().getIsLoggedIn());
     }
     throw new RuntimeException("Failed to create agent");
