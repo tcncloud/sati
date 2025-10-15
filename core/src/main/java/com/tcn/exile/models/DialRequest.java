@@ -27,4 +27,5 @@ public record DialRequest(
     @Nullable String recordId,
     @Nullable String poolId,
     @Nullable String rulesetName,
-    @Nullable Boolean skipComplianceChecks) {}
+    @Nullable Boolean skipComplianceChecks,
+    @Nullable Boolean recordCall) {}
