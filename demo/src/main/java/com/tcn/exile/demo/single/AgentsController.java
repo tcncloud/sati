@@ -26,13 +26,19 @@ import com.tcn.exile.models.CallType;
 import com.tcn.exile.models.ConnectedParty;
 import com.tcn.exile.models.DialRequest;
 import com.tcn.exile.models.DialResponse;
+import io.micronaut.http.HttpResponse;
+import io.micronaut.http.HttpStatus;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.*;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.inject.Inject;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,23 +50,102 @@ public class AgentsController {
 
   @Get
   @Tag(name = "agents")
-  public List<Agent> listAgents() throws UnconfiguredException {
-    log.debug("listAgents");
-    var ret =
-        configChangeWatcher.getGateClient().listAgents(ListAgentsRequest.newBuilder().build());
-    List<Agent> agents = new java.util.ArrayList<Agent>();
-    while (ret.hasNext()) {
-      var agent = ret.next();
-      agents.add(
-          new Agent(
-              agent.getAgent().getUserId(),
-              agent.getAgent().getPartnerAgentId(),
-              agent.getAgent().getUsername(),
-              agent.getAgent().getFirstName(),
-              agent.getAgent().getLastName()));
+  public HttpResponse<?> listAgents(
+      @QueryValue(value = "logged_in", defaultValue = "") Optional<Boolean> loggedIn,
+      @QueryValue(value = "state", defaultValue = "") Optional<String> stateParam)
+      throws UnconfiguredException {
+    log.debug("listAgents with logged_in={}, state={}", loggedIn, stateParam);
+
+    // Parse and validate state parameter
+    build.buf.gen.tcnapi.exile.gate.v2.AgentState stateFilter = null;
+    if (stateParam.isPresent() && !stateParam.get().isEmpty()) {
+      try {
+        stateFilter = parseState(stateParam.get());
+      } catch (IllegalArgumentException e) {
+        return HttpResponse.status(HttpStatus.BAD_REQUEST)
+            .body(
+                Map.of(
+                    "error", e.getMessage(),
+                    "validStates", getValidStateNames()));
+      }
     }
 
-    return agents;
+    // Build request with optional filters
+    var requestBuilder = ListAgentsRequest.newBuilder();
+
+    if (loggedIn.isPresent()) {
+      requestBuilder.setLoggedIn(loggedIn.get());
+    }
+
+    if (stateFilter != null) {
+      requestBuilder.setState(stateFilter);
+    }
+
+    // Call gRPC service
+    var ret = configChangeWatcher.getGateClient().listAgents(requestBuilder.build());
+
+    // Collect and transform results
+    List<Agent> agents = new ArrayList<>();
+    while (ret.hasNext()) {
+      var agentResponse = ret.next();
+      var agent = agentResponse.getAgent();
+      agents.add(
+          new Agent(
+              agent.getUserId(),
+              agent.getPartnerAgentId(),
+              agent.getUsername(),
+              agent.getFirstName(),
+              agent.getLastName(),
+              agent.getCurrentSessionId() != 0 ? agent.getCurrentSessionId() : null,
+              agent.getAgentState()
+                      != build.buf.gen.tcnapi.exile.gate.v2.AgentState.AGENT_STATE_UNAVALIABLE
+                  ? AgentState.values()[agent.getAgentState().getNumber()]
+                  : null,
+              agent.getIsLoggedIn()));
+    }
+
+    return HttpResponse.ok(agents);
+  }
+
+  /**
+   * Parse and validate the state parameter. Accepts case-insensitive state names with or without
+   * "AGENT_STATE_" prefix.
+   *
+   * @param stateParam The state parameter from the request
+   * @return The corresponding AgentState protobuf enum
+   * @throws IllegalArgumentException if the state is invalid
+   */
+  private build.buf.gen.tcnapi.exile.gate.v2.AgentState parseState(String stateParam) {
+    if (stateParam == null || stateParam.trim().isEmpty()) {
+      throw new IllegalArgumentException("State parameter cannot be empty");
+    }
+
+    // Normalize: uppercase and add prefix if not present
+    String normalized = stateParam.trim().toUpperCase();
+    if (!normalized.startsWith("AGENT_STATE_")) {
+      normalized = "AGENT_STATE_" + normalized;
+    }
+
+    // Try to find matching enum value
+    try {
+      return build.buf.gen.tcnapi.exile.gate.v2.AgentState.valueOf(normalized);
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Invalid state '%s'. Valid states are: %s",
+              stateParam, String.join(", ", getValidStateNames())));
+    }
+  }
+
+  /**
+   * Get list of valid state names (without AGENT_STATE_ prefix) for error messages.
+   *
+   * @return List of valid state names
+   */
+  private List<String> getValidStateNames() {
+    return Arrays.stream(build.buf.gen.tcnapi.exile.gate.v2.AgentState.values())
+        .map(state -> state.name().replace("AGENT_STATE_", ""))
+        .collect(Collectors.toList());
   }
 
   @Post
@@ -90,7 +175,13 @@ public class AgentsController {
           ret.getAgent().getPartnerAgentId(),
           ret.getAgent().getUsername(),
           ret.getAgent().getFirstName(),
-          ret.getAgent().getLastName());
+          ret.getAgent().getLastName(),
+          ret.getAgent().getCurrentSessionId() != 0 ? ret.getAgent().getCurrentSessionId() : null,
+          ret.getAgent().getAgentState()
+                  != build.buf.gen.tcnapi.exile.gate.v2.AgentState.AGENT_STATE_UNAVALIABLE
+              ? AgentState.values()[ret.getAgent().getAgentState().getNumber()]
+              : null,
+          ret.getAgent().getIsLoggedIn());
     }
     throw new RuntimeException("Failed to create agent");
   }
