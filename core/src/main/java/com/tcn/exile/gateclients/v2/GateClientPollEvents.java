@@ -103,7 +103,7 @@ public class GateClientPollEvents extends GateClientAbstract {
                   log.debug(
                       "Tenant: {} - Received call recording event {}",
                       tenant,
-                      event.getCallRecording().getId());
+                      event.getCallRecording().getRecordingId());
                   plugin.handleCallRecording(event.getCallRecording());
                 }
               });

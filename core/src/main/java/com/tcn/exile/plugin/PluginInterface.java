@@ -130,10 +130,5 @@ public interface PluginInterface {
 
   void handleTransferInstance(ExileTransferInstance exileTransferInstance);
 
-  /**
-   * Handle call recording
-   *
-   * @param exileCallRecording
-   */
   void handleCallRecording(ExileCallRecording exileCallRecording);
 }
