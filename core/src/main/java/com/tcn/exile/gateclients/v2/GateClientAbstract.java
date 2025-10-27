@@ -172,8 +172,12 @@ public abstract class GateClientAbstract {
 
         var shutdown = localChannel.isShutdown();
         var terminated = localChannel.isTerminated();
-        
-        log.debug("localChannel is null: {}, isShutdown: {}, isTerminated: {}", localChannel == null, shutdown, terminated);
+
+        log.debug(
+            "localChannel is null: {}, isShutdown: {}, isTerminated: {}",
+            localChannel == null,
+            shutdown,
+            terminated);
         if (localChannel == null || localChannel.isShutdown() || localChannel.isTerminated()) {
           localChannel = createNewChannel();
           sharedChannel = localChannel;
@@ -189,7 +193,11 @@ public abstract class GateClientAbstract {
         lock.unlock();
       }
     } else {
-      log.debug("getChannel no new channel needed, returning localChannel null: {}, isShutdown: {}, isTerminated: {}", localChannel == null, localChannel.isShutdown(), localChannel.isTerminated());
+      log.debug(
+          "getChannel no new channel needed, returning localChannel null: {}, isShutdown: {}, isTerminated: {}",
+          localChannel == null,
+          localChannel.isShutdown(),
+          localChannel.isTerminated());
     }
 
     return localChannel;
@@ -207,17 +215,16 @@ public abstract class GateClientAbstract {
 
       var hostname = getConfig().getApiHostname();
       var port = getConfig().getApiPort();
-      var chan = Grpc.newChannelBuilderForAddress(
-              hostname, port, channelCredentials)
-          .keepAliveTime(1, TimeUnit.SECONDS)
-          .keepAliveTimeout(10, TimeUnit.SECONDS)
-          .idleTimeout(30, TimeUnit.MINUTES)
-          .overrideAuthority("exile-proxy")
-          .build();
+      var chan =
+          Grpc.newChannelBuilderForAddress(hostname, port, channelCredentials)
+              .keepAliveTime(1, TimeUnit.SECONDS)
+              .keepAliveTimeout(10, TimeUnit.SECONDS)
+              .idleTimeout(30, TimeUnit.MINUTES)
+              .overrideAuthority("exile-proxy")
+              .build();
       log.info("Managed Channel created for {}:{}", hostname, port);
 
       return chan;
-      
 
     } catch (IOException e) {
       log.error("Tenant: {} - IOException during shared channel creation", tenant, e);
