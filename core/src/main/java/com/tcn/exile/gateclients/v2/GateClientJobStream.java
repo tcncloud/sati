@@ -75,6 +75,30 @@ public class GateClientJobStream extends GateClientAbstract
   }
 
   @Override
+  protected void resetChannel() {
+    log.info(
+        LogCategory.GRPC,
+        "ResetChannel",
+        "Resetting static shared gRPC channel after connection failure.");
+
+    // mark the stream for restart and wake it up if it’s sleeping
+    isRunning.set(false);
+    shouldReconnect.set(true);
+
+    // interrupt the stream thread if it’s alive
+    Thread streamThread = streamThreadRef.get();
+    if (streamThread != null && streamThread.isAlive()) {
+      log.debug(
+          LogCategory.GRPC,
+          "InterruptingStreamThreadForReset",
+          "Interrupting job stream thread before channel reset");
+      streamThread.interrupt();
+    }
+
+    super.resetChannel();
+  }
+
+  @Override
   public void start() {
     if (isUnconfigured()) {
       log.warn(
