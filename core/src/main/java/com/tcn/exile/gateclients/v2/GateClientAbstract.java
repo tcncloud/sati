@@ -170,8 +170,8 @@ public abstract class GateClientAbstract {
         // Double-check condition inside synchronized block
         localChannel = sharedChannel;
 
-        var shutdown = localChannel.isShutdown();
-        var terminated = localChannel.isTerminated();
+        var shutdown = localChannel == null || localChannel.isShutdown();
+        var terminated = localChannel == null || localChannel.isTerminated();
 
         log.debug(
             "localChannel is null: {}, isShutdown: {}, isTerminated: {}",
