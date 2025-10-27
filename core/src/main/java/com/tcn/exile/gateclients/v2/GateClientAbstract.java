@@ -137,6 +137,7 @@ public abstract class GateClientAbstract {
   }
 
   private void forceShutdownSharedChannel() {
+    log.info("forceShudown called, aquiring lock");
     lock.lock();
     try {
       ManagedChannel channelToShutdown = sharedChannel;
@@ -163,10 +164,20 @@ public abstract class GateClientAbstract {
     ManagedChannel localChannel = sharedChannel;
     if (localChannel == null || localChannel.isShutdown() || localChannel.isTerminated()) {
 
+      log.debug("getChannel called, aquiring lock");
       lock.lock();
       try {
         // Double-check condition inside synchronized block
         localChannel = sharedChannel;
+
+        var shutdown = localChannel.isShutdown();
+        var terminated = localChannel.isTerminated();
+
+        log.debug(
+            "localChannel is null: {}, isShutdown: {}, isTerminated: {}",
+            localChannel == null,
+            shutdown,
+            terminated);
         if (localChannel == null || localChannel.isShutdown() || localChannel.isTerminated()) {
           localChannel = createNewChannel();
           sharedChannel = localChannel;
@@ -181,6 +192,12 @@ public abstract class GateClientAbstract {
       } finally {
         lock.unlock();
       }
+    } else {
+      log.debug(
+          "getChannel no new channel needed, returning localChannel null: {}, isShutdown: {}, isTerminated: {}",
+          localChannel == null,
+          localChannel.isShutdown(),
+          localChannel.isTerminated());
     }
 
     return localChannel;
@@ -196,13 +213,18 @@ public abstract class GateClientAbstract {
                   new ByteArrayInputStream(getConfig().getPrivateKey().getBytes()))
               .build();
 
-      return Grpc.newChannelBuilderForAddress(
-              getConfig().getApiHostname(), getConfig().getApiPort(), channelCredentials)
-          .keepAliveTime(1, TimeUnit.SECONDS)
-          .keepAliveTimeout(10, TimeUnit.SECONDS)
-          .idleTimeout(30, TimeUnit.MINUTES)
-          .overrideAuthority("exile-proxy")
-          .build();
+      var hostname = getConfig().getApiHostname();
+      var port = getConfig().getApiPort();
+      var chan =
+          Grpc.newChannelBuilderForAddress(hostname, port, channelCredentials)
+              .keepAliveTime(1, TimeUnit.SECONDS)
+              .keepAliveTimeout(10, TimeUnit.SECONDS)
+              .idleTimeout(30, TimeUnit.MINUTES)
+              .overrideAuthority("exile-proxy")
+              .build();
+      log.info("Managed Channel created for {}:{}", hostname, port);
+
+      return chan;
 
     } catch (IOException e) {
       log.error("Tenant: {} - IOException during shared channel creation", tenant, e);
