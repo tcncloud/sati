@@ -303,6 +303,7 @@ public class GateClientJobStream extends GateClientAbstract
             .withWaitForReady();
 
     clientRef.set(client);
+    log.debug(LogCategory.GRPC, "establishJobStream", "clientRef set");
     streamThreadRef.set(Thread.currentThread());
 
     try {
