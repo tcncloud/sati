@@ -137,7 +137,14 @@ public class GateClientConfiguration extends GateClientAbstract {
     } catch (UnconfiguredException e) {
       log.debug("Tenant: {} - Configuration not set, skipping get client configuration", tenant);
     } catch (StatusRuntimeException e) {
-      log.error("Tenant: {} - Failed to get client configuration: {}", tenant, e.getMessage());
+      if (!handleStatusRuntimeException(e)) {
+        log.error("Tenant: {} - Failed to get client configuration", tenant, e);
+      } else {
+        log.warn(
+            "Tenant: {} - Transient gRPC error while getting client configuration, will retry",
+            tenant,
+            e);
+      }
     }
   }
 }
