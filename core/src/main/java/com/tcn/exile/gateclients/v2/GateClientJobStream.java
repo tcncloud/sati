@@ -82,7 +82,6 @@ public class GateClientJobStream extends GateClientAbstract
         "Resetting static shared gRPC channel after connection failure.");
 
     // mark the stream for restart and wake it up if it’s sleeping
-    isRunning.set(false);
     shouldReconnect.set(true);
 
     // interrupt the stream thread if it’s alive
@@ -132,8 +131,6 @@ public class GateClientJobStream extends GateClientAbstract
       executorRef.set(executor);
 
       executor.submit(this::maintainConnection);
-    } else {
-      log.debug(LogCategory.GRPC, "AlreadyRunning", "GateClientJobStream is already running");
     }
   }
 
