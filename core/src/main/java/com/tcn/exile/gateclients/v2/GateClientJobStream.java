@@ -54,6 +54,7 @@ public class GateClientJobStream extends GateClientAbstract
   private final AtomicReference<GateServiceGrpc.GateServiceStub> clientRef =
       new AtomicReference<>();
   private final AtomicBoolean establishedForCurrentAttempt = new AtomicBoolean(false);
+  private final AtomicReference<Instant> lastMessageTime = new AtomicReference<>();
 
   // Connection timing tracking
   private final AtomicReference<Instant> lastDisconnectTime = new AtomicReference<>();
@@ -68,6 +69,7 @@ public class GateClientJobStream extends GateClientAbstract
   private static final long INITIAL_RECONNECT_DELAY_MS = 1000; // 1 second
   private static final long MAX_RECONNECT_DELAY_MS = 30000; // 30 seconds max
   private static final long IMMEDIATE_RECONNECT_DELAY_MS = 100; // 100ms for network errors
+  private static final Duration MAX_INACTIVITY_DURATION = Duration.ofSeconds(180);
 
   public GateClientJobStream(String tenant, Config currentConfig, PluginInterface plugin) {
     super(tenant, currentConfig);
@@ -82,6 +84,7 @@ public class GateClientJobStream extends GateClientAbstract
         "Resetting static shared gRPC channel after connection failure.");
 
     // mark the stream for restart and wake it up if it’s sleeping
+    isRunning.set(false);
     shouldReconnect.set(true);
 
     // interrupt the stream thread if it’s alive
@@ -142,6 +145,7 @@ public class GateClientJobStream extends GateClientAbstract
         reconnectionStartTime.set(reconnectStart);
         establishedForCurrentAttempt.set(false);
         connectionEstablishedTime.set(null);
+        lastMessageTime.set(Instant.now());
 
         // Calculate time since last disconnect if available
         Instant lastDisconnect = lastDisconnectTime.get();
@@ -291,6 +295,33 @@ public class GateClientJobStream extends GateClientAbstract
     }
   }
 
+  private void checkForInactivity() {
+    GateServiceGrpc.GateServiceStub client = clientRef.get();
+    if (client == null) {
+      return;
+    }
+
+    Instant lastMessage = lastMessageTime.get();
+    if (lastMessage == null) {
+      return;
+    }
+
+    Duration idleDuration = Duration.between(lastMessage, Instant.now());
+    if (idleDuration.compareTo(MAX_INACTIVITY_DURATION) <= 0) {
+      return;
+    }
+
+    log.warn(
+        LogCategory.GRPC,
+        "StreamInactivityTimeout",
+        "No job stream activity for %.3f seconds (threshold: %.3f). Resetting channel.",
+        idleDuration.toMillis() / 1000.0,
+        MAX_INACTIVITY_DURATION.toMillis() / 1000.0);
+    lastErrorType.set("INACTIVITY_TIMEOUT");
+    resetChannel();
+    Thread.currentThread().interrupt();
+  }
+
   private void establishJobStream() throws UnconfiguredException {
     Instant streamSetupStart = Instant.now();
 
@@ -321,6 +352,7 @@ public class GateClientJobStream extends GateClientAbstract
       while (shouldReconnect.get() && isRunning.get() && !Thread.currentThread().isInterrupted()) {
         try {
           Thread.sleep(10000); // Check every 10 seconds
+          checkForInactivity();
         } catch (InterruptedException e) {
           log.info(
               LogCategory.GRPC,
@@ -373,6 +405,7 @@ public class GateClientJobStream extends GateClientAbstract
   public void onNext(StreamJobsResponse value) {
     long jobStartTime = System.currentTimeMillis();
     log.debug(LogCategory.GRPC, "JobReceived", "Received job: %s", value.getJobId());
+    lastMessageTime.set(Instant.now());
     if (establishedForCurrentAttempt.compareAndSet(false, true)) {
       Instant now = Instant.now();
       connectionEstablishedTime.set(now);
@@ -454,6 +487,7 @@ public class GateClientJobStream extends GateClientAbstract
   public void onError(Throwable t) {
     Instant disconnectTime = Instant.now();
     lastDisconnectTime.set(disconnectTime);
+    lastMessageTime.set(disconnectTime);
 
     // Calculate connection uptime if we have connection establishment time
     Instant connectionTime = connectionEstablishedTime.get();
@@ -533,6 +567,7 @@ public class GateClientJobStream extends GateClientAbstract
   public void onCompleted() {
     Instant disconnectTime = Instant.now();
     lastDisconnectTime.set(disconnectTime);
+    lastMessageTime.set(disconnectTime);
 
     // Calculate connection uptime if we have connection establishment time
     Instant connectionTime = connectionEstablishedTime.get();
@@ -638,6 +673,7 @@ public class GateClientJobStream extends GateClientAbstract
     Instant lastDisconnect = lastDisconnectTime.get();
     Instant connectionEstablished = connectionEstablishedTime.get();
     Instant reconnectStart = reconnectionStartTime.get();
+    Instant lastMessage = lastMessageTime.get();
 
     Map<String, Object> status = new HashMap<>();
     status.put("isRunning", isRunning.get());
@@ -656,6 +692,7 @@ public class GateClientJobStream extends GateClientAbstract
         connectionEstablished != null ? connectionEstablished.toString() : null);
     status.put("reconnectionStartTime", reconnectStart != null ? reconnectStart.toString() : null);
     status.put("lastErrorType", lastErrorType.get());
+    status.put("lastMessageTime", lastMessage != null ? lastMessage.toString() : null);
 
     return status;
   }
