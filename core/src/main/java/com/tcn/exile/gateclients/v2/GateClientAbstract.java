@@ -217,8 +217,8 @@ public abstract class GateClientAbstract {
       var port = getConfig().getApiPort();
       var chan =
           Grpc.newChannelBuilderForAddress(hostname, port, channelCredentials)
-              .keepAliveTime(1, TimeUnit.SECONDS)
-              .keepAliveTimeout(10, TimeUnit.SECONDS)
+              .keepAliveTime(20, TimeUnit.SECONDS)
+              .keepAliveTimeout(30, TimeUnit.SECONDS)
               .idleTimeout(30, TimeUnit.MINUTES)
               .overrideAuthority("exile-proxy")
               .build();
