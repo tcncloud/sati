@@ -26,8 +26,10 @@ import com.tcn.exile.log.StructuredLogger;
 import com.tcn.exile.plugin.PluginInterface;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.StreamObserver;
+import io.grpc.ManagedChannel;
 import io.micronaut.context.annotation.Context;
 import io.micronaut.context.annotation.Requires;
+import io.micronaut.scheduling.annotation.Scheduled;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.Instant;
@@ -76,6 +78,22 @@ public class GateClientJobStream extends GateClientAbstract
     this.plugin = plugin;
   }
 
+  @Scheduled(fixedDelay = "10s")
+  public void start2() {
+    if (isUnconfigured() || !plugin.isRunning()) {
+      log.warn(LogCategory.GRPC, "NOOP", "JobStream is unconfigured or db not running cannot stream jobs");
+      return;
+    }
+    try {
+      GateServiceGrpc.newBlockingStub(getChannel())
+          .withDeadlineAfter(300, TimeUnit.SECONDS)
+          .withWaitForReady()
+          .streamJobs(StreamJobsRequest.newBuilder().build())
+          .forEachRemaining(this::onNext);
+    } catch (Exception e) {
+      log.error(LogCategory.GRPC, "JobStream", "error streaming jobs from server: {}", e);
+    }
+  } 
   @Override
   protected void resetChannel() {
     log.info(
@@ -99,7 +117,6 @@ public class GateClientJobStream extends GateClientAbstract
 
     super.resetChannel();
   }
-
   @Override
   public void start() {
     if (isUnconfigured()) {
