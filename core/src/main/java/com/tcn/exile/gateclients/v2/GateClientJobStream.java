@@ -70,6 +70,7 @@ public class GateClientJobStream extends GateClientAbstract
       return;
     }
     try {
+      log.debug(LogCategory.GRPC, "Start", "Starting JobStream");
       reconnectionStartTime.set(Instant.now());
 
       var client = GateServiceGrpc.newBlockingStub(getChannel())
@@ -100,6 +101,8 @@ public class GateClientJobStream extends GateClientAbstract
     } finally {
       totalReconnectionAttempts.incrementAndGet();
       lastDisconnectTime.set(Instant.now());
+      log.debug(LogCategory.GRPC, "Complete", "Job stream done");
+
     }
   } 
 
@@ -108,27 +111,7 @@ public class GateClientJobStream extends GateClientAbstract
     long jobStartTime = System.currentTimeMillis();
     log.debug(LogCategory.GRPC, "JobReceived", "Received job: %s", value.getJobId());
     lastMessageTime.set(Instant.now());
-    if (establishedForCurrentAttempt.compareAndSet(false, true)) {
-      Instant now = Instant.now();
-      connectionEstablishedTime.set(now);
-      successfulReconnections.incrementAndGet();
-      lastErrorType.set(null);
-      consecutiveFailures.set(0);
 
-      Instant reconnectStart = reconnectionStartTime.get();
-      double secondsToEstablish = 0.0;
-      if (reconnectStart != null) {
-        secondsToEstablish = Duration.between(reconnectStart, now).toMillis() / 1000.0;
-      }
-      long attemptNumber = totalReconnectionAttempts.get();
-      log.info(
-          LogCategory.GRPC,
-          "ConnectionEstablished",
-          "Job stream connection established successfully in %.3f seconds - attempt #%d (total successful: %d)",
-          secondsToEstablish,
-          attemptNumber,
-          successfulReconnections.get());
-    }
     try {
       if (value.hasListPools()) {
         plugin.listPools(value.getJobId(), value.getListPools());
