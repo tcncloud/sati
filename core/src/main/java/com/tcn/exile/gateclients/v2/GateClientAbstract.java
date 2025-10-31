@@ -20,6 +20,7 @@ import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import io.grpc.Grpc;
 import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.TlsChannelCredentials;

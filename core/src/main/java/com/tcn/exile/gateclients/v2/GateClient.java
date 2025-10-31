@@ -23,6 +23,7 @@ import com.tcn.exile.log.LogCategory;
 import com.tcn.exile.log.StructuredLogger;
 import com.tcn.exile.models.OrgInfo;
 import io.grpc.StatusRuntimeException;
+import io.grpc.ManagedChannel;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 
@@ -34,21 +35,21 @@ public class GateClient extends GateClientAbstract {
     super(tenant, currentConfig);
   }
 
+  
   @Override
   public void start() {
     // this does not need any implementation
   }
 
-  protected GateServiceGrpc.GateServiceBlockingStub getStub() throws UnconfiguredException {
-    return GateServiceGrpc.newBlockingStub(getChannel())
+  protected GateServiceGrpc.GateServiceBlockingStub getStub(ManagedChannel channel) {
+    return GateServiceGrpc.newBlockingStub(channel)
         .withDeadlineAfter(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .withWaitForReady();
   }
 
   private <T> T executeRequest(String operationName, GrpcOperation<T> grpcOperation) {
     try {
-      var client = getStub();
-      var result = grpcOperation.execute(client);
+      var result = grpcOperation.execute(getChannel());
       if (result == null) {
         throw new RuntimeException("Received null response from " + operationName);
       }
@@ -90,10 +91,9 @@ public class GateClient extends GateClientAbstract {
       throw new RuntimeException("Failed to execute " + operationName, e);
     }
   }
-
   @FunctionalInterface
   private interface GrpcOperation<T> {
-    T execute(GateServiceGrpc.GateServiceBlockingStub client);
+    T execute(ManagedChannel channel);
   }
 
   // Organization details retrieval
@@ -101,7 +101,7 @@ public class GateClient extends GateClientAbstract {
     return executeRequest(
         "getOrganizationInfo",
         client -> {
-          var result = client.getOrganizationInfo(GetOrganizationInfoRequest.newBuilder().build());
+          var result = getStub(client).getOrganizationInfo(GetOrganizationInfoRequest.newBuilder().build());
           return new OrgInfo(result.getOrgName(), result.getOrgName());
         });
   }
@@ -117,7 +117,7 @@ public class GateClient extends GateClientAbstract {
       return executeRequest(
           "submitJobResults",
           client -> {
-            var response = client.submitJobResults(request);
+            var response = getStub(client).submitJobResults(request);
             if (response == null) {
               throw new RuntimeException("Received null response from submitJobResults");
             }
@@ -136,133 +136,133 @@ public class GateClient extends GateClientAbstract {
 
   // Agent state management
   public GetAgentStatusResponse getAgentStatus(GetAgentStatusRequest request) {
-    return executeRequest("getAgentStatus", client -> client.getAgentStatus(request));
+    return executeRequest("getAgentStatus", client -> getStub(client).getAgentStatus(request));
   }
 
   public UpdateAgentStatusResponse updateAgentStatus(UpdateAgentStatusRequest request) {
-    return executeRequest("updateAgentStatus", client -> client.updateAgentStatus(request));
+    return executeRequest("updateAgentStatus", client -> getStub(client).updateAgentStatus(request));
   }
 
   public Iterator<ListAgentsResponse> listAgents(ListAgentsRequest request) {
-    return executeRequest("listAgents", client -> client.listAgents(request));
+    return executeRequest("listAgents", client -> getStub(client).listAgents(request));
   }
 
   public UpsertAgentResponse upsertAgent(UpsertAgentRequest request) {
-    return executeRequest("upsertAgent", client -> client.upsertAgent(request));
+    return executeRequest("upsertAgent", client -> getStub(client).upsertAgent(request));
   }
 
   public GetAgentByIdResponse getAgentById(GetAgentByIdRequest request) {
-    return executeRequest("getAgentById", client -> client.getAgentById(request));
+    return executeRequest("getAgentById", client -> getStub(client).getAgentById(request));
   }
 
   public GetAgentByPartnerIdResponse getAgentByPartnerId(GetAgentByPartnerIdRequest request) {
-    return executeRequest("getAgentByPartnerId", client -> client.getAgentByPartnerId(request));
+    return executeRequest("getAgentByPartnerId", client -> getStub(client).getAgentByPartnerId(request));
   }
 
   // Telephony operations
   public DialResponse dial(DialRequest request) {
-    return executeRequest("dial", client -> client.dial(request));
+    return executeRequest("dial", client -> getStub(client).dial(request));
   }
 
   public ListNCLRulesetNamesResponse listNCLRulesetNames(ListNCLRulesetNamesRequest request) {
-    return executeRequest("listNCLRulesetNames", client -> client.listNCLRulesetNames(request));
+    return executeRequest("listNCLRulesetNames", client -> getStub(client).listNCLRulesetNames(request));
   }
 
   // Recording controls
   public StartCallRecordingResponse startCallRecording(StartCallRecordingRequest request) {
-    return executeRequest("startCallRecording", client -> client.startCallRecording(request));
+    return executeRequest("startCallRecording", client -> getStub(client).startCallRecording(request));
   }
 
   public StopCallRecordingResponse stopCallRecording(StopCallRecordingRequest request) {
-    return executeRequest("stopCallRecording", client -> client.stopCallRecording(request));
+    return executeRequest("stopCallRecording", client -> getStub(client).stopCallRecording(request));
   }
 
   public GetRecordingStatusResponse getRecordingStatus(GetRecordingStatusRequest request) {
-    return executeRequest("getRecordingStatus", client -> client.getRecordingStatus(request));
+    return executeRequest("getRecordingStatus", client -> getStub(client).getRecordingStatus(request));
   }
 
   // Scrub list management
   public ListScrubListsResponse listScrubLists(ListScrubListsRequest request) {
-    return executeRequest("listScrubLists", client -> client.listScrubLists(request));
+    return executeRequest("listScrubLists", client -> getStub(client).listScrubLists(request));
   }
 
   public AddScrubListEntriesResponse addScrubListEntries(AddScrubListEntriesRequest request) {
-    return executeRequest("addScrubListEntries", client -> client.addScrubListEntries(request));
+    return executeRequest("addScrubListEntries", client -> getStub(client).addScrubListEntries(request));
   }
 
   public UpdateScrubListEntryResponse updateScrubListEntry(UpdateScrubListEntryRequest request) {
-    return executeRequest("updateScrubListEntry", client -> client.updateScrubListEntry(request));
+    return executeRequest("updateScrubListEntry", client -> getStub(client).updateScrubListEntry(request));
   }
 
   public RemoveScrubListEntriesResponse removeScrubListEntries(
       RemoveScrubListEntriesRequest request) {
     return executeRequest(
-        "removeScrubListEntries", client -> client.removeScrubListEntries(request));
+        "removeScrubListEntries", client -> getStub(client).removeScrubListEntries(request));
   }
 
   public LogResponse log(LogRequest request) {
-    return executeRequest("log", client -> client.log(request));
+    return executeRequest("log", client -> getStub(client).log(request));
   }
 
   public AddAgentCallResponseResponse addAgentCallResponse(AddAgentCallResponseRequest request) {
-    return executeRequest("addAgentCallResponse", client -> client.addAgentCallResponse(request));
+    return executeRequest("addAgentCallResponse", client -> getStub(client).addAgentCallResponse(request));
   }
 
   public ListHuntGroupPauseCodesResponse listHuntGroupPauseCodes(
       ListHuntGroupPauseCodesRequest request) {
     return executeRequest(
-        "listHuntGroupPauseCodes", client -> client.listHuntGroupPauseCodes(request));
+        "listHuntGroupPauseCodes", client -> getStub(client).listHuntGroupPauseCodes(request));
   }
 
   public PutCallOnSimpleHoldResponse putCallOnSimpleHold(PutCallOnSimpleHoldRequest request) {
-    return executeRequest("putCallOnSimpleHold", client -> client.putCallOnSimpleHold(request));
+    return executeRequest("putCallOnSimpleHold", client -> getStub(client).putCallOnSimpleHold(request));
   }
 
   public TakeCallOffSimpleHoldResponse takeCallOffSimpleHold(TakeCallOffSimpleHoldRequest request) {
-    return executeRequest("takeCallOffSimpleHold", client -> client.takeCallOffSimpleHold(request));
+    return executeRequest("takeCallOffSimpleHold", client -> getStub(client).takeCallOffSimpleHold(request));
   }
 
   public RotateCertificateResponse rotateCertificate(RotateCertificateRequest request) {
-    return executeRequest("rotateCertificate", client -> client.rotateCertificate(request));
+    return executeRequest("rotateCertificate", client -> getStub(client).rotateCertificate(request));
   }
 
   public Iterator<SearchVoiceRecordingsResponse> searchVoiceRecordings(
       SearchVoiceRecordingsRequest request) {
-    return executeRequest("searchVoiceRecordings", client -> client.searchVoiceRecordings(request));
+    return executeRequest("searchVoiceRecordings", client -> getStub(client).searchVoiceRecordings(request));
   }
 
   public GetVoiceRecordingDownloadLinkResponse getVoiceRecordingDownloadLink(
       GetVoiceRecordingDownloadLinkRequest request) {
     return executeRequest(
-        "getVoiceRecordingDownloadLink", client -> client.getVoiceRecordingDownloadLink(request));
+        "getVoiceRecordingDownloadLink", client -> getStub(client).getVoiceRecordingDownloadLink(request));
   }
 
   public ListSearchableRecordingFieldsResponse listSearchableRecordingFields(
       ListSearchableRecordingFieldsRequest request) {
     return executeRequest(
-        "listSearchableRecordingFields", client -> client.listSearchableRecordingFields(request));
+        "listSearchableRecordingFields", client -> getStub(client).listSearchableRecordingFields(request));
   }
 
   public ListSkillsResponse ListSkills(ListSkillsRequest request) {
-    return executeRequest("listSkills", client -> client.listSkills(request));
+    return executeRequest("listSkills", client -> getStub(client).listSkills(request));
   }
 
   // List all skills assigned to an agent, and their proficiency
   public ListAgentSkillsResponse ListAgentSkills(ListAgentSkillsRequest request) {
-    return executeRequest("listAgentSkills", client -> client.listAgentSkills(request));
+    return executeRequest("listAgentSkills", client -> getStub(client).listAgentSkills(request));
   }
 
   // Assign a skill to an agent
   public AssignAgentSkillResponse AssignAgentSkill(AssignAgentSkillRequest request) {
-    return executeRequest("assignAgentSkill", client -> client.assignAgentSkill(request));
+    return executeRequest("assignAgentSkill", client -> getStub(client).assignAgentSkill(request));
   }
 
   // Unassign a skill from an agent
   public UnassignAgentSkillResponse UnassignAgentSkill(UnassignAgentSkillRequest request) {
-    return executeRequest("unassignAgentSkill", client -> client.unassignAgentSkill(request));
+    return executeRequest("unassignAgentSkill", client -> getStub(client).unassignAgentSkill(request));
   }
 
   public TransferResponse transfer(TransferRequest request) {
-    return executeRequest("transfer", client -> client.transfer(request));
+    return executeRequest("transfer", client -> getStub(client).transfer(request));
   }
 }
