@@ -57,7 +57,6 @@ public class GateClientJobStream extends GateClientAbstract
   private final AtomicReference<String> lastErrorType = new AtomicReference<>();
   private final AtomicLong consecutiveFailures = new AtomicLong(0);
 
-
   public GateClientJobStream(String tenant, Config currentConfig, PluginInterface plugin) {
     super(tenant, currentConfig);
     this.plugin = plugin;
@@ -66,29 +65,33 @@ public class GateClientJobStream extends GateClientAbstract
   @Scheduled(fixedDelay = "10s")
   public void start() {
     if (isUnconfigured() || !plugin.isRunning()) {
-      log.warn(LogCategory.GRPC, "NOOP", "JobStream is unconfigured or db not running cannot stream jobs");
+      log.warn(
+          LogCategory.GRPC,
+          "NOOP",
+          "JobStream is unconfigured or db not running cannot stream jobs");
       return;
     }
     try {
       log.debug(LogCategory.GRPC, "Start", "Starting JobStream");
       reconnectionStartTime.set(Instant.now());
 
-      var client = GateServiceGrpc.newBlockingStub(getChannel())
-          .withDeadlineAfter(300, TimeUnit.SECONDS)
-          .withWaitForReady()
-          .streamJobs(StreamJobsRequest.newBuilder().build());
+      var client =
+          GateServiceGrpc.newBlockingStub(getChannel())
+              .withDeadlineAfter(300, TimeUnit.SECONDS)
+              .withWaitForReady()
+              .streamJobs(StreamJobsRequest.newBuilder().build());
 
       connectionEstablishedTime.set(Instant.now());
       successfulReconnections.incrementAndGet();
-      
+
       log.info(
-        LogCategory.GRPC, 
-        "ConnectionEstablished",
-         "Job stream connection took {}",
-         Duration.between(reconnectionStartTime.get(), connectionEstablishedTime.get()));
-      
+          LogCategory.GRPC,
+          "ConnectionEstablished",
+          "Job stream connection took {}",
+          Duration.between(reconnectionStartTime.get(), connectionEstablishedTime.get()));
+
       client.forEachRemaining(this::onNext);
-      
+
       consecutiveFailures.set(0);
       lastErrorType.set(null);
 
@@ -102,9 +105,8 @@ public class GateClientJobStream extends GateClientAbstract
       totalReconnectionAttempts.incrementAndGet();
       lastDisconnectTime.set(Instant.now());
       log.debug(LogCategory.GRPC, "Complete", "Job stream done");
-
     }
-  } 
+  }
 
   @Override
   public void onNext(StreamJobsResponse value) {
@@ -197,7 +199,6 @@ public class GateClientJobStream extends GateClientAbstract
         successfulReconnections.get());
   }
 
-
   public void stop() {
     log.info(
         LogCategory.GRPC,
@@ -205,7 +206,6 @@ public class GateClientJobStream extends GateClientAbstract
         "Stopping GateClientJobStream (total attempts: %d, successful: %d)",
         totalReconnectionAttempts.get(),
         successfulReconnections.get());
-
 
     shutdown();
     log.info(LogCategory.GRPC, "GateClientJobStreamStopped", "GateClientJobStream stopped");
@@ -219,7 +219,6 @@ public class GateClientJobStream extends GateClientAbstract
         "GateClientJobStream @PreDestroy called");
     stop();
   }
-
 
   public Map<String, Object> getStreamStatus() {
     // Add timing information to status

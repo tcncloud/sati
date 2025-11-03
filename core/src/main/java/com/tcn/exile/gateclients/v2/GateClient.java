@@ -22,8 +22,8 @@ import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.log.LogCategory;
 import com.tcn.exile.log.StructuredLogger;
 import com.tcn.exile.models.OrgInfo;
-import io.grpc.StatusRuntimeException;
 import io.grpc.ManagedChannel;
+import io.grpc.StatusRuntimeException;
 import java.util.Iterator;
 import java.util.concurrent.TimeUnit;
 
@@ -35,7 +35,6 @@ public class GateClient extends GateClientAbstract {
     super(tenant, currentConfig);
   }
 
-  
   @Override
   public void start() {
     // this does not need any implementation
@@ -91,6 +90,7 @@ public class GateClient extends GateClientAbstract {
       throw new RuntimeException("Failed to execute " + operationName, e);
     }
   }
+
   @FunctionalInterface
   private interface GrpcOperation<T> {
     T execute(ManagedChannel channel);
@@ -101,7 +101,8 @@ public class GateClient extends GateClientAbstract {
     return executeRequest(
         "getOrganizationInfo",
         client -> {
-          var result = getStub(client).getOrganizationInfo(GetOrganizationInfoRequest.newBuilder().build());
+          var result =
+              getStub(client).getOrganizationInfo(GetOrganizationInfoRequest.newBuilder().build());
           return new OrgInfo(result.getOrgName(), result.getOrgName());
         });
   }
@@ -140,7 +141,8 @@ public class GateClient extends GateClientAbstract {
   }
 
   public UpdateAgentStatusResponse updateAgentStatus(UpdateAgentStatusRequest request) {
-    return executeRequest("updateAgentStatus", client -> getStub(client).updateAgentStatus(request));
+    return executeRequest(
+        "updateAgentStatus", client -> getStub(client).updateAgentStatus(request));
   }
 
   public Iterator<ListAgentsResponse> listAgents(ListAgentsRequest request) {
@@ -156,7 +158,8 @@ public class GateClient extends GateClientAbstract {
   }
 
   public GetAgentByPartnerIdResponse getAgentByPartnerId(GetAgentByPartnerIdRequest request) {
-    return executeRequest("getAgentByPartnerId", client -> getStub(client).getAgentByPartnerId(request));
+    return executeRequest(
+        "getAgentByPartnerId", client -> getStub(client).getAgentByPartnerId(request));
   }
 
   // Telephony operations
@@ -165,20 +168,24 @@ public class GateClient extends GateClientAbstract {
   }
 
   public ListNCLRulesetNamesResponse listNCLRulesetNames(ListNCLRulesetNamesRequest request) {
-    return executeRequest("listNCLRulesetNames", client -> getStub(client).listNCLRulesetNames(request));
+    return executeRequest(
+        "listNCLRulesetNames", client -> getStub(client).listNCLRulesetNames(request));
   }
 
   // Recording controls
   public StartCallRecordingResponse startCallRecording(StartCallRecordingRequest request) {
-    return executeRequest("startCallRecording", client -> getStub(client).startCallRecording(request));
+    return executeRequest(
+        "startCallRecording", client -> getStub(client).startCallRecording(request));
   }
 
   public StopCallRecordingResponse stopCallRecording(StopCallRecordingRequest request) {
-    return executeRequest("stopCallRecording", client -> getStub(client).stopCallRecording(request));
+    return executeRequest(
+        "stopCallRecording", client -> getStub(client).stopCallRecording(request));
   }
 
   public GetRecordingStatusResponse getRecordingStatus(GetRecordingStatusRequest request) {
-    return executeRequest("getRecordingStatus", client -> getStub(client).getRecordingStatus(request));
+    return executeRequest(
+        "getRecordingStatus", client -> getStub(client).getRecordingStatus(request));
   }
 
   // Scrub list management
@@ -187,11 +194,13 @@ public class GateClient extends GateClientAbstract {
   }
 
   public AddScrubListEntriesResponse addScrubListEntries(AddScrubListEntriesRequest request) {
-    return executeRequest("addScrubListEntries", client -> getStub(client).addScrubListEntries(request));
+    return executeRequest(
+        "addScrubListEntries", client -> getStub(client).addScrubListEntries(request));
   }
 
   public UpdateScrubListEntryResponse updateScrubListEntry(UpdateScrubListEntryRequest request) {
-    return executeRequest("updateScrubListEntry", client -> getStub(client).updateScrubListEntry(request));
+    return executeRequest(
+        "updateScrubListEntry", client -> getStub(client).updateScrubListEntry(request));
   }
 
   public RemoveScrubListEntriesResponse removeScrubListEntries(
@@ -205,7 +214,8 @@ public class GateClient extends GateClientAbstract {
   }
 
   public AddAgentCallResponseResponse addAgentCallResponse(AddAgentCallResponseRequest request) {
-    return executeRequest("addAgentCallResponse", client -> getStub(client).addAgentCallResponse(request));
+    return executeRequest(
+        "addAgentCallResponse", client -> getStub(client).addAgentCallResponse(request));
   }
 
   public ListHuntGroupPauseCodesResponse listHuntGroupPauseCodes(
@@ -215,32 +225,38 @@ public class GateClient extends GateClientAbstract {
   }
 
   public PutCallOnSimpleHoldResponse putCallOnSimpleHold(PutCallOnSimpleHoldRequest request) {
-    return executeRequest("putCallOnSimpleHold", client -> getStub(client).putCallOnSimpleHold(request));
+    return executeRequest(
+        "putCallOnSimpleHold", client -> getStub(client).putCallOnSimpleHold(request));
   }
 
   public TakeCallOffSimpleHoldResponse takeCallOffSimpleHold(TakeCallOffSimpleHoldRequest request) {
-    return executeRequest("takeCallOffSimpleHold", client -> getStub(client).takeCallOffSimpleHold(request));
+    return executeRequest(
+        "takeCallOffSimpleHold", client -> getStub(client).takeCallOffSimpleHold(request));
   }
 
   public RotateCertificateResponse rotateCertificate(RotateCertificateRequest request) {
-    return executeRequest("rotateCertificate", client -> getStub(client).rotateCertificate(request));
+    return executeRequest(
+        "rotateCertificate", client -> getStub(client).rotateCertificate(request));
   }
 
   public Iterator<SearchVoiceRecordingsResponse> searchVoiceRecordings(
       SearchVoiceRecordingsRequest request) {
-    return executeRequest("searchVoiceRecordings", client -> getStub(client).searchVoiceRecordings(request));
+    return executeRequest(
+        "searchVoiceRecordings", client -> getStub(client).searchVoiceRecordings(request));
   }
 
   public GetVoiceRecordingDownloadLinkResponse getVoiceRecordingDownloadLink(
       GetVoiceRecordingDownloadLinkRequest request) {
     return executeRequest(
-        "getVoiceRecordingDownloadLink", client -> getStub(client).getVoiceRecordingDownloadLink(request));
+        "getVoiceRecordingDownloadLink",
+        client -> getStub(client).getVoiceRecordingDownloadLink(request));
   }
 
   public ListSearchableRecordingFieldsResponse listSearchableRecordingFields(
       ListSearchableRecordingFieldsRequest request) {
     return executeRequest(
-        "listSearchableRecordingFields", client -> getStub(client).listSearchableRecordingFields(request));
+        "listSearchableRecordingFields",
+        client -> getStub(client).listSearchableRecordingFields(request));
   }
 
   public ListSkillsResponse ListSkills(ListSkillsRequest request) {
@@ -259,7 +275,8 @@ public class GateClient extends GateClientAbstract {
 
   // Unassign a skill from an agent
   public UnassignAgentSkillResponse UnassignAgentSkill(UnassignAgentSkillRequest request) {
-    return executeRequest("unassignAgentSkill", client -> getStub(client).unassignAgentSkill(request));
+    return executeRequest(
+        "unassignAgentSkill", client -> getStub(client).unassignAgentSkill(request));
   }
 
   public TransferResponse transfer(TransferRequest request) {
