@@ -259,6 +259,11 @@ public class GateClient extends GateClientAbstract {
         client -> getStub(client).listSearchableRecordingFields(request));
   }
 
+  public CreateRecordingLabelResponse createRecordingLabel(CreateRecordingLabelRequest request) {
+    return executeRequest(
+        "createRecordingLabel", client -> getStub(client).createRecordingLabel(request));
+  }
+
   public ListSkillsResponse ListSkills(ListSkillsRequest request) {
     return executeRequest("listSkills", client -> getStub(client).listSkills(request));
   }
