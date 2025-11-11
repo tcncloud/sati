@@ -287,4 +287,10 @@ public class GateClient extends GateClientAbstract {
   public TransferResponse transfer(TransferRequest request) {
     return executeRequest("transfer", client -> getStub(client).transfer(request));
   }
+
+  public AddRecordToJourneyBufferResponse addRecordToJourneyBuffer(
+      AddRecordToJourneyBufferRequest request) {
+    return executeRequest(
+        "addRecordToJourneyBuffer", client -> getStub(client).addRecordToJourneyBuffer(request));
+  }
 }
