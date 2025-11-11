@@ -46,7 +46,7 @@ public class GateClient extends GateClientAbstract {
         .withWaitForReady();
   }
 
-  private <T> T executeRequest(String operationName, GrpcOperation<T> grpcOperation) {
+  public <T> T executeRequest(String operationName, GrpcOperation<T> grpcOperation) {
     try {
       var result = grpcOperation.execute(getChannel());
       if (result == null) {
