@@ -46,7 +46,7 @@ public class GateClient extends GateClientAbstract {
         .withWaitForReady();
   }
 
-  private <T> T executeRequest(String operationName, GrpcOperation<T> grpcOperation) {
+  public <T> T executeRequest(String operationName, GrpcOperation<T> grpcOperation) {
     try {
       var result = grpcOperation.execute(getChannel());
       if (result == null) {
@@ -286,5 +286,11 @@ public class GateClient extends GateClientAbstract {
 
   public TransferResponse transfer(TransferRequest request) {
     return executeRequest("transfer", client -> getStub(client).transfer(request));
+  }
+
+  public AddRecordToJourneyBufferResponse addRecordToJourneyBuffer(
+      AddRecordToJourneyBufferRequest request) {
+    return executeRequest(
+        "addRecordToJourneyBuffer", client -> getStub(client).addRecordToJourneyBuffer(request));
   }
 }
