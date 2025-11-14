@@ -25,9 +25,6 @@ import com.tcn.exile.log.LogCategory;
 import com.tcn.exile.log.StructuredLogger;
 import com.tcn.exile.plugin.PluginInterface;
 import io.grpc.stub.StreamObserver;
-import io.micronaut.context.annotation.Context;
-import io.micronaut.context.annotation.Requires;
-import io.micronaut.scheduling.annotation.Scheduled;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.Instant;
@@ -38,8 +35,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-@Context
-@Requires(property = "tcn.gate.enabled", value = "true")
 public class GateClientJobStream extends GateClientAbstract
     implements StreamObserver<StreamJobsResponse> {
   private static final StructuredLogger log = new StructuredLogger(GateClientJobStream.class);
@@ -56,13 +51,13 @@ public class GateClientJobStream extends GateClientAbstract
   private final AtomicLong successfulReconnections = new AtomicLong(0);
   private final AtomicReference<String> lastErrorType = new AtomicReference<>();
   private final AtomicLong consecutiveFailures = new AtomicLong(0);
+  private final AtomicBoolean isRunning = new AtomicBoolean(false);
 
   public GateClientJobStream(String tenant, Config currentConfig, PluginInterface plugin) {
     super(tenant, currentConfig);
     this.plugin = plugin;
   }
 
-  @Scheduled(fixedDelay = "10s")
   public void start() {
     if (isUnconfigured() || !plugin.isRunning()) {
       log.warn(
@@ -77,12 +72,13 @@ public class GateClientJobStream extends GateClientAbstract
 
       var client =
           GateServiceGrpc.newBlockingStub(getChannel())
-              .withDeadlineAfter(300, TimeUnit.SECONDS)
+              .withDeadlineAfter(330, TimeUnit.SECONDS)
               .withWaitForReady()
               .streamJobs(StreamJobsRequest.newBuilder().build());
 
       connectionEstablishedTime.set(Instant.now());
       successfulReconnections.incrementAndGet();
+      isRunning.set(true);
 
       log.info(
           LogCategory.GRPC,
@@ -98,12 +94,13 @@ public class GateClientJobStream extends GateClientAbstract
     } catch (Exception e) {
       log.error(LogCategory.GRPC, "JobStream", "error streaming jobs from server: {}", e);
       lastErrorType.set(e.getClass().getSimpleName());
-      if (connectionEstablishedTime.get() != null) {
+      if (connectionEstablishedTime.get() == null) {
         consecutiveFailures.incrementAndGet();
       }
     } finally {
       totalReconnectionAttempts.incrementAndGet();
       lastDisconnectTime.set(Instant.now());
+      isRunning.set(false);
       log.debug(LogCategory.GRPC, "Complete", "Job stream done");
     }
   }
@@ -228,6 +225,7 @@ public class GateClientJobStream extends GateClientAbstract
     Instant lastMessage = lastMessageTime.get();
 
     Map<String, Object> status = new HashMap<>();
+    status.put("isRunning", isRunning.get());
     status.put("totalReconnectionAttempts", totalReconnectionAttempts.get());
     status.put("successfulReconnections", successfulReconnections.get());
     status.put("consecutiveFailures", consecutiveFailures.get());

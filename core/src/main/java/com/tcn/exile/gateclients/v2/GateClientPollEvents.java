@@ -22,7 +22,6 @@ import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.plugin.PluginInterface;
 import io.grpc.StatusRuntimeException;
-import io.micronaut.scheduling.annotation.Scheduled;
 import java.util.concurrent.TimeUnit;
 
 public class GateClientPollEvents extends GateClientAbstract {
@@ -37,7 +36,6 @@ public class GateClientPollEvents extends GateClientAbstract {
   }
 
   @Override
-  @Scheduled(fixedDelay = "10s")
   public void start() {
     try {
       if (isUnconfigured()) {
