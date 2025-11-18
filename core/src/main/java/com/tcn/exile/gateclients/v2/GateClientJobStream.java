@@ -24,13 +24,18 @@ import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.log.LogCategory;
 import com.tcn.exile.log.StructuredLogger;
 import com.tcn.exile.plugin.PluginInterface;
+import io.grpc.ConnectivityState;
+import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -58,6 +63,39 @@ public class GateClientJobStream extends GateClientAbstract
     this.plugin = plugin;
   }
 
+  private boolean channelIsDead(ConnectivityState state) {
+    return state.compareTo(ConnectivityState.TRANSIENT_FAILURE) == 0
+        || state.compareTo(ConnectivityState.SHUTDOWN) == 0;
+  }
+
+  private boolean lastJobReceivedTooLongAgo(Instant lastMessageTime) {
+    return lastMessageTime != null
+        && lastMessageTime.isBefore(Instant.now().minus(45, ChronoUnit.SECONDS));
+  }
+
+  private void blowupIfOurConnectionIsHung(ManagedChannel channel) throws Exception {
+    var state = channel.getState(false);
+    if (channelIsDead(state)) {
+      throw new Exception("JobStream channel is in state " + state.toString());
+    }
+    var lastJobTime = lastMessageTime.get();
+    var startOfStream = connectionEstablishedTime.get();
+
+    // if we haven't received a job ever, then test when we started the stream
+    if (lastJobTime == null && lastJobReceivedTooLongAgo(startOfStream)) {
+      throw new Exception(
+          "JobStream never received any messages since start time at: "
+              + startOfStream.toString()
+              + " connection is hung");
+    }
+    if (lastJobReceivedTooLongAgo(lastJobTime)) {
+      throw new Exception(
+          "JobStream received last job too long ago at: "
+              + lastJobTime.toString()
+              + " connection is hung");
+    }
+  }
+
   public void start() {
     if (isUnconfigured() || !plugin.isRunning()) {
       log.warn(
@@ -66,19 +104,28 @@ public class GateClientJobStream extends GateClientAbstract
           "JobStream is unconfigured or db not running cannot stream jobs");
       return;
     }
+
+    ExecutorService executorService = Executors.newFixedThreadPool(2);
+    ExecutorCompletionService<Void> completionService =
+        new ExecutorCompletionService<>(executorService);
+
     try {
+      log.debug(LogCategory.GRPC, "Init", "JobStream task started, checking configuration status");
+
       log.debug(LogCategory.GRPC, "Start", "Starting JobStream");
       reconnectionStartTime.set(Instant.now());
+      ManagedChannel channel = getChannel();
 
       var client =
-          GateServiceGrpc.newBlockingStub(getChannel())
-              .withDeadlineAfter(330, TimeUnit.SECONDS)
+          GateServiceGrpc.newBlockingStub(channel)
               .withWaitForReady()
               .streamJobs(StreamJobsRequest.newBuilder().build());
 
       connectionEstablishedTime.set(Instant.now());
       successfulReconnections.incrementAndGet();
       isRunning.set(true);
+      consecutiveFailures.set(0);
+      lastErrorType.set(null);
 
       log.info(
           LogCategory.GRPC,
@@ -86,10 +133,21 @@ public class GateClientJobStream extends GateClientAbstract
           "Job stream connection took {}",
           Duration.between(reconnectionStartTime.get(), connectionEstablishedTime.get()));
 
-      client.forEachRemaining(this::onNext);
-
-      consecutiveFailures.set(0);
-      lastErrorType.set(null);
+      completionService.submit(
+          () -> {
+            client.forEachRemaining(this::onNext);
+            return null;
+          });
+      completionService.submit(
+          () -> {
+            while (isRunning.get()) {
+              Thread.sleep(45000);
+              blowupIfOurConnectionIsHung(channel);
+            }
+            return null;
+          });
+      // blow up or wait
+      completionService.take();
 
     } catch (Exception e) {
       log.error(LogCategory.GRPC, "JobStream", "error streaming jobs from server: {}", e);
@@ -102,6 +160,8 @@ public class GateClientJobStream extends GateClientAbstract
       lastDisconnectTime.set(Instant.now());
       isRunning.set(false);
       log.debug(LogCategory.GRPC, "Complete", "Job stream done");
+
+      executorService.shutdownNow();
     }
   }
 
