@@ -96,19 +96,63 @@ public class GateClientJobStream extends GateClientAbstract
     }
   }
 
+  private boolean jobRequiresDatabase(StreamJobsResponse job) {
+    return job.hasListPools()
+        || job.hasGetPoolStatus()
+        || job.hasGetPoolRecords()
+        || job.hasSearchRecords()
+        || job.hasGetRecordFields()
+        || job.hasSetRecordFields()
+        || job.hasCreatePayment()
+        || job.hasPopAccount()
+        || job.hasExecuteLogic();
+  }
+
+  private String describeJobType(StreamJobsResponse job) {
+    if (job.hasListPools()) {
+      return "ListPools";
+    } else if (job.hasGetPoolStatus()) {
+      return "GetPoolStatus";
+    } else if (job.hasGetPoolRecords()) {
+      return "GetPoolRecords";
+    } else if (job.hasSearchRecords()) {
+      return "SearchRecords";
+    } else if (job.hasGetRecordFields()) {
+      return "GetRecordFields";
+    } else if (job.hasSetRecordFields()) {
+      return "SetRecordFields";
+    } else if (job.hasCreatePayment()) {
+      return "CreatePayment";
+    } else if (job.hasPopAccount()) {
+      return "PopAccount";
+    } else if (job.hasExecuteLogic()) {
+      return "ExecuteLogic";
+    } else if (job.hasInfo()) {
+      return "Info";
+    } else if (job.hasShutdown()) {
+      return "Shutdown";
+    } else if (job.hasLogging()) {
+      return "Logging";
+    } else if (job.hasDiagnostics()) {
+      return "Diagnostics";
+    } else if (job.hasListTenantLogs()) {
+      return "ListTenantLogs";
+    } else if (job.hasSetLogLevel()) {
+      return "SetLogLevel";
+    }
+    return "Unknown";
+  }
+
   public void start() {
     if (isUnconfigured()) {
-      log.warn(
-          LogCategory.GRPC,
-          "NOOP",
-          "JobStream is unconfigured or db not running cannot stream jobs");
+      log.warn(LogCategory.GRPC, "NOOP", "JobStream is unconfigured, cannot stream jobs");
       return;
     }
     if (!plugin.isRunning()) {
       log.warn(
           LogCategory.GRPC,
-          "NOOP",
-          "JobStream is running but plugin is not. Keeping stream open for diagnostics.");
+          "PluginNotRunning",
+          "Plugin is not running; continuing job stream so admin jobs can be serviced");
     }
 
     ExecutorService executorService = Executors.newFixedThreadPool(2);
@@ -178,6 +222,15 @@ public class GateClientJobStream extends GateClientAbstract
     lastMessageTime.set(Instant.now());
 
     try {
+      if (!plugin.isRunning() && jobRequiresDatabase(value)) {
+        log.warn(
+            LogCategory.GRPC,
+            "DbUnavailable",
+            "Skipping %s job %s because plugin/database is not running",
+            describeJobType(value),
+            value.getJobId());
+        return;
+      }
       if (value.hasListPools()) {
         plugin.listPools(value.getJobId(), value.getListPools());
       } else if (value.hasGetPoolStatus()) {
