@@ -234,6 +234,14 @@ public class GateClient extends GateClientAbstract {
         "takeCallOffSimpleHold", client -> getStub(client).takeCallOffSimpleHold(request));
   }
 
+  public MuteAgentResponse muteAgent(MuteAgentRequest request) {
+    return executeRequest("muteAgent", client -> getStub(client).muteAgent(request));
+  }
+
+  public UnmuteAgentResponse unmuteAgent(UnmuteAgentRequest request) {
+    return executeRequest("unmuteAgent", client -> getStub(client).unmuteAgent(request));
+  }
+
   public RotateCertificateResponse rotateCertificate(RotateCertificateRequest request) {
     return executeRequest(
         "rotateCertificate", client -> getStub(client).rotateCertificate(request));

@@ -98,10 +98,7 @@ public class GateClientJobStream extends GateClientAbstract
 
   public void start() {
     if (isUnconfigured() || !plugin.isRunning()) {
-      log.warn(
-          LogCategory.GRPC,
-          "NOOP",
-          "JobStream is unconfigured or db not running cannot stream jobs");
+      log.warn(LogCategory.GRPC, "NOOP", "JobStream is unconfigured, cannot stream jobs");
       return;
     }
 
