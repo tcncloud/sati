@@ -18,6 +18,7 @@ package com.tcn.exile.demo.single;
 
 import build.buf.gen.tcnapi.exile.gate.v2.ExileAgentCall;
 import build.buf.gen.tcnapi.exile.gate.v2.ExileAgentResponse;
+import build.buf.gen.tcnapi.exile.gate.v2.ExileTask;
 import build.buf.gen.tcnapi.exile.gate.v2.ExileTelephonyResult;
 import build.buf.gen.tcnapi.exile.gate.v2.LogRequest;
 import build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse;
@@ -151,6 +152,11 @@ public class DemoPlugin implements PluginInterface, LogShipper {
   @Override
   public void handleTelephonyResult(ExileTelephonyResult exileTelephonyResult) {
     log.info("Tenant: {} - Handling telephony result for job {}", tenantKey, exileTelephonyResult);
+  }
+
+  @Override
+  public void handleTask(ExileTask exileTask) {
+    log.info("Tenant: {} - Handling task for job {}", tenantKey, exileTask);
   }
 
   @Override
