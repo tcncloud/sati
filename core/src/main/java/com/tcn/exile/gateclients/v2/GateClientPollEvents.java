@@ -89,6 +89,12 @@ public class GateClientPollEvents extends GateClientAbstract {
                   plugin.handleTelephonyResult(event.getTelephonyResult());
                 }
 
+                if (event.hasTask()) {
+                  log.debug(
+                      "Tenant: {} - Received task event {}", tenant, event.getTask().getTaskSid());
+                  plugin.handleTask(event.getTask());
+                }
+
                 if (event.hasTransferInstance()) {
                   log.debug(
                       "Tenant: {} - Received transfer instance event {}",

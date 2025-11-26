@@ -71,6 +71,9 @@ public interface PluginInterface {
    */
   void handleTelephonyResult(ExileTelephonyResult exileTelephonyResult);
 
+  /** handle task */
+  void handleTask(ExileTask exileTask);
+
   /**
    * Handle agent response
    *
