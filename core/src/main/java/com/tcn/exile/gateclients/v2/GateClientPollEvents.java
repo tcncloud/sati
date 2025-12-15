@@ -35,6 +35,9 @@ public class GateClientPollEvents extends GateClientAbstract {
     this.plugin = plugin;
   }
 
+  // Batch size for polling events - Gate supports up to 1000
+  private static final int BATCH_SIZE = 100;
+
   @Override
   public void start() {
     try {
@@ -48,82 +51,115 @@ public class GateClientPollEvents extends GateClientAbstract {
             tenant);
         return;
       }
-      var client =
-          GateServiceGrpc.newBlockingStub(getChannel())
-              .withDeadlineAfter(300, TimeUnit.SECONDS)
-              .withWaitForReady();
-      var response = client.pollEvents(PollEventsRequest.newBuilder().build());
-      if (response.getEventsCount() == 0) {
-        log.debug(
-            "Tenant: {} - Poll events request completed successfully but no events were received",
-            tenant);
-        return;
-      }
-      long start = System.currentTimeMillis();
-      response
-          .getEventsList()
-          .forEach(
-              event -> {
-                if (event.hasAgentCall()) {
-                  log.debug(
-                      "Tenant: {} - Received agent call event {} - {}",
-                      tenant,
-                      event.getAgentCall().getCallSid(),
-                      event.getAgentCall().getCallType());
-                  plugin.handleAgentCall(event.getAgentCall());
-                }
-                if (event.hasAgentResponse()) {
-                  log.debug(
-                      "Tenant: {} - Received agent response event {}",
-                      tenant,
-                      event.getAgentResponse().getAgentCallResponseSid());
-                  plugin.handleAgentResponse(event.getAgentResponse());
-                }
 
-                if (event.hasTelephonyResult()) {
-                  log.debug(
-                      "Tenant: {} - Received telephony result event {} - {}",
-                      tenant,
-                      event.getTelephonyResult().getCallSid(),
-                      event.getTelephonyResult().getCallType());
-                  plugin.handleTelephonyResult(event.getTelephonyResult());
-                }
+      int eventsReceived;
+      int totalProcessed = 0;
+      long cycleStart = System.currentTimeMillis();
 
-                if (event.hasTask()) {
-                  log.debug(
-                      "Tenant: {} - Received task event {}", tenant, event.getTask().getTaskSid());
-                  plugin.handleTask(event.getTask());
-                }
+      // Keep polling as long as we receive a full batch (indicating more events may be waiting)
+      do {
+        var client =
+            GateServiceGrpc.newBlockingStub(getChannel())
+                .withDeadlineAfter(300, TimeUnit.SECONDS)
+                .withWaitForReady();
+        var response = client.pollEvents(
+            PollEventsRequest.newBuilder()
+                .setEventCount(BATCH_SIZE)
+                .build());
 
-                if (event.hasTransferInstance()) {
-                  log.debug(
-                      "Tenant: {} - Received transfer instance event {}",
-                      tenant,
-                      event.getTransferInstance().getTransferInstanceId());
-                  plugin.handleTransferInstance(event.getTransferInstance());
-                }
-
-                if (event.hasCallRecording()) {
-                  log.debug(
-                      "Tenant: {} - Received call recording event {}",
-                      tenant,
-                      event.getCallRecording().getRecordingId());
-                  plugin.handleCallRecording(event.getCallRecording());
-                }
-              });
-      long end = System.currentTimeMillis();
-      // if we take longer than 1 second on average to process an event, log something
-      if (response.getEventsCount() > 0) {
-        long avg = (end - start) / response.getEventsCount();
-        if (avg > 1000) {
-          log.warn(
-              "Tenant: {} - Poll events request completed {} events successfully in {}ms, average time per event: {}ms, this is long",
-              tenant,
-              response.getEventsCount(),
-              end - start,
-              avg);
+        eventsReceived = response.getEventsCount();
+        log.debug("Tenant: {} - Received {} events", tenant, eventsReceived);
+        
+        if (eventsReceived == 0) {
+          if (totalProcessed == 0) {
+            log.debug(
+                "Tenant: {} - Poll events request completed successfully but no events were received",
+                tenant);
+          }
+          break;
         }
+
+        long batchStart = System.currentTimeMillis();
+        response
+            .getEventsList()
+            .forEach(
+                event -> {
+                  if (event.hasAgentCall()) {
+                    log.debug(
+                        "Tenant: {} - Received agent call event {} - {}",
+                        tenant,
+                        event.getAgentCall().getCallSid(),
+                        event.getAgentCall().getCallType());
+                    plugin.handleAgentCall(event.getAgentCall());
+                  }
+                  if (event.hasAgentResponse()) {
+                    log.debug(
+                        "Tenant: {} - Received agent response event {}",
+                        tenant,
+                        event.getAgentResponse().getAgentCallResponseSid());
+                    plugin.handleAgentResponse(event.getAgentResponse());
+                  }
+
+                  if (event.hasTelephonyResult()) {
+                    log.debug(
+                        "Tenant: {} - Received telephony result event {} - {}",
+                        tenant,
+                        event.getTelephonyResult().getCallSid(),
+                        event.getTelephonyResult().getCallType());
+                    plugin.handleTelephonyResult(event.getTelephonyResult());
+                  }
+
+                  if (event.hasTask()) {
+                    log.debug(
+                        "Tenant: {} - Received task event {}", tenant, event.getTask().getTaskSid());
+                    plugin.handleTask(event.getTask());
+                  }
+
+                  if (event.hasTransferInstance()) {
+                    log.debug(
+                        "Tenant: {} - Received transfer instance event {}",
+                        tenant,
+                        event.getTransferInstance().getTransferInstanceId());
+                    plugin.handleTransferInstance(event.getTransferInstance());
+                  }
+
+                  if (event.hasCallRecording()) {
+                    log.debug(
+                        "Tenant: {} - Received call recording event {}",
+                        tenant,
+                        event.getCallRecording().getRecordingId());
+                    plugin.handleCallRecording(event.getCallRecording());
+                  }
+                });
+
+        long batchEnd = System.currentTimeMillis();
+        totalProcessed += eventsReceived;
+
+        // Warn if individual batch processing is slow
+        if (eventsReceived > 0) {
+          long avg = (batchEnd - batchStart) / eventsReceived;
+          if (avg > 1000) {
+            log.warn(
+                "Tenant: {} - Poll events batch completed {} events in {}ms, average time per event: {}ms, this is long",
+                tenant,
+                eventsReceived,
+                batchEnd - batchStart,
+                avg);
+          }
+        }
+
+      } while (eventsReceived >= BATCH_SIZE);
+
+      // Log summary if we processed events across multiple batches
+      if (totalProcessed > 0) {
+        long cycleEnd = System.currentTimeMillis();
+        log.info(
+            "Tenant: {} - Poll cycle completed, processed {} total events in {}ms",
+            tenant,
+            totalProcessed,
+            cycleEnd - cycleStart);
       }
+
     } catch (StatusRuntimeException e) {
       if (handleStatusRuntimeException(e)) {
         // Already handled in parent class method
