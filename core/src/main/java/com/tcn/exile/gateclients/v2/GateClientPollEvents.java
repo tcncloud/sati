@@ -62,13 +62,11 @@ public class GateClientPollEvents extends GateClientAbstract {
             GateServiceGrpc.newBlockingStub(getChannel())
                 .withDeadlineAfter(300, TimeUnit.SECONDS)
                 .withWaitForReady();
-        var response = client.pollEvents(
-            PollEventsRequest.newBuilder()
-                .setEventCount(BATCH_SIZE)
-                .build());
+        var response =
+            client.pollEvents(PollEventsRequest.newBuilder().setEventCount(BATCH_SIZE).build());
 
         eventsReceived = response.getEventsCount();
-        
+
         if (eventsReceived == 0) {
           if (totalProcessed == 0) {
             log.debug(
@@ -110,7 +108,9 @@ public class GateClientPollEvents extends GateClientAbstract {
 
                   if (event.hasTask()) {
                     log.debug(
-                        "Tenant: {} - Received task event {}", tenant, event.getTask().getTaskSid());
+                        "Tenant: {} - Received task event {}",
+                        tenant,
+                        event.getTask().getTaskSid());
                     plugin.handleTask(event.getTask());
                   }
 
