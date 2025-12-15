@@ -68,7 +68,6 @@ public class GateClientPollEvents extends GateClientAbstract {
                 .build());
 
         eventsReceived = response.getEventsCount();
-        log.debug("Tenant: {} - Received {} events", tenant, eventsReceived);
         
         if (eventsReceived == 0) {
           if (totalProcessed == 0) {
