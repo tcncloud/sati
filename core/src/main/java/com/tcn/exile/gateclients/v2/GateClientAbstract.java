@@ -35,7 +35,7 @@ public abstract class GateClientAbstract {
   private static final Logger log = LoggerFactory.getLogger(GateClientAbstract.class);
 
   private ManagedChannel sharedChannel;
-  private static final ReentrantLock lock = new ReentrantLock();
+  private final ReentrantLock lock = new ReentrantLock();
 
   private Config currentConfig = null;
   protected final String tenant;
