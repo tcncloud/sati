@@ -166,21 +166,26 @@ public abstract class GateClientAbstract {
     if (localChannel == null || localChannel.isShutdown() || localChannel.isTerminated()) {
 
       long beforeLockAcquisition = System.currentTimeMillis();
-      log.debug("[LOCK-TIMING] getChannel attempting to acquire lock for tenant: {} at {}ms", 
-          tenant, beforeLockAcquisition);
-      
+      log.debug(
+          "[LOCK-TIMING] getChannel attempting to acquire lock for tenant: {} at {}ms",
+          tenant,
+          beforeLockAcquisition);
+
       lock.lock();
-      
+
       long afterLockAcquisition = System.currentTimeMillis();
       long lockWaitTime = afterLockAcquisition - beforeLockAcquisition;
       if (lockWaitTime > 100) {
-        log.warn("[LOCK-TIMING] getChannel lock acquired for tenant: {} after {}ms WAIT (potential contention!)", 
-            tenant, lockWaitTime);
+        log.warn(
+            "[LOCK-TIMING] getChannel lock acquired for tenant: {} after {}ms WAIT (potential contention!)",
+            tenant,
+            lockWaitTime);
       } else {
-        log.debug("[LOCK-TIMING] getChannel lock acquired for tenant: {} after {}ms", 
-            tenant, lockWaitTime);
+        log.debug(
+            "[LOCK-TIMING] getChannel lock acquired for tenant: {} after {}ms",
+            tenant,
+            lockWaitTime);
       }
-      
       try {
         // Double-check condition inside synchronized block
         localChannel = sharedChannel;
@@ -193,20 +198,25 @@ public abstract class GateClientAbstract {
             localChannel == null,
             shutdown,
             terminated);
-        
+
         if (localChannel == null || localChannel.isShutdown() || localChannel.isTerminated()) {
           long beforeCreateChannel = System.currentTimeMillis();
-          log.debug("[LOCK-TIMING] getChannel creating new channel for tenant: {} at {}ms (lock held for {}ms so far)", 
-              tenant, beforeCreateChannel, beforeCreateChannel - afterLockAcquisition);
-          
+          log.debug(
+              "[LOCK-TIMING] getChannel creating new channel for tenant: {} at {}ms (lock held for {}ms so far)",
+              tenant,
+              beforeCreateChannel,
+              beforeCreateChannel - afterLockAcquisition);
+
           localChannel = createNewChannel();
-          
+
           long afterCreateChannel = System.currentTimeMillis();
-          log.debug("[LOCK-TIMING] getChannel channel created for tenant: {} at {}ms (createNewChannel took: {}ms, lock held total: {}ms)", 
-              tenant, afterCreateChannel, 
+          log.debug(
+              "[LOCK-TIMING] getChannel channel created for tenant: {} at {}ms (createNewChannel took: {}ms, lock held total: {}ms)",
+              tenant,
+              afterCreateChannel,
               afterCreateChannel - beforeCreateChannel,
               afterCreateChannel - afterLockAcquisition);
-          
+
           sharedChannel = localChannel;
         }
       } catch (Exception e) {
@@ -221,8 +231,12 @@ public abstract class GateClientAbstract {
         lock.unlock();
         long afterUnlock = System.currentTimeMillis();
         long totalLockHeldTime = afterUnlock - afterLockAcquisition;
-        log.debug("[LOCK-TIMING] getChannel lock released for tenant: {} at {}ms (lock held for {}ms, total getChannel: {}ms)", 
-            tenant, afterUnlock, totalLockHeldTime, afterUnlock - getChannelStartTime);
+        log.debug(
+            "[LOCK-TIMING] getChannel lock released for tenant: {} at {}ms (lock held for {}ms, total getChannel: {}ms)",
+            tenant,
+            afterUnlock,
+            totalLockHeldTime,
+            afterUnlock - getChannelStartTime);
       }
     } else {
       log.debug(
