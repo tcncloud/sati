@@ -234,22 +234,27 @@ public class GateClient extends GateClientAbstract {
         "takeCallOffSimpleHold", client -> getStub(client).takeCallOffSimpleHold(request));
   }
 
-  public HoldTransferMemberCallerResponse holdTransferMemberCaller(HoldTransferMemberCallerRequest request) {
+  public HoldTransferMemberCallerResponse holdTransferMemberCaller(
+      HoldTransferMemberCallerRequest request) {
     return executeRequest(
         "holdTransferMemberCaller", client -> getStub(client).holdTransferMemberCaller(request));
   }
 
-  public UnholdTransferMemberCallerResponse unholdTransferMemberCaller(UnholdTransferMemberCallerRequest request) {
+  public UnholdTransferMemberCallerResponse unholdTransferMemberCaller(
+      UnholdTransferMemberCallerRequest request) {
     return executeRequest(
-        "unholdTransferMemberCaller", client -> getStub(client).unholdTransferMemberCaller(request));
+        "unholdTransferMemberCaller",
+        client -> getStub(client).unholdTransferMemberCaller(request));
   }
 
-  public HoldTransferMemberAgentResponse holdTransferMemberAgent(HoldTransferMemberAgentRequest request) {
+  public HoldTransferMemberAgentResponse holdTransferMemberAgent(
+      HoldTransferMemberAgentRequest request) {
     return executeRequest(
         "holdTransferMemberAgent", client -> getStub(client).holdTransferMemberAgent(request));
   }
 
-  public UnholdTransferMemberAgentResponse unholdTransferMemberAgent(UnholdTransferMemberAgentRequest request) {
+  public UnholdTransferMemberAgentResponse unholdTransferMemberAgent(
+      UnholdTransferMemberAgentRequest request) {
     return executeRequest(
         "unholdTransferMemberAgent", client -> getStub(client).unholdTransferMemberAgent(request));
   }
