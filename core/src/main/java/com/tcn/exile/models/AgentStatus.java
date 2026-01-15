@@ -25,4 +25,5 @@ public record AgentStatus(
     @JsonProperty("user_id") String userId,
     @JsonProperty("state") AgentState agentState,
     @JsonProperty("current_session_id") @Nullable Long currentSessionId,
-    @JsonProperty("connected_party") @Nullable ConnectedParty connectedParty) {}
+    @JsonProperty("connected_party") @Nullable ConnectedParty connectedParty,
+    @JsonProperty("agent_is_muted") boolean agentIsMuted) {}
