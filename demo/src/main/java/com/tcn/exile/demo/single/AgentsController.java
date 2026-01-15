@@ -279,13 +279,15 @@ public class AgentsController {
           new ConnectedParty(
               res.getConnectedParty().getCallSid(),
               CallType.values()[res.getConnectedParty().getCallType().getNumber()],
-              res.getConnectedParty().getIsInbound()));
+              res.getConnectedParty().getIsInbound()),
+          res.getAgentIsMuted());
     } else {
       return new AgentStatus(
           res.getPartnerAgentId(),
           AgentState.values()[res.getAgentState().getNumber()],
           res.getCurrentSessionId(),
-          null);
+          null,
+          res.getAgentIsMuted());
     }
   }
 
