@@ -19,6 +19,7 @@ package com.tcn.exile.gateclients.v2;
 import build.buf.gen.tcnapi.exile.gate.v2.GateServiceGrpc;
 import build.buf.gen.tcnapi.exile.gate.v2.StreamJobsRequest;
 import build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse;
+import build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest;
 import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.log.LogCategory;
@@ -36,6 +37,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -43,6 +45,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class GateClientJobStream extends GateClientAbstract
     implements StreamObserver<StreamJobsResponse> {
   private static final StructuredLogger log = new StructuredLogger(GateClientJobStream.class);
+  private static final int DEFAULT_TIMEOUT_SECONDS = 300;
 
   private final PluginInterface plugin;
   private final AtomicBoolean establishedForCurrentAttempt = new AtomicBoolean(false);
@@ -97,7 +100,7 @@ public class GateClientJobStream extends GateClientAbstract
   }
 
   public void start() {
-    if (isUnconfigured() || !plugin.isRunning()) {
+    if (isUnconfigured()) {
       log.warn(LogCategory.GRPC, "NOOP", "JobStream is unconfigured, cannot stream jobs");
       return;
     }
@@ -169,6 +172,17 @@ public class GateClientJobStream extends GateClientAbstract
     lastMessageTime.set(Instant.now());
 
     try {
+      boolean adminJob = isAdminJob(value);
+      if (!adminJob && !plugin.isRunning()) {
+        log.warn(
+            LogCategory.GRPC,
+            "JobRejected",
+            "Skipping job %s because database is unavailable (admin-only mode)",
+            value.getJobId());
+        submitJobError(value.getJobId(), "Database unavailable; admin-only mode");
+        return;
+      }
+
       if (value.hasListPools()) {
         plugin.listPools(value.getJobId(), value.getListPools());
       } else if (value.hasGetPoolStatus()) {
@@ -263,6 +277,39 @@ public class GateClientJobStream extends GateClientAbstract
 
     shutdown();
     log.info(LogCategory.GRPC, "GateClientJobStreamStopped", "GateClientJobStream stopped");
+  }
+
+  private boolean isAdminJob(StreamJobsResponse value) {
+    return value.hasDiagnostics()
+        || value.hasListTenantLogs()
+        || value.hasSetLogLevel()
+        || value.hasShutdown()
+        || value.hasLogging()
+        || value.hasInfo();
+  }
+
+  private void submitJobError(String jobId, String message) {
+    try {
+      SubmitJobResultsRequest request =
+          SubmitJobResultsRequest.newBuilder()
+              .setJobId(jobId)
+              .setEndOfTransmission(true)
+              .setErrorResult(
+                  SubmitJobResultsRequest.ErrorResult.newBuilder().setMessage(message).build())
+              .build();
+
+      GateServiceGrpc.newBlockingStub(getChannel())
+          .withDeadlineAfter(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+          .withWaitForReady()
+          .submitJobResults(request);
+    } catch (Exception e) {
+      log.error(
+          LogCategory.GRPC,
+          "SubmitJobErrorFailed",
+          "Failed to submit error for job %s: %s",
+          jobId,
+          e.getMessage());
+    }
   }
 
   @PreDestroy
