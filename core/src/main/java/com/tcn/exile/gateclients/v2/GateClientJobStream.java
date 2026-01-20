@@ -284,7 +284,6 @@ public class GateClientJobStream extends GateClientAbstract
         || value.hasListTenantLogs()
         || value.hasSetLogLevel()
         || value.hasShutdown()
-        || value.hasLogging()
         || value.hasInfo();
   }
 
