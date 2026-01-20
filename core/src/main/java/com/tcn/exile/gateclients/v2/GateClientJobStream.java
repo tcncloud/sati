@@ -177,9 +177,9 @@ public class GateClientJobStream extends GateClientAbstract
         log.warn(
             LogCategory.GRPC,
             "JobRejected",
-            "Skipping job %s because database is unavailable (admin-only mode)",
+            "Skipping job %s because database is unavailable (only admin jobs can run)",
             value.getJobId());
-        submitJobError(value.getJobId(), "Database unavailable; admin-only mode");
+        submitJobError(value.getJobId(), "Database unavailable; only admin jobs can run");
         return;
       }
 
