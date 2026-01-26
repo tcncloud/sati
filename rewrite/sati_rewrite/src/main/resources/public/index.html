@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sati Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" href="https://www.tcn.com/wp-content/uploads/2020/04/cropped-tcn-favicon-512px-1-32x32.png">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background: #f3f4f6;
+            color: #1f2937;
+            min-height: 100vh;
+        }
+        
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, #669EB4 0%, #4a7c91 100%);
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .header h1 { font-size: 1.5rem; font-weight: 600; }
+        .header-right { display: flex; gap: 1rem; align-items: center; font-size: 0.875rem; }
+        
+        /* Main content */
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        
+        /* Cards */
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-bottom: 1.5rem; }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 1rem;
+        }
+        
+        /* Status indicators */
+        .status-row { display: flex; justify-content: space-between; padding: 0.5rem 0; border-bottom: 1px solid #f3f4f6; }
+        .status-row:last-child { border-bottom: none; }
+        .status-label { color: #6b7280; }
+        .status-value { font-weight: 500; }
+        .status-badge {
+            display: inline-flex; align-items: center; gap: 0.375rem;
+            padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 500;
+        }
+        .status-badge.connected { background: #d1fae5; color: #065f46; }
+        .status-badge.disconnected { background: #fee2e2; color: #991b1b; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .status-badge.connected .status-dot { background: #10b981; }
+        .status-badge.disconnected .status-dot { background: #ef4444; }
+        
+        /* Logs panel */
+        .logs-card { grid-column: 1 / -1; }
+        .logs-container {
+            background: #1f2937;
+            border-radius: 8px;
+            padding: 1rem;
+            font-family: 'Monaco', 'Consolas', monospace;
+            font-size: 0.75rem;
+            color: #d1d5db;
+            height: 300px;
+            overflow-y: auto;
+        }
+        .log-line { padding: 0.125rem 0; white-space: pre-wrap; word-break: break-all; }
+        .log-line:hover { background: rgba(255,255,255,0.05); }
+        
+        /* Config form */
+        .config-card { grid-column: 1 / -1; }
+        .config-textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.875rem;
+            resize: vertical;
+            margin-bottom: 1rem;
+        }
+        .config-textarea:focus { outline: none; border-color: #669EB4; box-shadow: 0 0 0 3px rgba(102,158,180,0.2); }
+        .btn {
+            background: #669EB4;
+            color: white;
+            border: none;
+            padding: 0.625rem 1.25rem;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .btn:hover { background: #4a7c91; }
+        .btn:disabled { background: #9ca3af; cursor: not-allowed; }
+        .message { padding: 0.75rem 1rem; border-radius: 6px; margin-top: 1rem; font-size: 0.875rem; }
+        .message.success { background: #d1fae5; color: #065f46; }
+        .message.error { background: #fee2e2; color: #991b1b; }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <h1>Exile Gate Client - Dashboard</h1>
+        <div class="header-right">
+            <span id="last-update">Loading...</span>
+        </div>
+    </header>
+    
+    <div class="container">
+        <!-- Status Cards -->
+        <div class="grid">
+            <div class="card">
+                <h2>Connection Status</h2>
+                <div class="status-row">
+                    <span class="status-label">Service</span>
+                    <span id="status-running" class="status-badge disconnected">
+                        <span class="status-dot"></span><span>Stopped</span>
+                    </span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Gate (gRPC)</span>
+                    <span id="status-gate" class="status-badge disconnected">
+                        <span class="status-dot"></span><span>Disconnected</span>
+                    </span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Backend</span>
+                    <span id="status-backend" class="status-badge disconnected">
+                        <span class="status-dot"></span><span>Disconnected</span>
+                    </span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Job Stream</span>
+                    <span id="status-jobstream" class="status-badge disconnected">
+                        <span class="status-dot"></span><span>Disconnected</span>
+                    </span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>Configuration</h2>
+                <div class="status-row">
+                    <span class="status-label">API Endpoint</span>
+                    <span id="config-endpoint" class="status-value">-</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Organization</span>
+                    <span id="config-org" class="status-value">-</span>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h2>Job Statistics</h2>
+                <div class="status-row">
+                    <span class="status-label">Processed</span>
+                    <span id="stats-processed" class="status-value">0</span>
+                </div>
+                <div class="status-row">
+                    <span class="status-label">Failed</span>
+                    <span id="stats-failed" class="status-value">0</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Config Loading -->
+        <div class="grid">
+            <div class="card config-card">
+                <h2>Load Configuration</h2>
+                <textarea id="config-input" class="config-textarea" 
+                    placeholder="Paste base64-encoded certificate bundle from operator.tcn.com"></textarea>
+                <button id="config-submit" class="btn" onclick="loadConfig()">Apply Configuration</button>
+                <div id="config-message" class="message" style="display: none;"></div>
+            </div>
+        </div>
+        
+        <!-- Logs -->
+        <div class="grid">
+            <div class="card logs-card">
+                <h2>Recent Logs</h2>
+                <div id="logs-container" class="logs-container">
+                    <div class="log-line">Loading logs...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Update status badge
+        function setBadge(id, connected, onText, offText) {
+            const el = document.getElementById(id);
+            el.className = 'status-badge ' + (connected ? 'connected' : 'disconnected');
+            el.querySelector('span:last-child').textContent = connected ? onText : offText;
+        }
+        
+        // Fetch and display status
+        async function refreshStatus() {
+            try {
+                const res = await fetch('/api/admin/status');
+                const data = await res.json();
+                
+                setBadge('status-running', data.running, 'Running', 'Stopped');
+                setBadge('status-gate', data.gateConnected, 'Connected', 'Disconnected');
+                setBadge('status-backend', data.backendConnected, 'Connected', 'Disconnected');
+                setBadge('status-jobstream', data.jobStreamConnected, 'Connected', 'Disconnected');
+                
+                document.getElementById('config-endpoint').textContent = data.apiEndpoint || '-';
+                document.getElementById('config-org').textContent = data.org || '-';
+                document.getElementById('stats-processed').textContent = data.processedJobs || 0;
+                document.getElementById('stats-failed').textContent = data.failedJobs || 0;
+                
+                document.getElementById('last-update').textContent = 'Updated: ' + new Date().toLocaleTimeString();
+            } catch (e) {
+                console.error('Failed to fetch status:', e);
+            }
+        }
+        
+        // Fetch and display logs
+        async function refreshLogs() {
+            try {
+                const res = await fetch('/api/admin/logs?limit=200');
+                const logs = await res.json();
+                const container = document.getElementById('logs-container');
+                
+                if (logs.length === 0) {
+                    container.innerHTML = '<div class="log-line">No logs available</div>';
+                } else {
+                    container.innerHTML = logs.map(log => 
+                        '<div class="log-line">' + escapeHtml(log) + '</div>'
+                    ).join('');
+                }
+            } catch (e) {
+                console.error('Failed to fetch logs:', e);
+            }
+        }
+        
+        // Load new config
+        async function loadConfig() {
+            const input = document.getElementById('config-input');
+            const btn = document.getElementById('config-submit');
+            const msg = document.getElementById('config-message');
+            
+            if (!input.value.trim()) {
+                showMessage(msg, 'Please paste configuration content', false);
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.textContent = 'Loading...';
+            
+            try {
+                const res = await fetch('/api/admin/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config: input.value.trim() })
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok) {
+                    showMessage(msg, data.message || 'Configuration loaded successfully', true);
+                    input.value = '';
+                    refreshStatus();
+                } else {
+                    showMessage(msg, data.error || 'Failed to load configuration', false);
+                }
+            } catch (e) {
+                showMessage(msg, 'Network error: ' + e.message, false);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Apply Configuration';
+            }
+        }
+        
+        function showMessage(el, text, success) {
+            el.textContent = text;
+            el.className = 'message ' + (success ? 'success' : 'error');
+            el.style.display = 'block';
+            setTimeout(() => { el.style.display = 'none'; }, 5000);
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Initial load and polling
+        refreshStatus();
+        refreshLogs();
+        setInterval(refreshStatus, 10000);  // Every 10s
+        setInterval(refreshLogs, 5000);      // Every 5s
+    </script>
+</body>
+</html>

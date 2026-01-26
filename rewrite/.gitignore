@@ -1,0 +1,46 @@
+# Gradle
+.gradle/
+**/build/
+gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Java compiled
+*.class
+*.jar
+*.war
+*.ear
+hs_err_pid*
+replay_pid*
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Eclipse / VS Code
+.vscode/
+.settings/
+.classpath
+.project
+bin/
+
+# Mac
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Test outputs
+test-output/
+
+# Local env files
+.env
+.env.local
+*.local
+
+# Generated sources
+**/generated/
+**/src/main/compile/
