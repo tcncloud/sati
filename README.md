@@ -1,423 +1,544 @@
-# Sati Rewrite - Thin Shell Architecture
+# Sati SDK
 
-This repository contains the rewritten **Sati** library and tenant implementations using a **Thin Shell Architecture**.
-
-## Goal
-
-Simplify tenant integrations by moving **all** application logic (routes, services, gRPC clients, database/API connections) into the shared `sati_rewrite` library. Tenant apps (like `finvi_rewrite`) become extremely lightweight shells that only handle configuration loading.
+**Sati** is a Java SDK for building tenant applications that integrate with the Exile/Gate ecosystem. It follows a **Thin Shell** architecture where consuming applications are minimal wrappers that inject tenant-specific configuration and database implementations.
 
 ## Architecture Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         TENANT SHELL                                 │
-│  (finvi_rewrite, velosidy_rewrite, etc.)                            │
-│  ┌────────────────────────────────────────────────────────────────┐ │
-│  │  Main.java (~50 lines)                                         │ │
-│  │  - Load config from environment/files                          │ │
-│  │  - SatiApp.builder().config().backendType().start()            │ │
-│  └────────────────────────────────────────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────────┘
-                                   │ uses
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         SATI_REWRITE                                 │
-│                      (Core Library)                                  │
-├─────────────────────────────────────────────────────────────────────┤
-│  SatiApp.java              - Unified builder & entry point          │
-│                                                                      │
-│  config/                                                             │
-│  ├── BackendType.java      - JDBC or REST                           │
-│  └── SatiConfig.java       - All configuration options              │
-│                                                                      │
-│  core/                                                               │
-│  ├── route/                - HTTP endpoints (Javalin + Swagger)     │
-│  ├── service/              - Business logic (extensible)            │
-│  ├── job/                  - Job processing from Gate               │
-│  │   └── JobProcessor.java - Thread pool for job execution          │
-│  └── tenant/               - Multi-tenant support                   │
-│      ├── TenantContext.java   - All resources for one tenant        │
-│      └── TenantManager.java   - Manages multiple tenants            │
-│                                                                      │
-│  infra/                                                              │
-│  ├── gate/                                                           │
-│  │   ├── GateClient.java      - gRPC connection to Exile            │
-│  │   └── JobStreamClient.java - Streams jobs from Gate              │
-│  └── backend/                                                        │
-│      ├── TenantBackendClient.java   - Interface                     │
-│      ├── jdbc/JdbcBackendClient.java - Abstract JDBC (extend this)  │
-│      └── rest/RestBackendClient.java - HTTP API via HttpClient      │
-└─────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────┐
+│                         Consumer Application                           │
+│   ┌─────────────────┐  ┌────────────────────────────────────────────┐  │
+│   │  Main.java      │  │  Custom Backend Client                     │  │
+│   │  (Bootstrap)    │  │  (e.g., CustomBackendClient)               │  │
+│   │  - Load config  │  │  - JDBC driver config                      │  │
+│   │  - Start app    │  │  - SQL statements                          │  │
+│   └─────────────────┘  └────────────────────────────────────────────┘  │
+│                           │                   │                        │
+│ ──────────────────────────┼───────────────────┼─────────────────────── │
+│                           ▼                   ▼                        │
+│   ┌───────────────────────────────────────────────────────────────┐    │
+│   │                          Sati (SDK)                           │    │
+│   │                                                               │    │
+│   │  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐    │    │
+│   │  │  SatiApp    │  │ SatiConfig  │  │ TenantBackendClient │    │    │
+│   │  │  Builder    │  │  (Record)   │  │    (Interface)      │    │    │
+│   │  └─────────────┘  └─────────────┘  └─────────────────────┘    │    │
+│   │                                              │                │    │
+│   │  ┌─────────────┐  ┌─────────────┐  ┌────────┴─────────┐       │    │
+│   │  │ GateClient  │  │ EventStream │  │ JdbcBackendClient│       │    │
+│   │  │ (gRPC)      │  │   Client    │  │ RestBackendClient│       │    │
+│   │  └─────────────┘  └─────────────┘  └──────────────────┘       │    │
+│   │                                                               │    │
+│   │  HTTP Server (Javalin) • Swagger UI • Admin Dashboard         │    │
+│   └───────────────────────────────────────────────────────────────┘    │
+└────────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────────┐
+                    │       Exile         │
+                    │   gRPC Services     │
+                    └─────────────────────┘
 ```
+
+## Features
+
+- **Javalin HTTP Server** — REST API with OpenAPI/Swagger documentation
+- **gRPC Gate Integration** — Secure mTLS connection to Exile services
+- **Bidirectional Streaming** — Real-time job queue and event stream with ACK support
+- **Dynamic Configuration** — Backend credentials delivered from Gate at runtime
+- **Connection Pooling** — HikariCP for JDBC backends
+- **Multi-Tenant Support** — Single tenant (one app per customer) or multi-tenant modes
+- **Admin Dashboard** — Built-in status monitoring and log viewing
+- **Hot Reload** — Configuration can be updated without restart
+
+---
+
+## Quick Start
+
+### 1. Add Dependency
+
+In your consuming application's `build.gradle`:
+
+```groovy
+dependencies {
+    implementation project(':sati')
+    
+    // Or if published to a repository:
+    // implementation 'com.tcn:sati-sdk:1.0.0'
+}
+```
+
+### 2. Create Entry Point
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        // Load configuration (e.g., from Base64-encoded config file)
+        SatiConfig config = loadConfig();
+        
+        // Create your custom backend client
+        CustomBackendClient backend = new CustomBackendClient(config);
+        
+        // Start the application
+        SatiApp app = SatiApp.builder()
+                .config(config)
+                .backendClient(backend)
+                .appName("My Tenant API")
+                .start(8080);
+        
+        // Wire up dynamic config from Gate
+        app.getTenantContext().getGateClient().setConfigListener(backend::onBackendConfigReceived);
+        app.getTenantContext().getGateClient().startConfigPolling();
+    }
+}
+```
+
+### 3. Implement Backend Client
+
+For **JDBC** backends, extend `JdbcBackendClient`:
+
+```java
+public class CustomBackendClient extends JdbcBackendClient {
+    
+    public CustomBackendClient(SatiConfig config) {
+        super(config);
+    }
+    
+    @Override
+    protected void configureDataSource(HikariConfig hc, BackendConfig backendConfig) {
+        // Configure your JDBC driver
+        hc.setDriverClassName("com.mysql.cj.jdbc.Driver");
+        hc.setJdbcUrl(buildJdbcUrl(backendConfig));
+    }
+    
+    @Override
+    protected String buildJdbcUrl(BackendConfig cfg) {
+        return String.format("jdbc:mysql://%s:%s/%s",
+                cfg.databaseHost, cfg.databasePort, cfg.databaseName);
+    }
+    
+    // Implement SQL for your stored procedures
+    @Override
+    protected String getListPoolsSql() {
+        return "SELECT pool_id AS PoolID, name AS PoolName, status AS Status FROM pools";
+    }
+    
+    @Override
+    protected String getPoolStatusSql() {
+        return "SELECT pool_id AS PoolID, total AS TotalRecords, available AS AvailableRecords, status AS Status FROM pools WHERE pool_id = ?";
+    }
+    
+    // ... implement remaining abstract methods
+}
+```
+
+For **REST** backends, use `RestBackendClient` directly or extend it:
+
+```java
+SatiApp.builder()
+    .config(config)
+    .backendType(BackendType.REST)  // Use built-in REST client
+    .appName("REST Tenant API")
+    .start(8080);
+```
+
+---
+
+## Configuration
+
+### SatiConfig
+
+The `SatiConfig` record holds all configuration for Gate connection and backend:
+
+```java
+SatiConfig config = SatiConfig.builder()
+    // Gate/gRPC Connection (Required for Exile integration)
+    .apiHostname("gate.example.com")
+    .apiPort(443)
+    .rootCert(caCertPem)
+    .publicCert(clientCertPem)
+    .privateKey(clientKeyPem)
+    .org("my-organization")
+    .tenant("my-tenant-id")
+    
+    // Static Backend (Optional - usually comes from Gate dynamically)
+    .backendUrl("jdbc:mysql://localhost:3306/mydb")
+    .backendUser("user")
+    .backendPassword("password")
+    .build();
+```
+
+### Gate Configuration File
+
+Applications typically load config from a Base64-encoded JSON file:
+
+```json
+{
+  "ca_certificate": "-----BEGIN CERTIFICATE-----\n...",
+  "certificate": "-----BEGIN CERTIFICATE-----\n...",
+  "private_key": "-----BEGIN PRIVATE KEY-----\n...",
+  "api_endpoint": "https://gate.example.com:443"
+}
+```
+
+Extract the organization from the certificate:
+
+```java
+String org = SatiConfig.extractOrgFromCert(certificate);
+```
+
+---
 
 ## Deployment Modes
 
-### Single-Tenant Mode (Finvi with JDBC)
+### Single-Tenant Mode (Default)
 
-One instance per customer. Requires custom backend client for JDBC:
+One application instance per customer. Backend credentials come from Gate:
 
 ```java
-// Create tenant-specific backend client
-FinviBackendClient backendClient = new FinviBackendClient();
-
-SatiApp satiApp = SatiApp.builder()
-    .config(loadConfig())
-    .backendClient(backendClient)           // Inject custom client
-    .transferService(new FinviTransferService())
-    .appName("Finvi API")
+SatiApp.builder()
+    .config(config)
+    .backendClient(customBackendClient)
+    .appName("My Tenant API")
     .start(8080);
-
-// Wire up dynamic config from Gate
-satiApp.getTenantContext().getGateClient()
-    .addConfigListener(backendClient::onBackendConfigReceived);
 ```
 
-### Multi-Tenant Mode (Velosidy)
+### Multi-Tenant Mode
 
-Shared instance serving multiple customers. Tenants discovered from external service.
+Shared service handling multiple customers with automatic tenant discovery:
 
 ```java
 SatiApp.builder()
     .backendType(BackendType.REST)
     .multiTenant(true)
-    .tenantDiscovery(() -> velosidyClient.fetchTenants())
+    .tenantDiscovery(() -> fetchTenantsFromExternalService())
     .discoveryIntervalSeconds(30)
-    .appName("Velosidy API")
+    .appName("Multi-Tenant API")
     .start(8080);
 ```
+
+---
 
 ## Project Structure
 
-### `sati_rewrite/` - Core Library
-
-| Path | Purpose |
-|------|---------|
-| `SatiApp.java` | Unified builder supporting single & multi-tenant modes |
-| `config/BackendType.java` | Enum: `JDBC` or `REST` |
-| `config/SatiConfig.java` | Configuration record with builder |
-| `core/route/*.java` | HTTP endpoints with Swagger annotations |
-| `core/service/*.java` | Business logic (can be overridden) |
-| `core/job/JobProcessor.java` | Thread pool for processing Gate jobs |
-| `core/tenant/TenantContext.java` | All resources for a single tenant |
-| `core/tenant/TenantManager.java` | Manages multiple TenantContexts |
-| `infra/gate/GateClient.java` | gRPC client for Exile/Gate |
-| `infra/gate/JobStreamClient.java` | Persistent stream for receiving jobs |
-| `infra/backend/jdbc/JdbcBackendClient.java` | Abstract base for JDBC backends (extend this) |
-| `infra/backend/rest/RestBackendClient.java` | REST API connection |
-
-### `finvi_rewrite/` - Finvi Tenant Shell
-
-| Path | Purpose |
-|------|---------|
-| `Main.java` | Config loading + `SatiApp.builder()` call |
-| `FinviBackendClient.java` | Extends `JdbcBackendClient` with IRIS/Caché driver + SQL |
-| `FinviTransferService.java` | Custom transfer validation logic |
-| `ConfigWatcher.java` | Hot-reload config file changes |
-
-## Multi-Tenant Architecture
-
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                         SatiApp                                 │
-│                                                                │
-│  Mode: SINGLE_TENANT              Mode: MULTI_TENANT           │
-│  ┌─────────────────┐              ┌─────────────────────────┐  │
-│  │ TenantContext   │              │     TenantManager       │  │
-│  │                 │              │                         │  │
-│  │ • GateClient    │              │ Map<String, TenantCtx>  │  │
-│  │ • JobStream     │              │                         │  │
-│  │ • JobProcessor  │              │ • createTenant()        │  │
-│  │ • BackendClient │              │ • destroyTenant()       │  │
-│  │                 │              │ • getTenant()           │  │
-│  └─────────────────┘              │ • discoverTenants()     │  │
-│                                   └─────────────────────────┘  │
-└────────────────────────────────────────────────────────────────┘
+sati/
+├── src/main/java/com/tcn/sati/
+│   ├── SatiApp.java                    # Main entry point with builder
+│   ├── config/
+│   │   ├── SatiConfig.java             # Configuration record
+│   │   └── BackendType.java            # JDBC or REST enum
+│   ├── core/
+│   │   ├── job/
+│   │   │   └── JobProcessor.java       # Processes jobs from Gate
+│   │   ├── route/
+│   │   │   ├── AdminRoutes.java        # /api/admin/* endpoints
+│   │   │   ├── BackendRoutes.java      # /api/pools/* endpoints
+│   │   │   ├── GateRoutes.java         # /api/gate/* endpoints
+│   │   │   ├── TransferRoutes.java     # /api/transfer/* endpoints
+│   │   │   └── AgentRoutes.java        # /api/agent/* endpoints
+│   │   ├── service/
+│   │   │   ├── TransferService.java    # Extensible transfer logic
+│   │   │   └── AgentService.java       # Extensible agent logic
+│   │   └── tenant/
+│   │       ├── TenantContext.java      # Per-tenant resources
+│   │       └── TenantManager.java      # Multi-tenant management
+│   └── infra/
+│       ├── backend/
+│       │   ├── TenantBackendClient.java    # Interface for backends
+│       │   ├── jdbc/
+│       │   │   └── JdbcBackendClient.java  # Abstract JDBC implementation
+│       │   └── rest/
+│       │       └── RestBackendClient.java  # REST API implementation
+│       ├── gate/
+│       │   ├── GateClient.java         # gRPC connection to Gate
+│       │   ├── EventStreamClient.java  # Bidirectional event stream
+│       │   └── JobQueueClient.java     # Bidirectional job queue
+│       └── logging/
+│           └── MemoryLogAppender.java  # In-memory logs for dashboard
+└── src/main/resources/
+    └── public/                         # Admin dashboard static files
 ```
 
-### TenantContext
+---
 
-Each tenant has isolated resources:
-- **GateClient** - gRPC connection to Exile
-- **JobStreamClient** - Persistent stream for receiving jobs
-- **JobProcessor** - Thread pool for executing jobs
-- **TenantBackendClient** - Database or REST connection
-- **ScheduledExecutorService** - Tenant-specific scheduled tasks
+## Core Components
 
-### TenantManager
+### SatiApp Builder
 
-Manages multiple tenants with:
-- `ConcurrentHashMap<String, TenantContext>` - Thread-safe storage
-- Automatic tenant discovery from external services
-- Dynamic create/destroy on configuration changes
-- Health monitoring
+The fluent builder configures and starts the application:
 
-## Job Processing
+| Method | Description |
+|--------|-------------|
+| `.config(SatiConfig)` | Gate connection and optional static backend config |
+| `.backendType(BackendType)` | `JDBC` or `REST` (when not using custom client) |
+| `.backendClient(TenantBackendClient)` | Custom backend implementation |
+| `.transferService(TransferService)` | Override default transfer logic |
+| `.agentService(AgentService)` | Override default agent logic |
+| `.appName(String)` | Application name for Swagger UI |
+| `.multiTenant(boolean)` | Enable multi-tenant mode |
+| `.tenantDiscovery(Supplier)` | Auto-discover tenants |
+| `.discoveryIntervalSeconds(long)` | Discovery poll interval |
+| `.start(int port)` | Build and start on specified port |
 
-Jobs are received from Gate via persistent gRPC stream and processed by a thread pool.
+### TenantBackendClient Interface
 
+Implement this interface to connect to your tenant's data system:
+
+```java
+public interface TenantBackendClient extends AutoCloseable {
+    // Pool operations
+    List<PoolInfo> listPools();
+    PoolStatus getPoolStatus(String poolId);
+    List<PoolRecord> getPoolRecords(String poolId, int page);
+    
+    // Event handlers (called when Gate sends events)
+    void handleTelephonyResult(TelephonyResult result);
+    void handleTask(ExileTask task);
+    void handleAgentCall(AgentCall call);
+    void handleAgentResponse(AgentResponse response);
+    void handleTransferInstance(TransferInstance transfer);
+    void handleCallRecording(CallRecording recording);
+    
+    // Health check
+    boolean isConnected();
+}
 ```
-Gate (gRPC) ──────► JobStreamClient ──────► JobProcessor ──────► BackendClient
-                          │                      │
-                          │ auto-reconnect       │ thread pool
-                          │ hung detection       │ (5 workers)
-                          │                      │
-                          └──────────────────────┴──► SubmitJobResults
+
+### JdbcBackendClient (Abstract)
+
+Provides common JDBC infrastructure:
+
+- **HikariCP connection pooling** with configurable pool sizes
+- **Async initialization** — doesn't block startup
+- **Dynamic reconfiguration** — handles credential changes from Gate
+- **Health monitoring** — tracks connection failures
+
+Override these abstract methods:
+
+| Method | Purpose |
+|--------|---------|
+| `configureDataSource()` | Set JDBC driver and connection properties |
+| `buildJdbcUrl()` | Construct JDBC URL from components |
+| `getListPoolsSql()` | SQL to list pools |
+| `getPoolStatusSql()` | SQL to get pool status (with `?` placeholder) |
+| `getPoolRecordsSql()` | SQL for paginated record retrieval |
+| `getTelephonyResultSql()` | SQL/procedure for telephony results |
+| `getTaskSql()` | SQL/procedure for tasks |
+| `getAgentCallSql()` | SQL/procedure for agent calls |
+| `getAgentResponseSql()` | SQL/procedure for agent responses |
+| `getTransferInstanceSql()` | SQL/procedure for transfers |
+| `getCallRecordingSql()` | SQL/procedure for recordings |
+
+### GateClient
+
+Manages gRPC connection to Exile/Gate:
+
+- **mTLS authentication** using certificates from config
+- **Lazy channel creation** with double-checked locking
+- **Auto-reconnect** on connection failures
+- **Config polling** — periodically fetches backend credentials from Gate
+
+```java
+// Get the Gate client from tenant context
+GateClient gate = app.getTenantContext().getGateClient();
+
+// Set listener for dynamic config
+gate.setConfigListener(backendConfig -> {
+    // Handle new database credentials
+    myBackend.onBackendConfigReceived(backendConfig);
+});
+
+// Start polling (every 10 seconds)
+gate.startConfigPolling();
 ```
 
-### Supported Job Types
+### BackendConfig (from Gate)
 
-| Job Type | Description |
-|----------|-------------|
-| `listPools` | List available pools |
-| `getPoolStatus` | Get status of a specific pool |
-| `getPoolRecords` | Get records from a pool |
-| `info` | Return server/version info |
-| `diagnostics` | Return health diagnostics |
-| `shutdown` | Graceful shutdown |
+Gate delivers database configuration dynamically:
 
-### Resilience Features
+| Field | Description |
+|-------|-------------|
+| `database_url` | Complete JDBC URL (optional) |
+| `database_host` | Database hostname |
+| `database_port` | Database port |
+| `database_name` | Database/schema name |
+| `database_type` | e.g., "IRIS", "Cache", "MySQL" |
+| `database_username` | DB username |
+| `database_password` | DB password |
+| `use_tls` | Enable TLS for DB connection |
+| `max_number_connections` | Connection pool size |
 
-| Feature | Implementation |
-|---------|----------------|
-| **Auto-reconnect** | Exponential backoff (5s → 60s) |
-| **Hung detection** | 45s timeout, force reconnect |
-| **Graceful shutdown** | Drain queue, complete in-flight jobs |
-| **Error isolation** | Per-job error handling, stream continues |
+---
 
-## API Endpoints
+## HTTP Endpoints
 
-### Single-Tenant Mode
+The SDK automatically registers these routes:
+
+### Admin Routes
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
+| `/` | GET | Redirect to admin dashboard |
 | `/swagger` | GET | Swagger UI |
-| `/api/status` | GET | Tenant status |
-| `/api/backend/health` | GET | Backend connection health |
-| `/api/gate/check` | GET | Gate gRPC connection check |
+| `/swagger-docs` | GET | OpenAPI JSON |
+| `/api/admin/status` | GET | System status (connections, jobs, events) |
+| `/api/admin/logs` | GET | Recent log messages |
+| `/api/admin/config` | POST | Load new configuration |
+
+### Backend Routes
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/api/pools` | GET | List all pools |
 | `/api/pools/{id}/status` | GET | Get pool status |
-| `/api/pools/{id}/records` | GET | Get pool records |
-| `/api/transfer` | POST | Execute a transfer |
-| `/api/agent/{id}/status` | GET | Get agent status |
+| `/api/pools/{id}/records` | GET | Get pool records (paginated) |
 
-### Multi-Tenant Mode
+### Gate Routes
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/swagger` | GET | Swagger UI |
-| `/api/tenants` | GET | List all tenants with status |
-| `/api/tenants/{key}/status` | GET | Get specific tenant status |
-| `/api/tenants/{key}/pools` | GET | List pools for tenant |
-| `/api/tenants/{key}/pools/{id}/records` | GET | Get records for tenant |
+| `/api/gate/status` | GET | Gate connection status |
 
-## How to Run
+### Multi-Tenant Routes (when enabled)
 
-### Finvi (Single-Tenant, JDBC Backend)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/tenants` | GET | List all tenant statuses |
+| `/api/tenants/{key}/status` | GET | Specific tenant status |
+| `/api/tenants/{key}/pools` | GET | Tenant's pools |
 
-```bash
-cd finvi_rewrite
+---
 
-# Run (uses config file from workdir/config)
-./gradlew run
-```
+## Extending Services
 
-### Velosidy (Multi-Tenant, REST Backend)
+Override default services to add custom behavior:
 
 ```java
-public class Main {
-    public static void main(String[] args) {
-        SatiApp.builder()
-            .backendType(BackendType.REST)
-            .multiTenant(true)
-            .tenantDiscovery(() -> {
-                // Fetch tenant configs from external service
-                return velosidyClient.listTenants().stream()
-                    .map(t -> new TenantManager.TenantConfig(
-                        t.tenantKey(),
-                        buildSatiConfig(t)
-                    ))
-                    .toList();
-            })
-            .discoveryIntervalSeconds(30)
-            .appName("Velosidy API")
-            .start(8080);
-    }
-}
-```
-
-## Configuration
-
-### SatiConfig Fields
-
-| Field | Description | Required For |
-|-------|-------------|--------------|
-| `apiHostname` | Exile/Gate gRPC host | Gate connection |
-| `apiPort` | Exile/Gate gRPC port | Gate connection |
-| `rootCert` | CA certificate (PEM) | Gate connection |
-| `publicCert` | Client certificate (PEM) | Gate connection |
-| `privateKey` | Client private key (PEM) | Gate connection |
-| `org` | Organization ID | Gate connection |
-| `tenant` | Tenant identifier | All operations |
-| `backendUrl` | JDBC URL or REST base URL | Backend operations |
-| `backendUser` | DB user or API client ID | Backend operations |
-| `backendPassword` | DB password or API secret | Backend operations |
-
-### SatiApp Builder Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `config()` | required* | Configuration (required for single-tenant) |
-| `backendType()` | none | `JDBC` or `REST` (optional if using `backendClient()`) |
-| `backendClient()` | none | Custom backend client (required for JDBC) |
-| `transferService()` | default | Custom transfer service implementation |
-| `agentService()` | default | Custom agent service implementation |
-| `appName()` | auto | Application name for logs/Swagger |
-| `multiTenant()` | `false` | Enable multi-tenant mode |
-| `tenantDiscovery()` | none | Supplier for tenant discovery |
-| `discoveryIntervalSeconds()` | `30` | Tenant discovery interval |
-
-## Extending Services and DTOs
-
-Tenants can extend both **service logic** and **request/response DTOs** with custom fields.
-
-### Extending DTOs
-
-Add tenant-specific fields by extending the base classes:
-
-```java
-// Extended request with Finvi-specific fields
-public static class FinviTransferRequest extends TransferService.TransferRequest {
-    private String accountNumber;
-    private String priorityCode;
-    
-    public FinviTransferRequest(String agentId, String targetQueue, String accountNumber, String priorityCode) {
-        super(agentId, targetQueue);
-        this.accountNumber = accountNumber;
-        this.priorityCode = priorityCode;
-    }
-    // getters/setters...
-}
-
-// Extended response with Finvi-specific fields
-public static class FinviTransferResponse extends TransferService.TransferResponse {
-    private String transferId;
-    
-    public FinviTransferResponse(boolean success, String message, String transferId) {
-        super(success, message);
-        this.transferId = transferId;
-    }
-    // getters/setters...
-}
-```
-
-### Overriding Service Methods
-
-Use the extended DTOs in your service override:
-
-```java
-public class FinviTransferService extends TransferService {
+public class MyTransferService extends TransferService {
     @Override
     public TransferResponse executeTransfer(TransferRequest req) {
-        // Extract extended fields if present
-        if (req instanceof FinviTransferRequest finviReq) {
-            log.debug("Account: {}, Priority: {}", 
-                finviReq.getAccountNumber(), finviReq.getPriorityCode());
-        }
+        // Custom pre-transfer logic
+        log.info("Custom transfer for agent: {}", req.getAgentId());
         
-        // Custom validation
-        if (req.getTargetQueue().equals("restricted")) {
-            return new TransferResponse(false, "Queue is restricted");
-        }
-        
-        // Delegate to base, then enhance response
-        TransferResponse base = super.executeTransfer(req);
-        return new FinviTransferResponse(base.isSuccess(), base.getMessage(), "TXF-123");
+        // Call base implementation or custom logic
+        return new TransferResponse(true, "Custom transfer completed");
     }
 }
-```
 
-### Wiring It Up
-
-```java
+// Inject into builder
 SatiApp.builder()
-    .config(loadConfig())
-    .backendClient(new FinviBackendClient())
-    .transferService(new FinviTransferService())
+    .config(config)
+    .backendClient(backend)
+    .transferService(new MyTransferService())
     .start(8080);
 ```
 
-## Swapping Database Technology
+---
 
-The architecture uses the **Template Method Pattern**, making it easy to swap database providers (e.g., moving from IRIS/Caché to PostgreSQL).
+## Dependencies
 
-1.  **Update `build.gradle`**: Add the new JDBC driver dependency.
-2.  **Extend `JdbcBackendClient`**: Implement the 3 required abstract methods.
+| Dependency | Version | Purpose |
+|------------|---------|---------|
+| Javalin | 6.7.0 | HTTP server |
+| gRPC | 1.68.1 | Gate communication |
+| HikariCP | 5.1.0 | Connection pooling |
+| Jackson | 2.17.0 | JSON serialization |
+| Bouncy Castle | 1.78.1 | PKCS#1 key support |
+| SLF4J | 2.0.12 | Logging API |
+| Exile API | * | Protobuf definitions (from Buf) |
+
+*Exile API versions are pinned in `gradle.properties`.
+
+---
+
+## Example: Custom JDBC Backend
+
+Complete example of a custom JDBC backend implementation:
 
 ```java
 public class PostgresBackendClient extends JdbcBackendClient {
+    
+    public PostgresBackendClient(SatiConfig config) {
+        super(config);
+    }
+    
     @Override
     protected void configureDataSource(HikariConfig hc, BackendConfig cfg) {
         hc.setDriverClassName("org.postgresql.Driver");
+        hc.setJdbcUrl(buildJdbcUrl(cfg));
+        
+        // PostgreSQL-specific settings
+        hc.addDataSourceProperty("reWriteBatchedInserts", "true");
     }
-
+    
     @Override
     protected String buildJdbcUrl(BackendConfig cfg) {
-        return String.format("jdbc:postgresql://%s:%d/%s", 
-            cfg.host(), cfg.port(), cfg.db());
+        String base = String.format("jdbc:postgresql://%s:%s/%s",
+                cfg.databaseHost, cfg.databasePort, cfg.databaseName);
+        
+        if (Boolean.TRUE.equals(cfg.useTls)) {
+            return base + "?ssl=true&sslmode=require";
+        }
+        return base;
     }
-
+    
     @Override
     protected String getListPoolsSql() {
-        return "SELECT id, name FROM public.pools";
+        return "SELECT id AS \"PoolID\", name AS \"PoolName\", status AS \"Status\" FROM pools";
     }
+    
+    @Override
+    protected String getPoolStatusSql() {
+        return "SELECT id AS \"PoolID\", total_records AS \"TotalRecords\", " +
+               "available_records AS \"AvailableRecords\", status AS \"Status\" " +
+               "FROM pools WHERE id = ?";
+    }
+    
+    @Override
+    protected String getPoolRecordsSql() {
+        return "SELECT id AS \"RecordID\", pool_id AS \"PoolID\", " +
+               "first_name AS \"FirstName\", last_name AS \"LastName\", phone AS \"Phone\" " +
+               "FROM records WHERE pool_id = ? ORDER BY id LIMIT ? OFFSET ?";
+    }
+    
+    @Override
+    protected String getTelephonyResultSql() {
+        return "SELECT process_telephony_result(?::jsonb)";
+    }
+    
+    @Override protected String getTaskSql() { return "SELECT process_task(?::jsonb)"; }
+    @Override protected String getAgentCallSql() { return "SELECT process_agent_call(?::jsonb)"; }
+    @Override protected String getAgentResponseSql() { return "SELECT process_agent_response(?::jsonb)"; }
+    @Override protected String getTransferInstanceSql() { return "SELECT process_transfer(?::jsonb)"; }
+    @Override protected String getCallRecordingSql() { return "SELECT process_recording(?::jsonb)"; }
 }
 ```
 
-3.  **Inject the new client**:
+---
+
+## Logging
+
+Sati uses SLF4J. Consuming applications must provide an implementation:
+
+```groovy
+// In build.gradle
+implementation 'ch.qos.logback:logback-classic:1.5.6'
+```
+
+The `MemoryLogAppender` captures recent logs for the admin dashboard.
+
+---
+
+## Health Checks
+
+Use `TenantContext.getStatus()` for comprehensive health information:
 
 ```java
-SatiApp.builder()
-    .backendClient(new PostgresBackendClient())
-    .start(8080);
+TenantStatus status = app.getTenantContext().getStatus();
+// Returns: tenantKey, running, gateConnected, backendConnected,
+//          jobQueueConnected, eventStreamRunning, processedJobs,
+//          failedJobs, processedEvents, createdAt
 ```
 
-## Testing
-
-```bash
-# Check tenant status (single-tenant)
-curl http://localhost:8080/api/status
-
-# List tenants (multi-tenant)
-curl http://localhost:8080/api/tenants
-
-# List pools
-curl http://localhost:8080/api/pools
-
-# Test transfer
-curl -X POST http://localhost:8080/api/transfer \
-     -H "Content-Type: application/json" \
-     -d '{"agentId":"123", "targetQueue":"Support"}'
-```
-
-## Key Design Decisions
-
-1. **Native Java over frameworks** - No Micronaut, just `ConcurrentHashMap` and `ScheduledExecutorService`
-2. **Single SatiApp entry point** - Builder pattern for all configuration
-3. **TenantContext encapsulation** - All tenant resources in one object
-4. **Generic backend abstraction** - `JDBC`/`REST` instead of vendor names
-5. **Resilient job streaming** - Auto-reconnect, hung detection, graceful shutdown
-6. **Single-tenant AND multi-tenant** - Same codebase supports both modes
-7. **Extensible DTOs** - Hand-written classes (not records) allow tenants to extend request/response types
-
-## Comparison: Old vs Rewrite
-
-| Aspect | Old (Micronaut) | Rewrite (Native Java) |
-|--------|-----------------|----------------------|
-| **Framework** | Micronaut DI | Plain Java |
-| **Multi-tenant** | Bean qualifiers, ApplicationContext | ConcurrentHashMap |
-| **Job streaming** | ~400 lines across 5 classes | ~200 lines in 2 classes |
-| **Tenant management** | ~500 lines | ~200 lines |
-| **Config** | File watcher + beans | Simple config record |
-| **Testing** | Needs DI container | Unit tests |
-| **Startup** | Annotation processing | Instant |
-| **Total LOC** | ~3000+ | ~1500 |
+---
