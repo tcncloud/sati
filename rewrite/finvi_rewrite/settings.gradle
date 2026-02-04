@@ -1,3 +1,0 @@
-rootProject.name = 'finvi_rewrite'
-include ':sati_rewrite'
-project(':sati_rewrite').projectDir = new File(settingsDir, '../sati_rewrite')
