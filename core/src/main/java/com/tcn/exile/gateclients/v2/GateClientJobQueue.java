@@ -39,9 +39,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Bidirectional job streaming with acknowledgment using JobQueueStream API.
- */
+/** Bidirectional job streaming with acknowledgment using JobQueueStream API. */
 public class GateClientJobQueue extends GateClientAbstract {
   private static final StructuredLogger log = new StructuredLogger(GateClientJobQueue.class);
   private static final int DEFAULT_TIMEOUT_SECONDS = 300;
@@ -67,7 +65,8 @@ public class GateClientJobQueue extends GateClientAbstract {
   private final AtomicLong jobsFailed = new AtomicLong(0);
 
   // Stream observer for sending ACKs
-  private final AtomicReference<StreamObserver<JobQueueStreamRequest>> requestObserverRef = new AtomicReference<>();
+  private final AtomicReference<StreamObserver<JobQueueStreamRequest>> requestObserverRef =
+      new AtomicReference<>();
 
   public GateClientJobQueue(String tenant, Config currentConfig, PluginInterface plugin) {
     super(tenant, currentConfig);
@@ -138,78 +137,79 @@ public class GateClientJobQueue extends GateClientAbstract {
     var firstResponseReceived = new AtomicBoolean(false);
 
     // Create response handler
-    var responseObserver = new StreamObserver<JobQueueStreamResponse>() {
-      @Override
-      public void onNext(JobQueueStreamResponse response) {
-        lastMessageTime.set(Instant.now());
+    var responseObserver =
+        new StreamObserver<JobQueueStreamResponse>() {
+          @Override
+          public void onNext(JobQueueStreamResponse response) {
+            lastMessageTime.set(Instant.now());
 
-        // Log connected on first server response
-        if (firstResponseReceived.compareAndSet(false, true)) {
-          connectionEstablishedTime.set(Instant.now());
-          successfulReconnections.incrementAndGet();
-          consecutiveFailures.set(0);
-          lastErrorType.set(null);
+            // Log connected on first server response
+            if (firstResponseReceived.compareAndSet(false, true)) {
+              connectionEstablishedTime.set(Instant.now());
+              successfulReconnections.incrementAndGet();
+              consecutiveFailures.set(0);
+              lastErrorType.set(null);
 
-          log.info(
-              LogCategory.GRPC,
-              "ConnectionEstablished",
-              "Job queue connection took %s",
-              Duration.between(reconnectionStartTime.get(), connectionEstablishedTime.get()));
-        }
+              log.info(
+                  LogCategory.GRPC,
+                  "ConnectionEstablished",
+                  "Job queue connection took %s",
+                  Duration.between(reconnectionStartTime.get(), connectionEstablishedTime.get()));
+            }
 
-        if (!response.hasJob()) {
-          log.debug(LogCategory.GRPC, "Heartbeat", "Received heartbeat from server");
-          return;
-        }
+            if (!response.hasJob()) {
+              log.debug(LogCategory.GRPC, "Heartbeat", "Received heartbeat from server");
+              return;
+            }
 
-        var job = response.getJob();
-        String jobId = job.getJobId();
+            var job = response.getJob();
+            String jobId = job.getJobId();
 
-        // Handle keepalive - must ACK to register with presence store
-        if (KEEPALIVE_JOB_ID.equals(jobId)) {
-          log.debug(
-              LogCategory.GRPC, "Keepalive", "Received keepalive, sending ACK to register");
-          sendAck(KEEPALIVE_JOB_ID);
-          return;
-        }
+            // Handle keepalive - must ACK to register with presence store
+            if (KEEPALIVE_JOB_ID.equals(jobId)) {
+              log.debug(
+                  LogCategory.GRPC, "Keepalive", "Received keepalive, sending ACK to register");
+              sendAck(KEEPALIVE_JOB_ID);
+              return;
+            }
 
-        log.debug(
-            LogCategory.GRPC,
-            "JobReceived",
-            "Received job: %s (type: %s)",
-            jobId,
-            getJobType(job));
+            log.debug(
+                LogCategory.GRPC,
+                "JobReceived",
+                "Received job: %s (type: %s)",
+                jobId,
+                getJobType(job));
 
-        // Process the job
-        boolean success = processJob(job);
+            // Process the job
+            boolean success = processJob(job);
 
-        // Send ACK only on success - if not success, job will be redelivered
-        if (success) {
-          sendAck(jobId);
-          jobsProcessed.incrementAndGet();
-        } else {
-          jobsFailed.incrementAndGet();
-          log.warn(
-              LogCategory.GRPC,
-              "JobNotAcked",
-              "Job %s NOT acknowledged - will be redelivered to another client",
-              jobId);
-        }
-      }
+            // Send ACK only on success - if not success, job will be redelivered
+            if (success) {
+              sendAck(jobId);
+              jobsProcessed.incrementAndGet();
+            } else {
+              jobsFailed.incrementAndGet();
+              log.warn(
+                  LogCategory.GRPC,
+                  "JobNotAcked",
+                  "Job %s NOT acknowledged - will be redelivered to another client",
+                  jobId);
+            }
+          }
 
-      @Override
-      public void onError(Throwable t) {
-        log.warn(LogCategory.GRPC, "StreamError", "Job queue stream error: %s", t.getMessage());
-        errorRef.set(t);
-        latch.countDown();
-      }
+          @Override
+          public void onError(Throwable t) {
+            log.warn(LogCategory.GRPC, "StreamError", "Job queue stream error: %s", t.getMessage());
+            errorRef.set(t);
+            latch.countDown();
+          }
 
-      @Override
-      public void onCompleted() {
-        log.info(LogCategory.GRPC, "StreamCompleted", "Job queue stream completed by server");
-        latch.countDown();
-      }
-    };
+          @Override
+          public void onCompleted() {
+            log.info(LogCategory.GRPC, "StreamCompleted", "Job queue stream completed by server");
+            latch.countDown();
+          }
+        };
 
     // Open bidirectional stream
     var requestObserver = GateServiceGrpc.newStub(getChannel()).jobQueueStream(responseObserver);
@@ -263,8 +263,7 @@ public class GateClientJobQueue extends GateClientAbstract {
   /**
    * Process a job. Returns true if successfully processed.
    *
-   * <p>
-   * This mirrors the job handling logic from GateClientJobStream exactly.
+   * <p>This mirrors the job handling logic from GateClientJobStream exactly.
    */
   private boolean processJob(StreamJobsResponse value) {
     long jobStartTime = System.currentTimeMillis();
@@ -349,36 +348,21 @@ public class GateClientJobQueue extends GateClientAbstract {
   }
 
   private String getJobType(StreamJobsResponse job) {
-    if (job.hasListPools())
-      return "listPools";
-    if (job.hasGetPoolStatus())
-      return "getPoolStatus";
-    if (job.hasGetPoolRecords())
-      return "getPoolRecords";
-    if (job.hasSearchRecords())
-      return "searchRecords";
-    if (job.hasGetRecordFields())
-      return "getRecordFields";
-    if (job.hasSetRecordFields())
-      return "setRecordFields";
-    if (job.hasCreatePayment())
-      return "createPayment";
-    if (job.hasPopAccount())
-      return "popAccount";
-    if (job.hasInfo())
-      return "info";
-    if (job.hasShutdown())
-      return "shutdown";
-    if (job.hasLogging())
-      return "logging";
-    if (job.hasExecuteLogic())
-      return "executeLogic";
-    if (job.hasDiagnostics())
-      return "diagnostics";
-    if (job.hasListTenantLogs())
-      return "listTenantLogs";
-    if (job.hasSetLogLevel())
-      return "setLogLevel";
+    if (job.hasListPools()) return "listPools";
+    if (job.hasGetPoolStatus()) return "getPoolStatus";
+    if (job.hasGetPoolRecords()) return "getPoolRecords";
+    if (job.hasSearchRecords()) return "searchRecords";
+    if (job.hasGetRecordFields()) return "getRecordFields";
+    if (job.hasSetRecordFields()) return "setRecordFields";
+    if (job.hasCreatePayment()) return "createPayment";
+    if (job.hasPopAccount()) return "popAccount";
+    if (job.hasInfo()) return "info";
+    if (job.hasShutdown()) return "shutdown";
+    if (job.hasLogging()) return "logging";
+    if (job.hasExecuteLogic()) return "executeLogic";
+    if (job.hasDiagnostics()) return "diagnostics";
+    if (job.hasListTenantLogs()) return "listTenantLogs";
+    if (job.hasSetLogLevel()) return "setLogLevel";
     return "unknown";
   }
 
@@ -392,12 +376,13 @@ public class GateClientJobQueue extends GateClientAbstract {
 
   private void submitJobError(String jobId, String message) {
     try {
-      SubmitJobResultsRequest request = SubmitJobResultsRequest.newBuilder()
-          .setJobId(jobId)
-          .setEndOfTransmission(true)
-          .setErrorResult(
-              SubmitJobResultsRequest.ErrorResult.newBuilder().setMessage(message).build())
-          .build();
+      SubmitJobResultsRequest request =
+          SubmitJobResultsRequest.newBuilder()
+              .setJobId(jobId)
+              .setEndOfTransmission(true)
+              .setErrorResult(
+                  SubmitJobResultsRequest.ErrorResult.newBuilder().setMessage(message).build())
+              .build();
 
       GateServiceGrpc.newBlockingStub(getChannel())
           .withDeadlineAfter(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS)

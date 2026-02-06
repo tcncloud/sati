@@ -30,11 +30,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
-/**
- * Streams events from Gate using the EventStream API with acknowledgment.
- */
+/** Streams events from Gate using the EventStream API with acknowledgment. */
 public class GateClientEventStream extends GateClientAbstract {
-  protected static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(GateClientEventStream.class);
+  protected static final org.slf4j.Logger log =
+      org.slf4j.LoggerFactory.getLogger(GateClientEventStream.class);
 
   private static final int BATCH_SIZE = 100;
   private static final long REQUEST_TIMEOUT_SECONDS = 60;
@@ -148,17 +147,17 @@ public class GateClientEventStream extends GateClientAbstract {
   }
 
   /**
-   * Request events using async stub with blocking wait. This handles the
-   * server-streaming pattern
+   * Request events using async stub with blocking wait. This handles the server-streaming pattern
    * where we send request + StreamObserver.
    */
   private EventStreamResponse requestEvents(List<String> ackEventIds)
       throws InterruptedException, UnconfiguredException {
 
-    var request = EventStreamRequest.newBuilder()
-        .setEventCount(BATCH_SIZE)
-        .addAllAckEventIds(ackEventIds)
-        .build();
+    var request =
+        EventStreamRequest.newBuilder()
+            .setEventCount(BATCH_SIZE)
+            .addAllAckEventIds(ackEventIds)
+            .build();
 
     var latch = new CountDownLatch(1);
     var responseRef = new AtomicReference<EventStreamResponse>();
@@ -208,8 +207,7 @@ public class GateClientEventStream extends GateClientAbstract {
   /**
    * Process a single event. Returns true if successfully processed (should ACK).
    *
-   * <p>
-   * This mirrors the event handling logic from GateClientPollEvents exactly.
+   * <p>This mirrors the event handling logic from GateClientPollEvents exactly.
    */
   private boolean processEvent(Event event) {
     try {
@@ -268,10 +266,7 @@ public class GateClientEventStream extends GateClientAbstract {
     }
   }
 
-  /**
-   * Extract event ID for ACK purposes. Each event type has a different primary
-   * identifier.
-   */
+  /** Extract event ID for ACK purposes. Each event type has a different primary identifier. */
   private String getEventId(Event event) {
     if (event.hasAgentCall()) {
       return String.valueOf(event.getAgentCall().getAgentCallSid());
