@@ -24,6 +24,12 @@ import com.tcn.exile.plugin.PluginInterface;
 import io.grpc.StatusRuntimeException;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * @deprecated Use {@link GateClientEventStream} instead. This class uses the deprecated PollEvents
+ *     unary API which has been replaced by the EventStream bidirectional API with acknowledgment
+ *     support.
+ */
+@Deprecated
 public class GateClientPollEvents extends GateClientAbstract {
   protected static final org.slf4j.Logger log =
       org.slf4j.LoggerFactory.getLogger(GateClientPollEvents.class);
@@ -56,7 +62,8 @@ public class GateClientPollEvents extends GateClientAbstract {
       int totalProcessed = 0;
       long cycleStart = System.currentTimeMillis();
 
-      // Keep polling as long as we receive a full batch (indicating more events may be waiting)
+      // Keep polling as long as we receive a full batch (indicating more events may
+      // be waiting)
       do {
         var client =
             GateServiceGrpc.newBlockingStub(getChannel())

@@ -42,6 +42,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
+/**
+ * @deprecated Use {@link GateClientJobQueue} instead. This class uses the deprecated StreamJobs
+ *     server-streaming API which has been replaced by the JobQueueStream bidirectional API with
+ *     acknowledgment support.
+ */
+@Deprecated
 public class GateClientJobStream extends GateClientAbstract
     implements StreamObserver<StreamJobsResponse> {
   private static final StructuredLogger log = new StructuredLogger(GateClientJobStream.class);
