@@ -287,6 +287,16 @@ public abstract class GateClientAbstract {
   }
 
   public abstract void start();
+  /**
+   * Reset gRPC's internal connect backoff on the shared channel. This forces the name resolver to
+   * immediately retry DNS resolution instead of waiting for its own exponential backoff timer.
+   */
+  protected void resetChannelBackoff() {
+    ManagedChannel channel = sharedChannel;
+    if (channel != null && !channel.isShutdown() && !channel.isTerminated()) {
+      channel.resetConnectBackoff();
+    }
+  }
 
   /** Resets the gRPC channel after a connection failure */
   protected void resetChannel() {

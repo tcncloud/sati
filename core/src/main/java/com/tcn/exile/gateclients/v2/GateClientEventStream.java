@@ -22,186 +22,375 @@ import build.buf.gen.tcnapi.exile.gate.v2.EventStreamResponse;
 import build.buf.gen.tcnapi.exile.gate.v2.GateServiceGrpc;
 import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
+import com.tcn.exile.log.LogCategory;
+import com.tcn.exile.log.StructuredLogger;
 import com.tcn.exile.plugin.PluginInterface;
 import io.grpc.stub.StreamObserver;
+import jakarta.annotation.PreDestroy;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-/** Streams events from Gate using the EventStream API with acknowledgment. */
+/**
+ * Bidirectional event streaming with immediate acknowledgment using EventStream API.
+ *
+ * <p>The client drives the loop: sends a request (with ACK IDs + event count), server responds with
+ * events, client processes them and sends the next request with ACKs. This repeats until the
+ * server's 5-minute context timeout expires.
+ */
 public class GateClientEventStream extends GateClientAbstract {
-  protected static final org.slf4j.Logger log =
-      org.slf4j.LoggerFactory.getLogger(GateClientEventStream.class);
+  private static final StructuredLogger log = new StructuredLogger(GateClientEventStream.class);
 
   private static final int BATCH_SIZE = 100;
-  private static final long REQUEST_TIMEOUT_SECONDS = 60;
+  private static final long STREAM_TIMEOUT_MINUTES = 5;
+  private static final long HUNG_CONNECTION_THRESHOLD_SECONDS = 45;
+
+  // Backoff configuration
+  private static final long BACKOFF_BASE_MS = 2000;
+  private static final long BACKOFF_MAX_MS = 30000;
+  private static final double BACKOFF_JITTER = 0.2;
 
   private final PluginInterface plugin;
+  private final AtomicBoolean establishedForCurrentAttempt = new AtomicBoolean(false);
+  private final AtomicReference<Instant> lastMessageTime = new AtomicReference<>();
 
-  // Track ACKs between polling cycles - events successfully processed
-  // will be ACKed in the next request
+  // Connection timing tracking
+  private final AtomicReference<Instant> lastDisconnectTime = new AtomicReference<>();
+  private final AtomicReference<Instant> reconnectionStartTime = new AtomicReference<>();
+  private final AtomicReference<Instant> connectionEstablishedTime = new AtomicReference<>();
+  private final AtomicLong totalReconnectionAttempts = new AtomicLong(0);
+  private final AtomicLong successfulReconnections = new AtomicLong(0);
+  private final AtomicReference<String> lastErrorType = new AtomicReference<>();
+  private final AtomicLong consecutiveFailures = new AtomicLong(0);
+  private final AtomicBoolean isRunning = new AtomicBoolean(false);
+  private final AtomicLong eventsProcessed = new AtomicLong(0);
+  private final AtomicLong eventsFailed = new AtomicLong(0);
+
+  // Pending ACKs buffer - survives stream reconnections.
+  // Event IDs are added here after successful processing and removed only after
+  // successful send to the server. If a stream breaks before ACKs are sent,
+  // they carry over to the next connection attempt.
   private final List<String> pendingAcks = new ArrayList<>();
+
+  // Stream observer for sending requests/ACKs
+  private final AtomicReference<StreamObserver<EventStreamRequest>> requestObserverRef =
+      new AtomicReference<>();
 
   public GateClientEventStream(String tenant, Config currentConfig, PluginInterface plugin) {
     super(tenant, currentConfig);
     this.plugin = plugin;
   }
 
+  /** Check if the connection is hung (no messages received in threshold time). */
+  private void checkForHungConnection() throws HungConnectionException {
+    Instant lastMsg = lastMessageTime.get();
+    if (lastMsg == null) {
+      lastMsg = connectionEstablishedTime.get();
+    }
+    if (lastMsg != null
+        && lastMsg.isBefore(
+            Instant.now().minus(HUNG_CONNECTION_THRESHOLD_SECONDS, ChronoUnit.SECONDS))) {
+      throw new HungConnectionException(
+          "No messages received since " + lastMsg + " - connection appears hung");
+    }
+  }
+
+  /** Compute backoff delay with jitter based on consecutive failure count. */
+  private long computeBackoffMs() {
+    long failures = consecutiveFailures.get();
+    if (failures <= 0) {
+      return 0;
+    }
+    // Exponential: 2s, 4s, 8s, 16s, capped at 30s
+    long delayMs = BACKOFF_BASE_MS * (1L << Math.min(failures - 1, 10));
+    // Add ±20% jitter to avoid thundering herd between streams
+    double jitter = 1.0 + (ThreadLocalRandom.current().nextDouble() * 2 - 1) * BACKOFF_JITTER;
+    return Math.min((long) (delayMs * jitter), BACKOFF_MAX_MS);
+  }
+
   @Override
   public void start() {
+    if (isUnconfigured()) {
+      log.warn(LogCategory.GRPC, "NOOP", "EventStream is unconfigured, cannot stream events");
+      return;
+    }
+
+    // Prevent concurrent invocations from the fixed-rate scheduler
+    if (!isRunning.compareAndSet(false, true)) {
+      return;
+    }
+
+    // Exponential backoff: sleep before retrying if we have consecutive failures
+    long backoffMs = computeBackoffMs();
+    if (backoffMs > 0) {
+      log.debug(
+          LogCategory.GRPC,
+          "Backoff",
+          "Waiting %dms before reconnect attempt (consecutive failures: %d)",
+          backoffMs,
+          consecutiveFailures.get());
+      try {
+        Thread.sleep(backoffMs);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        isRunning.set(false);
+        return;
+      }
+    }
+
     try {
-      if (isUnconfigured()) {
-        log.debug("Tenant: {} - Configuration not set, skipping event stream", tenant);
-        return;
-      }
-      if (!plugin.isRunning()) {
-        log.debug(
-            "Tenant: {} - Plugin is not running (possibly due to database disconnection), skipping event stream",
-            tenant);
-        return;
-      }
+      log.debug(
+          LogCategory.GRPC, "Init", "EventStream task started, checking configuration status");
 
-      int totalProcessed = 0;
-      long cycleStart = System.currentTimeMillis();
+      reconnectionStartTime.set(Instant.now());
 
-      // Copy pending ACKs and clear for this cycle
-      List<String> acksToSend;
-      synchronized (pendingAcks) {
-        acksToSend = new ArrayList<>(pendingAcks);
-        pendingAcks.clear();
-      }
+      // Reset gRPC's internal DNS backoff so name resolution is retried immediately
+      resetChannelBackoff();
 
-      if (!acksToSend.isEmpty()) {
-        log.debug("Tenant: {} - Sending {} ACKs from previous cycle", tenant, acksToSend.size());
-      }
+      runStream();
 
-      // Request events, sending any pending ACKs from previous cycle
-      EventStreamResponse response = requestEvents(acksToSend);
-
-      if (response == null || response.getEventsCount() == 0) {
-        log.debug(
-            "Tenant: {} - Event stream request completed successfully but no events were received",
-            tenant);
-        return;
-      }
-
-      log.debug("Tenant: {} - Received {} events from stream", tenant, response.getEventsCount());
-
-      // Process events and collect successful ACK IDs
-      List<String> successfulAcks = new ArrayList<>();
-      long batchStart = System.currentTimeMillis();
-
-      for (Event event : response.getEventsList()) {
-        String eventId = getEventId(event);
-        if (processEvent(event)) {
-          successfulAcks.add(eventId);
-        }
-        // If processing fails, event is NOT added to ACKs - it will be redelivered
-      }
-
-      long batchEnd = System.currentTimeMillis();
-      totalProcessed = successfulAcks.size();
-
-      // Store successful ACKs for next cycle
-      synchronized (pendingAcks) {
-        pendingAcks.addAll(successfulAcks);
-      }
-
-      // Warn if batch processing is slow
-      if (totalProcessed > 0) {
-        long avg = (batchEnd - batchStart) / totalProcessed;
-        if (avg > 1000) {
-          log.warn(
-              "Tenant: {} - Event stream batch completed {} events in {}ms, average time per event: {}ms, this is long",
-              tenant,
-              totalProcessed,
-              batchEnd - batchStart,
-              avg);
-        }
-      }
-
-      // Log summary
-      if (totalProcessed > 0) {
-        long cycleEnd = System.currentTimeMillis();
-        log.info(
-            "Tenant: {} - Event stream cycle completed, processed {} events in {}ms",
-            tenant,
-            totalProcessed,
-            cycleEnd - cycleStart);
-      }
-
+    } catch (HungConnectionException e) {
+      log.warn(LogCategory.GRPC, "HungConnection", "Event stream appears hung: %s", e.getMessage());
+      lastErrorType.set("HungConnection");
+      consecutiveFailures.incrementAndGet();
     } catch (UnconfiguredException e) {
-      log.error("Tenant: {} - Error while getting client configuration {}", tenant, e.getMessage());
+      log.error(LogCategory.GRPC, "ConfigError", "Configuration error: %s", e.getMessage());
+      lastErrorType.set("UnconfiguredException");
+      consecutiveFailures.incrementAndGet();
     } catch (InterruptedException e) {
-      log.warn("Tenant: {} - Event stream interrupted", tenant);
+      log.info(LogCategory.GRPC, "Interrupted", "Event stream interrupted");
       Thread.currentThread().interrupt();
     } catch (Exception e) {
-      log.error("Tenant: {} - Unexpected error in event stream", tenant, e);
-      // Clear pending ACKs on error to avoid ACKing events we may not have processed
-      synchronized (pendingAcks) {
-        pendingAcks.clear();
+      log.error(
+          LogCategory.GRPC,
+          "EventStream",
+          "Error streaming events from server: %s",
+          e.getMessage(),
+          e);
+      lastErrorType.set(e.getClass().getSimpleName());
+      consecutiveFailures.incrementAndGet();
+    } finally {
+      totalReconnectionAttempts.incrementAndGet();
+      lastDisconnectTime.set(Instant.now());
+      isRunning.set(false);
+      requestObserverRef.set(null);
+      if (connectionEstablishedTime.get() != null) {
+        log.debug(LogCategory.GRPC, "Complete", "Event stream done");
       }
     }
   }
 
-  /**
-   * Request events using async stub with blocking wait. This handles the server-streaming pattern
-   * where we send request + StreamObserver.
-   */
-  private EventStreamResponse requestEvents(List<String> ackEventIds)
-      throws InterruptedException, UnconfiguredException {
+  /** Run a single stream session with bidirectional communication. */
+  private void runStream()
+      throws UnconfiguredException, InterruptedException, HungConnectionException {
+    var latch = new CountDownLatch(1);
+    var errorRef = new AtomicReference<Throwable>();
+    var firstResponseReceived = new AtomicBoolean(false);
 
-    var request =
+    // Create response handler
+    var responseObserver =
+        new StreamObserver<EventStreamResponse>() {
+          @Override
+          public void onNext(EventStreamResponse response) {
+            lastMessageTime.set(Instant.now());
+
+            // Log connected on first server response
+            if (firstResponseReceived.compareAndSet(false, true)) {
+              connectionEstablishedTime.set(Instant.now());
+              successfulReconnections.incrementAndGet();
+              consecutiveFailures.set(0);
+              lastErrorType.set(null);
+
+              log.info(
+                  LogCategory.GRPC,
+                  "ConnectionEstablished",
+                  "Event stream connection took %s",
+                  Duration.between(reconnectionStartTime.get(), connectionEstablishedTime.get()));
+            }
+
+            if (response.getEventsCount() == 0) {
+              log.debug(
+                  LogCategory.GRPC, "EmptyBatch", "Received empty event batch, requesting next");
+              // Brief pause to avoid hot-looping when no events are available.
+              // The server responds instantly to empty polls, so without this
+              // delay we'd loop every ~40ms burning CPU and network.
+              try {
+                Thread.sleep(10000);
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+              }
+              // Still send next request to keep the loop alive
+              sendNextRequest();
+              return;
+            }
+
+            log.debug(
+                LogCategory.GRPC,
+                "EventsReceived",
+                "Received %d events from stream",
+                response.getEventsCount());
+
+            // Process events and store successful ACK IDs in the pending buffer
+            long batchStart = System.currentTimeMillis();
+            int batchSuccessCount = 0;
+
+            for (Event event : response.getEventsList()) {
+              String eventId = getEventId(event);
+              if (processEvent(event)) {
+                synchronized (pendingAcks) {
+                  pendingAcks.add(eventId);
+                }
+                batchSuccessCount++;
+                eventsProcessed.incrementAndGet();
+              } else {
+                eventsFailed.incrementAndGet();
+                log.warn(
+                    LogCategory.GRPC,
+                    "EventNotAcked",
+                    "Event %s NOT acknowledged - will be redelivered",
+                    eventId);
+              }
+            }
+
+            long batchEnd = System.currentTimeMillis();
+
+            // Warn if batch processing is slow
+            if (batchSuccessCount > 0) {
+              long avg = (batchEnd - batchStart) / batchSuccessCount;
+              if (avg > 1000) {
+                log.warn(
+                    LogCategory.GRPC,
+                    "SlowBatch",
+                    "Event batch completed %d events in %dms, avg %dms per event",
+                    batchSuccessCount,
+                    batchEnd - batchStart,
+                    avg);
+              }
+            }
+
+            // Send next request with ACKs immediately - drains pendingAcks on success
+            sendNextRequest();
+          }
+
+          @Override
+          public void onError(Throwable t) {
+            log.warn(LogCategory.GRPC, "StreamError", "Event stream error: %s", t.getMessage());
+            errorRef.set(t);
+            latch.countDown();
+          }
+
+          @Override
+          public void onCompleted() {
+            log.info(LogCategory.GRPC, "StreamCompleted", "Event stream completed by server");
+            latch.countDown();
+          }
+        };
+
+    // Open bidirectional stream
+    var requestObserver = GateServiceGrpc.newStub(getChannel()).eventStream(responseObserver);
+    requestObserverRef.set(requestObserver);
+
+    // Send initial request - include any pending ACKs from a previous broken stream
+    List<String> carryOverAcks;
+    synchronized (pendingAcks) {
+      carryOverAcks = new ArrayList<>(pendingAcks);
+    }
+    if (!carryOverAcks.isEmpty()) {
+      log.info(
+          LogCategory.GRPC,
+          "CarryOverAcks",
+          "Sending %d pending ACKs from previous stream session",
+          carryOverAcks.size());
+    }
+    log.debug(LogCategory.GRPC, "Init", "Sending initial event stream request...");
+    requestObserver.onNext(
         EventStreamRequest.newBuilder()
             .setEventCount(BATCH_SIZE)
-            .addAllAckEventIds(ackEventIds)
-            .build();
-
-    var latch = new CountDownLatch(1);
-    var responseRef = new AtomicReference<EventStreamResponse>();
-    var errorRef = new AtomicReference<Throwable>();
-
-    GateServiceGrpc.newStub(getChannel())
-        .eventStream(
-            request,
-            new StreamObserver<EventStreamResponse>() {
-              @Override
-              public void onNext(EventStreamResponse response) {
-                responseRef.set(response);
-              }
-
-              @Override
-              public void onError(Throwable t) {
-                errorRef.set(t);
-                latch.countDown();
-              }
-
-              @Override
-              public void onCompleted() {
-                latch.countDown();
-              }
-            });
-
-    // Wait for response with timeout
-    boolean completed = latch.await(REQUEST_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-
-    if (!completed) {
-      throw new RuntimeException(
-          "Event stream request timed out after " + REQUEST_TIMEOUT_SECONDS + " seconds");
+            .addAllAckEventIds(carryOverAcks)
+            .build());
+    // Clear pending ACKs only after successful initial send
+    if (!carryOverAcks.isEmpty()) {
+      synchronized (pendingAcks) {
+        pendingAcks.removeAll(carryOverAcks);
+      }
     }
 
-    if (errorRef.get() != null) {
-      throw new RuntimeException("Event stream error", errorRef.get());
+    // Wait for stream to complete, with periodic hung-connection checks
+    boolean completed = false;
+    long startTime = System.currentTimeMillis();
+    long maxDurationMs = TimeUnit.MINUTES.toMillis(STREAM_TIMEOUT_MINUTES);
+
+    while (!completed && (System.currentTimeMillis() - startTime) < maxDurationMs) {
+      completed = latch.await(HUNG_CONNECTION_THRESHOLD_SECONDS, TimeUnit.SECONDS);
+      if (!completed) {
+        // Check for hung connection
+        checkForHungConnection();
+      }
     }
 
-    var response = responseRef.get();
-    if (response == null) {
-      // Return empty response if none received
-      return EventStreamResponse.getDefaultInstance();
+    // Propagate error if any
+    var error = errorRef.get();
+    if (error != null) {
+      throw new RuntimeException("Stream error", error);
     }
-    return response;
+  }
+
+  /**
+   * Send the next request on the stream, draining pendingAcks into the request. If the send fails,
+   * the ACKs remain in pendingAcks for the next attempt or reconnection.
+   */
+  private void sendNextRequest() {
+    var observer = requestObserverRef.get();
+    if (observer == null) {
+      log.warn(LogCategory.GRPC, "RequestFailed", "Cannot send next request - no active observer");
+      return;
+    }
+
+    // Drain pending ACKs
+    List<String> acksToSend;
+    synchronized (pendingAcks) {
+      acksToSend = new ArrayList<>(pendingAcks);
+    }
+
+    try {
+      var request =
+          EventStreamRequest.newBuilder()
+              .setEventCount(BATCH_SIZE)
+              .addAllAckEventIds(acksToSend)
+              .build();
+      observer.onNext(request);
+
+      // Only clear after successful send
+      if (!acksToSend.isEmpty()) {
+        synchronized (pendingAcks) {
+          pendingAcks.removeAll(acksToSend);
+        }
+        log.debug(
+            LogCategory.GRPC,
+            "AckSent",
+            "Sent ACK for %d events, requesting next batch",
+            acksToSend.size());
+      }
+    } catch (Exception e) {
+      // ACKs stay in pendingAcks - will be retried on next send or reconnection
+      log.error(
+          LogCategory.GRPC,
+          "RequestFailed",
+          "Failed to send next event stream request (keeping %d pending ACKs): %s",
+          acksToSend.size(),
+          e.getMessage());
+    }
   }
 
   /**
@@ -211,10 +400,19 @@ public class GateClientEventStream extends GateClientAbstract {
    */
   private boolean processEvent(Event event) {
     try {
+      if (!plugin.isRunning()) {
+        log.debug(
+            LogCategory.GRPC,
+            "PluginNotRunning",
+            "Plugin is not running, skipping event processing");
+        return false;
+      }
+
       if (event.hasAgentCall()) {
         log.debug(
-            "Tenant: {} - Received agent call event {} - {}",
-            tenant,
+            LogCategory.GRPC,
+            "EventProcessed",
+            "Received agent call event %d - %s",
             event.getAgentCall().getCallSid(),
             event.getAgentCall().getCallType());
         plugin.handleAgentCall(event.getAgentCall());
@@ -222,38 +420,46 @@ public class GateClientEventStream extends GateClientAbstract {
 
       if (event.hasAgentResponse()) {
         log.debug(
-            "Tenant: {} - Received agent response event {}",
-            tenant,
+            LogCategory.GRPC,
+            "EventProcessed",
+            "Received agent response event %s",
             event.getAgentResponse().getAgentCallResponseSid());
         plugin.handleAgentResponse(event.getAgentResponse());
       }
 
       if (event.hasTelephonyResult()) {
         log.debug(
-            "Tenant: {} - Received telephony result event {} - {}",
-            tenant,
+            LogCategory.GRPC,
+            "EventProcessed",
+            "Received telephony result event %d - %s",
             event.getTelephonyResult().getCallSid(),
             event.getTelephonyResult().getCallType());
         plugin.handleTelephonyResult(event.getTelephonyResult());
       }
 
       if (event.hasTask()) {
-        log.debug("Tenant: {} - Received task event {}", tenant, event.getTask().getTaskSid());
+        log.debug(
+            LogCategory.GRPC,
+            "EventProcessed",
+            "Received task event %s",
+            event.getTask().getTaskSid());
         plugin.handleTask(event.getTask());
       }
 
       if (event.hasTransferInstance()) {
         log.debug(
-            "Tenant: {} - Received transfer instance event {}",
-            tenant,
+            LogCategory.GRPC,
+            "EventProcessed",
+            "Received transfer instance event %s",
             event.getTransferInstance().getTransferInstanceId());
         plugin.handleTransferInstance(event.getTransferInstance());
       }
 
       if (event.hasCallRecording()) {
         log.debug(
-            "Tenant: {} - Received call recording event {}",
-            tenant,
+            LogCategory.GRPC,
+            "EventProcessed",
+            "Received call recording event %s",
             event.getCallRecording().getRecordingId());
         plugin.handleCallRecording(event.getCallRecording());
       }
@@ -261,7 +467,12 @@ public class GateClientEventStream extends GateClientAbstract {
       return true;
 
     } catch (Exception e) {
-      log.error("Tenant: {} - Failed to process event: {}", tenant, e.getMessage(), e);
+      log.error(
+          LogCategory.GRPC,
+          "EventProcessingError",
+          "Failed to process event: %s",
+          e.getMessage(),
+          e);
       return false; // Don't ACK - will be redelivered
     }
   }
@@ -286,14 +497,88 @@ public class GateClientEventStream extends GateClientAbstract {
     if (event.hasCallRecording()) {
       return event.getCallRecording().getRecordingId();
     }
-    log.warn("Tenant: {} - Unknown event type, cannot extract ID", tenant);
+    log.warn(LogCategory.GRPC, "UnknownEvent", "Unknown event type, cannot extract ID");
     return "unknown";
   }
 
-  /** Get count of pending ACKs (for diagnostics). */
-  public int getPendingAckCount() {
+  public void stop() {
+    log.info(
+        LogCategory.GRPC,
+        "Stopping",
+        "Stopping GateClientEventStream (total attempts: %d, successful: %d, events: %d/%d)",
+        totalReconnectionAttempts.get(),
+        successfulReconnections.get(),
+        eventsProcessed.get(),
+        eventsFailed.get());
+
+    isRunning.set(false);
+
+    // Log any un-sent ACKs so they're visible for debugging redelivery
     synchronized (pendingAcks) {
-      return pendingAcks.size();
+      if (!pendingAcks.isEmpty()) {
+        log.warn(
+            LogCategory.GRPC,
+            "UnsentAcks",
+            "Shutting down with %d un-sent ACKs (these events will be redelivered): %s",
+            pendingAcks.size(),
+            pendingAcks);
+      }
+    }
+
+    // Gracefully close the stream
+    var observer = requestObserverRef.get();
+    if (observer != null) {
+      try {
+        observer.onCompleted();
+      } catch (Exception e) {
+        log.debug(LogCategory.GRPC, "CloseError", "Error closing stream: %s", e.getMessage());
+      }
+    }
+
+    shutdown();
+    log.info(LogCategory.GRPC, "GateClientEventStreamStopped", "GateClientEventStream stopped");
+  }
+
+  @PreDestroy
+  public void destroy() {
+    log.info(
+        LogCategory.GRPC,
+        "GateClientEventStream@PreDestroyCalled",
+        "GateClientEventStream @PreDestroy called");
+    stop();
+  }
+
+  public Map<String, Object> getStreamStatus() {
+    Instant lastDisconnect = lastDisconnectTime.get();
+    Instant connectionEstablished = connectionEstablishedTime.get();
+    Instant reconnectStart = reconnectionStartTime.get();
+    Instant lastMessage = lastMessageTime.get();
+
+    Map<String, Object> status = new HashMap<>();
+    status.put("isRunning", isRunning.get());
+    status.put("totalReconnectionAttempts", totalReconnectionAttempts.get());
+    status.put("successfulReconnections", successfulReconnections.get());
+    status.put("consecutiveFailures", consecutiveFailures.get());
+    status.put("eventsProcessed", eventsProcessed.get());
+    status.put("eventsFailed", eventsFailed.get());
+    synchronized (pendingAcks) {
+      status.put("pendingAckCount", pendingAcks.size());
+    }
+    status.put("lastDisconnectTime", lastDisconnect != null ? lastDisconnect.toString() : null);
+    status.put(
+        "connectionEstablishedTime",
+        connectionEstablished != null ? connectionEstablished.toString() : null);
+    status.put("reconnectionStartTime", reconnectStart != null ? reconnectStart.toString() : null);
+    status.put("lastErrorType", lastErrorType.get());
+    status.put("lastMessageTime", lastMessage != null ? lastMessage.toString() : null);
+
+    return status;
+  }
+
+  /** Exception for hung connection detection. */
+  public static class HungConnectionException extends Exception {
+    public HungConnectionException(String message) {
+      super(message);
     }
   }
 }

@@ -34,6 +34,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -47,6 +48,11 @@ public class GateClientJobQueue extends GateClientAbstract {
   private static final long STREAM_TIMEOUT_MINUTES = 5;
   private static final long HUNG_CONNECTION_THRESHOLD_SECONDS = 45;
   private static final String KEEPALIVE_JOB_ID = "keepalive";
+
+  // Backoff configuration
+  private static final long BACKOFF_BASE_MS = 2000;
+  private static final long BACKOFF_MAX_MS = 30000;
+  private static final double BACKOFF_JITTER = 0.2;
 
   private final PluginInterface plugin;
   private final AtomicBoolean establishedForCurrentAttempt = new AtomicBoolean(false);
@@ -87,6 +93,19 @@ public class GateClientJobQueue extends GateClientAbstract {
     }
   }
 
+  /** Compute backoff delay with jitter based on consecutive failure count. */
+  private long computeBackoffMs() {
+    long failures = consecutiveFailures.get();
+    if (failures <= 0) {
+      return 0;
+    }
+    // Exponential: 2s, 4s, 8s, 16s, capped at 30s
+    long delayMs = BACKOFF_BASE_MS * (1L << Math.min(failures - 1, 10));
+    // Add ±20% jitter to avoid thundering herd between streams
+    double jitter = 1.0 + (ThreadLocalRandom.current().nextDouble() * 2 - 1) * BACKOFF_JITTER;
+    return Math.min((long) (delayMs * jitter), BACKOFF_MAX_MS);
+  }
+
   @Override
   public void start() {
     if (isUnconfigured()) {
@@ -94,11 +113,36 @@ public class GateClientJobQueue extends GateClientAbstract {
       return;
     }
 
+    // Prevent concurrent invocations from the fixed-rate scheduler
+    if (!isRunning.compareAndSet(false, true)) {
+      return;
+    }
+
+    // Exponential backoff: sleep before retrying if we have consecutive failures
+    long backoffMs = computeBackoffMs();
+    if (backoffMs > 0) {
+      log.debug(
+          LogCategory.GRPC,
+          "Backoff",
+          "Waiting %dms before reconnect attempt (consecutive failures: %d)",
+          backoffMs,
+          consecutiveFailures.get());
+      try {
+        Thread.sleep(backoffMs);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        isRunning.set(false);
+        return;
+      }
+    }
+
     try {
       log.debug(LogCategory.GRPC, "Init", "JobQueue task started, checking configuration status");
 
       reconnectionStartTime.set(Instant.now());
-      isRunning.set(true);
+
+      // Reset gRPC's internal DNS backoff so name resolution is retried immediately
+      resetChannelBackoff();
 
       runStream();
 
@@ -106,6 +150,7 @@ public class GateClientJobQueue extends GateClientAbstract {
       log.warn(
           LogCategory.GRPC, "HungConnection", "Job queue stream appears hung: %s", e.getMessage());
       lastErrorType.set("HungConnection");
+      consecutiveFailures.incrementAndGet();
     } catch (UnconfiguredException e) {
       log.error(LogCategory.GRPC, "ConfigError", "Configuration error: %s", e.getMessage());
       lastErrorType.set("UnconfiguredException");
@@ -117,15 +162,15 @@ public class GateClientJobQueue extends GateClientAbstract {
       log.error(
           LogCategory.GRPC, "JobQueue", "Error streaming jobs from server: %s", e.getMessage(), e);
       lastErrorType.set(e.getClass().getSimpleName());
-      if (connectionEstablishedTime.get() == null) {
-        consecutiveFailures.incrementAndGet();
-      }
+      consecutiveFailures.incrementAndGet();
     } finally {
       totalReconnectionAttempts.incrementAndGet();
       lastDisconnectTime.set(Instant.now());
       isRunning.set(false);
       requestObserverRef.set(null);
-      log.debug(LogCategory.GRPC, "Complete", "Job queue done");
+      if (connectionEstablishedTime.get() != null) {
+        log.debug(LogCategory.GRPC, "Complete", "Job queue done");
+      }
     }
   }
 
