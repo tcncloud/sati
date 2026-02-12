@@ -30,6 +30,8 @@ import io.micronaut.http.HttpResponse;
 import io.micronaut.http.HttpStatus;
 import io.micronaut.http.MediaType;
 import io.micronaut.http.annotation.*;
+import io.micronaut.scheduling.TaskExecutors;
+import io.micronaut.scheduling.annotation.ExecuteOn;
 import io.swagger.v3.oas.annotations.OpenAPIDefinition;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.inject.Inject;
@@ -43,6 +45,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 @Controller("/api/agents")
+@ExecuteOn(TaskExecutors.BLOCKING)
 @OpenAPIDefinition(tags = {@Tag(name = "agents")})
 public class AgentsController {
   private static final Logger log = LoggerFactory.getLogger(AgentsController.class);
@@ -295,7 +298,7 @@ public class AgentsController {
   @Tag(name = "agents")
   public SetAgentStatusResponse setState(
       @PathVariable String partnerAgentId,
-      @PathVariable SetAgentState state /*, @Body PauseCodeReason pauseCodeReason*/)
+      @PathVariable SetAgentState state /* , @Body PauseCodeReason pauseCodeReason */)
       throws UnconfiguredException {
     log.debug("setState");
     var request =
@@ -303,8 +306,8 @@ public class AgentsController {
             .setPartnerAgentId(partnerAgentId)
             .setNewState(build.buf.gen.tcnapi.exile.gate.v2.AgentState.values()[state.getValue()]);
     // if (pauseCodeReason != null && pauseCodeReason.reason() != null) {
-    //   request.setReason(pauseCodeReason.reason());
-    //   // request.setPauseCodeReason(pauseCodeReason.reason());
+    // request.setReason(pauseCodeReason.reason());
+    // // request.setPauseCodeReason(pauseCodeReason.reason());
     // }
     var res = configChangeWatcher.getGateClient().updateAgentStatus(request.build());
     return new SetAgentStatusResponse();
