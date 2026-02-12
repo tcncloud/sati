@@ -1,5 +1,5 @@
 /*
- *  (C) 2017-2025 TCN Inc. All rights reserved.
+ *  (C) 2017-2026 TCN Inc. All rights reserved.
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,20 +25,62 @@ import io.grpc.StatusRuntimeException;
 import io.grpc.TlsChannelCredentials;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+/**
+ * Base class for bidirectional gRPC stream clients.
+ *
+ * <p>Provides shared infrastructure for stream lifecycle management including exponential backoff
+ * with jitter, hung connection detection, connection tracking, and graceful shutdown. Subclasses
+ * implement {@link #runStream()} for stream-specific logic and {@link #getStreamName()} for
+ * logging.
+ */
 public abstract class GateClientAbstract {
   private static final Logger log = LoggerFactory.getLogger(GateClientAbstract.class);
 
+  // Stream lifecycle constants
+  protected static final long STREAM_TIMEOUT_MINUTES = 5;
+  protected static final long HUNG_CONNECTION_THRESHOLD_SECONDS = 45;
+
+  // Backoff configuration
+  private static final long BACKOFF_BASE_MS = 2000;
+  private static final long BACKOFF_MAX_MS = 30000;
+  private static final double BACKOFF_JITTER = 0.2;
+
+  // Channel management
   private ManagedChannel sharedChannel;
   private final ReentrantLock lock = new ReentrantLock();
 
+  // Simulated disconnect: when set and in the future, getChannel() refuses to
+  // create a new channel
+  private final AtomicReference<Instant> disconnectUntil = new AtomicReference<>();
+
   private Config currentConfig = null;
   protected final String tenant;
+
+  // Connection tracking — shared across all stream subclasses
+  protected final AtomicReference<Instant> lastMessageTime = new AtomicReference<>();
+  protected final AtomicReference<Instant> lastDisconnectTime = new AtomicReference<>();
+  protected final AtomicReference<Instant> reconnectionStartTime = new AtomicReference<>();
+  protected final AtomicReference<Instant> connectionEstablishedTime = new AtomicReference<>();
+  protected final AtomicLong totalReconnectionAttempts = new AtomicLong(0);
+  protected final AtomicLong successfulReconnections = new AtomicLong(0);
+  protected final AtomicReference<String> lastErrorType = new AtomicReference<>();
+  protected final AtomicLong consecutiveFailures = new AtomicLong(0);
+  protected final AtomicBoolean isRunning = new AtomicBoolean(false);
 
   public GateClientAbstract(String tenant, Config currentConfig) {
     this.currentConfig = currentConfig;
@@ -53,6 +95,196 @@ public abstract class GateClientAbstract {
                 },
                 "gRPC-Channel-Cleanup"));
   }
+
+  // ---------------------------------------------------------------------------
+  // Stream lifecycle — template method pattern
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Human-readable name for this stream, used in log messages. Override in subclasses that use the
+   * template {@link #start()} method (e.g. "EventStream", "JobQueue").
+   */
+  protected String getStreamName() {
+    return getClass().getSimpleName();
+  }
+
+  /**
+   * Run a single stream session. Called by the template {@link #start()} method. Subclasses that
+   * use the shared lifecycle must override this. Legacy subclasses that override start() directly
+   * can ignore it.
+   */
+  protected void runStream()
+      throws UnconfiguredException, InterruptedException, HungConnectionException {
+    throw new UnsupportedOperationException(
+        getStreamName() + " must override runStream() or start()");
+  }
+
+  /**
+   * Template method that handles the full stream lifecycle: backoff, try/catch, error tracking.
+   * Each invocation represents one connection attempt.
+   */
+  public void start() {
+    if (isUnconfigured()) {
+      log.warn("{} is unconfigured, cannot start", getStreamName());
+      return;
+    }
+
+    // Prevent concurrent invocations from the fixed-rate scheduler
+    if (!isRunning.compareAndSet(false, true)) {
+      return;
+    }
+
+    // Exponential backoff: sleep before retrying if we have consecutive failures
+    long backoffMs = computeBackoffMs();
+    if (backoffMs > 0) {
+      log.debug(
+          "[{}] Waiting {}ms before reconnect (consecutive failures: {})",
+          getStreamName(),
+          backoffMs,
+          consecutiveFailures.get());
+      try {
+        Thread.sleep(backoffMs);
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        isRunning.set(false);
+        return;
+      }
+    }
+
+    try {
+      log.debug("[{}] Starting, checking configuration status", getStreamName());
+      reconnectionStartTime.set(Instant.now());
+      resetChannelBackoff();
+      runStream();
+    } catch (HungConnectionException e) {
+      log.warn("[{}] Connection appears hung: {}", getStreamName(), e.getMessage());
+      lastErrorType.set("HungConnection");
+      consecutiveFailures.incrementAndGet();
+    } catch (UnconfiguredException e) {
+      log.error("[{}] Configuration error: {}", getStreamName(), e.getMessage());
+      lastErrorType.set("UnconfiguredException");
+      consecutiveFailures.incrementAndGet();
+    } catch (InterruptedException e) {
+      log.info("[{}] Interrupted", getStreamName());
+      Thread.currentThread().interrupt();
+    } catch (Exception e) {
+      log.error("[{}] Error: {}", getStreamName(), e.getMessage(), e);
+      lastErrorType.set(e.getClass().getSimpleName());
+      consecutiveFailures.incrementAndGet();
+    } finally {
+      totalReconnectionAttempts.incrementAndGet();
+      lastDisconnectTime.set(Instant.now());
+      isRunning.set(false);
+      onStreamDisconnected();
+      log.debug("[{}] Stream session ended", getStreamName());
+    }
+  }
+
+  /** Hook called in the finally block of start(). Subclasses can clear observer refs here. */
+  protected void onStreamDisconnected() {}
+
+  // ---------------------------------------------------------------------------
+  // Shared stream helpers
+  // ---------------------------------------------------------------------------
+
+  /** Record that the first server response was received and the connection is established. */
+  protected void onConnectionEstablished() {
+    connectionEstablishedTime.set(Instant.now());
+    successfulReconnections.incrementAndGet();
+    consecutiveFailures.set(0);
+    lastErrorType.set(null);
+
+    log.info(
+        "[{}] Connection established (took {})",
+        getStreamName(),
+        Duration.between(reconnectionStartTime.get(), connectionEstablishedTime.get()));
+  }
+
+  /** Check if the connection is hung (no messages received within threshold). */
+  protected void checkForHungConnection() throws HungConnectionException {
+    Instant lastMsg = lastMessageTime.get();
+    if (lastMsg == null) {
+      lastMsg = connectionEstablishedTime.get();
+    }
+    if (lastMsg != null
+        && lastMsg.isBefore(
+            Instant.now().minus(HUNG_CONNECTION_THRESHOLD_SECONDS, ChronoUnit.SECONDS))) {
+      throw new HungConnectionException(
+          "No messages received since " + lastMsg + " - connection appears hung");
+    }
+  }
+
+  /**
+   * Wait for a stream latch to complete, periodically checking for hung connections. Returns when
+   * the latch counts down, the timeout expires, or a hung connection is detected.
+   */
+  protected void awaitStreamWithHungDetection(CountDownLatch latch)
+      throws InterruptedException, HungConnectionException {
+    long startTime = System.currentTimeMillis();
+    long maxDurationMs = TimeUnit.MINUTES.toMillis(STREAM_TIMEOUT_MINUTES);
+
+    while ((System.currentTimeMillis() - startTime) < maxDurationMs) {
+      if (latch.await(HUNG_CONNECTION_THRESHOLD_SECONDS, TimeUnit.SECONDS)) {
+        return; // Stream completed
+      }
+      checkForHungConnection();
+    }
+  }
+
+  /** Compute backoff delay with jitter based on consecutive failure count. */
+  private long computeBackoffMs() {
+    long failures = consecutiveFailures.get();
+    if (failures <= 0) {
+      return 0;
+    }
+    long delayMs = BACKOFF_BASE_MS * (1L << Math.min(failures - 1, 10));
+    double jitter = 1.0 + (ThreadLocalRandom.current().nextDouble() * 2 - 1) * BACKOFF_JITTER;
+    return Math.min((long) (delayMs * jitter), BACKOFF_MAX_MS);
+  }
+
+  /**
+   * Build base stream status map with connection tracking fields. Subclasses should call this and
+   * add their own stream-specific counters.
+   */
+  protected Map<String, Object> buildStreamStatus() {
+    Instant lastDisconnect = lastDisconnectTime.get();
+    Instant connectionEstablished = connectionEstablishedTime.get();
+    Instant reconnectStart = reconnectionStartTime.get();
+    Instant lastMessage = lastMessageTime.get();
+
+    Map<String, Object> status = new HashMap<>();
+    status.put("isRunning", isRunning.get());
+    status.put("totalReconnectionAttempts", totalReconnectionAttempts.get());
+    status.put("successfulReconnections", successfulReconnections.get());
+    status.put("consecutiveFailures", consecutiveFailures.get());
+    status.put("lastDisconnectTime", lastDisconnect != null ? lastDisconnect.toString() : null);
+    status.put(
+        "connectionEstablishedTime",
+        connectionEstablished != null ? connectionEstablished.toString() : null);
+    status.put("reconnectionStartTime", reconnectStart != null ? reconnectStart.toString() : null);
+    status.put("lastErrorType", lastErrorType.get());
+    status.put("lastMessageTime", lastMessage != null ? lastMessage.toString() : null);
+    return status;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Graceful shutdown
+  // ---------------------------------------------------------------------------
+
+  /** Override in subclasses to add stream-specific stop logic (e.g. closing observers). */
+  public void stop() {
+    doStop();
+  }
+
+  /** Shared shutdown logic: set running flag, shut down channel. */
+  protected void doStop() {
+    isRunning.set(false);
+    shutdown();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Configuration and channel management
+  // ---------------------------------------------------------------------------
 
   public Config getConfig() {
     return currentConfig;
@@ -119,20 +351,18 @@ public abstract class GateClientAbstract {
               tenant,
               e);
           channelToShutdown.shutdownNow();
-          Thread.currentThread().interrupt(); // Preserve interrupt status
+          Thread.currentThread().interrupt();
         }
 
-        // Set static field to null AFTER successful shutdown
         sharedChannel = null;
       } else {
         log.debug("Tenant: {} - Shared channel is already null, shut down, or terminated.", tenant);
-        // Ensure static field is null if channel is unusable
         if (sharedChannel != null && (sharedChannel.isShutdown() || sharedChannel.isTerminated())) {
           sharedChannel = null;
         }
       }
     } finally {
-      lock.unlock(); // Guaranteed unlock in finally block
+      lock.unlock();
     }
   }
 
@@ -160,8 +390,25 @@ public abstract class GateClientAbstract {
   }
 
   public ManagedChannel getChannel() throws UnconfiguredException {
+    // Check simulated disconnect window
+    Instant disconnectDeadline = disconnectUntil.get();
+    if (disconnectDeadline != null) {
+      if (Instant.now().isBefore(disconnectDeadline)) {
+        long remainingSeconds =
+            java.time.Duration.between(Instant.now(), disconnectDeadline).getSeconds();
+        log.warn(
+            "Tenant: {} - Simulated disconnect active, {} seconds remaining",
+            tenant,
+            remainingSeconds);
+        throw new UnconfiguredException(
+            "Simulated network disconnect active for " + remainingSeconds + " more seconds");
+      } else {
+        disconnectUntil.set(null);
+        log.info("Tenant: {} - Simulated disconnect expired, allowing reconnection", tenant);
+      }
+    }
+
     long getChannelStartTime = System.currentTimeMillis();
-    // Double-checked locking pattern for thread-safe lazy initialization
     ManagedChannel localChannel = sharedChannel;
     if (localChannel == null || localChannel.isShutdown() || localChannel.isTerminated()) {
 
@@ -187,7 +434,6 @@ public abstract class GateClientAbstract {
             lockWaitTime);
       }
       try {
-        // Double-check condition inside synchronized block
         localChannel = sharedChannel;
 
         var shutdown = localChannel == null || localChannel.isShutdown();
@@ -279,14 +525,29 @@ public abstract class GateClientAbstract {
           "TCN Gate client configuration error during channel creation", e);
     } catch (UnconfiguredException e) {
       log.error("Tenant: {} - Configuration error during shared channel creation", tenant, e);
-      throw e; // Re-throw specific unconfigured exception
+      throw e;
     } catch (Exception e) {
       log.error("Tenant: {} - Unexpected error during shared channel creation", tenant, e);
       throw new UnconfiguredException("Unexpected error configuring TCN Gate client channel", e);
     }
   }
 
-  public abstract void start();
+  /**
+   * Simulate a network disconnect for the given duration. Kills the current channel and prevents
+   * reconnection until the duration expires.
+   */
+  public void simulateDisconnect(int durationSeconds) {
+    log.warn("Tenant: {} - SIMULATING NETWORK DISCONNECT for {} seconds", tenant, durationSeconds);
+    disconnectUntil.set(Instant.now().plusSeconds(durationSeconds));
+    forceShutdownSharedChannel();
+  }
+
+  /** Check if a simulated disconnect is currently active. */
+  public boolean isDisconnectSimulationActive() {
+    Instant deadline = disconnectUntil.get();
+    return deadline != null && Instant.now().isBefore(deadline);
+  }
+
   /**
    * Reset gRPC's internal connect backoff on the shared channel. This forces the name resolver to
    * immediately retry DNS resolution instead of waiting for its own exponential backoff timer.
@@ -298,18 +559,13 @@ public abstract class GateClientAbstract {
     }
   }
 
-  /** Resets the gRPC channel after a connection failure */
+  /** Resets the gRPC channel after a connection failure. */
   protected void resetChannel() {
     log.info("Tenant: {} - Resetting static shared gRPC channel after connection failure.", tenant);
     shutdown();
   }
 
-  /**
-   * Helper method to handle StatusRuntimeException
-   *
-   * @param e The exception to handle
-   * @return true if the exception was handled
-   */
+  /** Handle StatusRuntimeException, resetting channel on UNAVAILABLE. */
   protected boolean handleStatusRuntimeException(StatusRuntimeException e) {
     if (e.getStatus().getCode() == Status.Code.UNAVAILABLE) {
       log.warn(
@@ -320,7 +576,7 @@ public abstract class GateClientAbstract {
     return false;
   }
 
-  /** Get channel statistics for monitoring */
+  /** Get channel statistics for monitoring. */
   public Map<String, Object> getChannelStats() {
     ManagedChannel channel = sharedChannel;
     if (channel != null) {
@@ -331,5 +587,12 @@ public abstract class GateClientAbstract {
           "state", channel.getState(false).toString());
     }
     return Map.of("channel", "null");
+  }
+
+  /** Exception for hung connection detection. */
+  public static class HungConnectionException extends Exception {
+    public HungConnectionException(String message) {
+      super(message);
+    }
   }
 }
