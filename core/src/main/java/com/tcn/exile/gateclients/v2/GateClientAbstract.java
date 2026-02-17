@@ -168,7 +168,11 @@ public abstract class GateClientAbstract {
       log.info("[{}] Interrupted", getStreamName());
       Thread.currentThread().interrupt();
     } catch (Exception e) {
-      log.error("[{}] Error: {}", getStreamName(), e.getMessage(), e);
+      if (isRoutineStreamClosure(e)) {
+        log.debug("[{}] Stream closed by server (routine reconnect)", getStreamName());
+      } else {
+        log.error("[{}] Error: {}", getStreamName(), e.getMessage(), e);
+      }
       lastErrorType.set(e.getClass().getSimpleName());
       consecutiveFailures.incrementAndGet();
     } finally {
@@ -594,5 +598,19 @@ public abstract class GateClientAbstract {
     public HungConnectionException(String message) {
       super(message);
     }
+  }
+
+  private boolean isRoutineStreamClosure(Exception e) {
+    Throwable cause = e;
+    while (cause != null) {
+      if (cause instanceof StatusRuntimeException sre
+          && sre.getStatus().getCode() == Status.Code.UNAVAILABLE
+          && sre.getMessage() != null
+          && sre.getMessage().contains("NO_ERROR")) {
+        return true;
+      }
+      cause = cause.getCause();
+    }
+    return false;
   }
 }
