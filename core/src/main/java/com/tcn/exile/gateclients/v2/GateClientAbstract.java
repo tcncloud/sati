@@ -64,10 +64,6 @@ public abstract class GateClientAbstract {
   private ManagedChannel sharedChannel;
   private final ReentrantLock lock = new ReentrantLock();
 
-  // Simulated disconnect: when set and in the future, getChannel() refuses to
-  // create a new channel
-  private final AtomicReference<Instant> disconnectUntil = new AtomicReference<>();
-
   private Config currentConfig = null;
   protected final String tenant;
 
@@ -394,24 +390,6 @@ public abstract class GateClientAbstract {
   }
 
   public ManagedChannel getChannel() throws UnconfiguredException {
-    // Check simulated disconnect window
-    Instant disconnectDeadline = disconnectUntil.get();
-    if (disconnectDeadline != null) {
-      if (Instant.now().isBefore(disconnectDeadline)) {
-        long remainingSeconds =
-            java.time.Duration.between(Instant.now(), disconnectDeadline).getSeconds();
-        log.warn(
-            "Tenant: {} - Simulated disconnect active, {} seconds remaining",
-            tenant,
-            remainingSeconds);
-        throw new UnconfiguredException(
-            "Simulated network disconnect active for " + remainingSeconds + " more seconds");
-      } else {
-        disconnectUntil.set(null);
-        log.info("Tenant: {} - Simulated disconnect expired, allowing reconnection", tenant);
-      }
-    }
-
     long getChannelStartTime = System.currentTimeMillis();
     ManagedChannel localChannel = sharedChannel;
     if (localChannel == null || localChannel.isShutdown() || localChannel.isTerminated()) {
@@ -534,22 +512,6 @@ public abstract class GateClientAbstract {
       log.error("Tenant: {} - Unexpected error during shared channel creation", tenant, e);
       throw new UnconfiguredException("Unexpected error configuring TCN Gate client channel", e);
     }
-  }
-
-  /**
-   * Simulate a network disconnect for the given duration. Kills the current channel and prevents
-   * reconnection until the duration expires.
-   */
-  public void simulateDisconnect(int durationSeconds) {
-    log.warn("Tenant: {} - SIMULATING NETWORK DISCONNECT for {} seconds", tenant, durationSeconds);
-    disconnectUntil.set(Instant.now().plusSeconds(durationSeconds));
-    forceShutdownSharedChannel();
-  }
-
-  /** Check if a simulated disconnect is currently active. */
-  public boolean isDisconnectSimulationActive() {
-    Instant deadline = disconnectUntil.get();
-    return deadline != null && Instant.now().isBefore(deadline);
   }
 
   /**
