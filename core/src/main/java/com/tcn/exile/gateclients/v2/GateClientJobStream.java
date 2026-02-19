@@ -111,7 +111,7 @@ public class GateClientJobStream extends GateClientAbstract
       return;
     }
 
-    ExecutorService executorService = Executors.newFixedThreadPool(2);
+    ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
     ExecutorCompletionService<Void> completionService =
         new ExecutorCompletionService<>(executorService);
 
