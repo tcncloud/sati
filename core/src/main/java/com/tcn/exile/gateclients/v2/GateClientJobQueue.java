@@ -28,10 +28,7 @@ import com.tcn.exile.log.StructuredLogger;
 import com.tcn.exile.plugin.PluginInterface;
 import io.grpc.stub.StreamObserver;
 import jakarta.annotation.PreDestroy;
-import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -39,28 +36,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
-/** Bidirectional job streaming with acknowledgment using JobQueueStream API. */
+/** Bidirectional job streaming with acknowledgment using the JobQueueStream API. */
 public class GateClientJobQueue extends GateClientAbstract {
   private static final StructuredLogger log = new StructuredLogger(GateClientJobQueue.class);
   private static final int DEFAULT_TIMEOUT_SECONDS = 300;
-
-  private static final long STREAM_TIMEOUT_MINUTES = 5;
-  private static final long HUNG_CONNECTION_THRESHOLD_SECONDS = 45;
   private static final String KEEPALIVE_JOB_ID = "keepalive";
 
   private final PluginInterface plugin;
-  private final AtomicBoolean establishedForCurrentAttempt = new AtomicBoolean(false);
-  private final AtomicReference<Instant> lastMessageTime = new AtomicReference<>();
-
-  // Connection timing tracking
-  private final AtomicReference<Instant> lastDisconnectTime = new AtomicReference<>();
-  private final AtomicReference<Instant> reconnectionStartTime = new AtomicReference<>();
-  private final AtomicReference<Instant> connectionEstablishedTime = new AtomicReference<>();
-  private final AtomicLong totalReconnectionAttempts = new AtomicLong(0);
-  private final AtomicLong successfulReconnections = new AtomicLong(0);
-  private final AtomicReference<String> lastErrorType = new AtomicReference<>();
-  private final AtomicLong consecutiveFailures = new AtomicLong(0);
-  private final AtomicBoolean isRunning = new AtomicBoolean(false);
   private final AtomicLong jobsProcessed = new AtomicLong(0);
   private final AtomicLong jobsFailed = new AtomicLong(0);
 
@@ -73,88 +55,31 @@ public class GateClientJobQueue extends GateClientAbstract {
     this.plugin = plugin;
   }
 
-  /** Check if the connection is hung (no messages received in threshold time). */
-  private void checkForHungConnection() throws HungConnectionException {
-    Instant lastMsg = lastMessageTime.get();
-    if (lastMsg == null) {
-      lastMsg = connectionEstablishedTime.get();
-    }
-    if (lastMsg != null
-        && lastMsg.isBefore(
-            Instant.now().minus(HUNG_CONNECTION_THRESHOLD_SECONDS, ChronoUnit.SECONDS))) {
-      throw new HungConnectionException(
-          "No messages received since " + lastMsg + " - connection appears hung");
-    }
+  @Override
+  protected String getStreamName() {
+    return "JobQueue";
   }
 
   @Override
-  public void start() {
-    if (isUnconfigured()) {
-      log.warn(LogCategory.GRPC, "NOOP", "JobQueue is unconfigured, cannot stream jobs");
-      return;
-    }
-
-    try {
-      log.debug(LogCategory.GRPC, "Init", "JobQueue task started, checking configuration status");
-
-      reconnectionStartTime.set(Instant.now());
-      isRunning.set(true);
-
-      runStream();
-
-    } catch (HungConnectionException e) {
-      log.warn(
-          LogCategory.GRPC, "HungConnection", "Job queue stream appears hung: %s", e.getMessage());
-      lastErrorType.set("HungConnection");
-    } catch (UnconfiguredException e) {
-      log.error(LogCategory.GRPC, "ConfigError", "Configuration error: %s", e.getMessage());
-      lastErrorType.set("UnconfiguredException");
-      consecutiveFailures.incrementAndGet();
-    } catch (InterruptedException e) {
-      log.info(LogCategory.GRPC, "Interrupted", "Job queue stream interrupted");
-      Thread.currentThread().interrupt();
-    } catch (Exception e) {
-      log.error(
-          LogCategory.GRPC, "JobQueue", "Error streaming jobs from server: %s", e.getMessage(), e);
-      lastErrorType.set(e.getClass().getSimpleName());
-      if (connectionEstablishedTime.get() == null) {
-        consecutiveFailures.incrementAndGet();
-      }
-    } finally {
-      totalReconnectionAttempts.incrementAndGet();
-      lastDisconnectTime.set(Instant.now());
-      isRunning.set(false);
-      requestObserverRef.set(null);
-      log.debug(LogCategory.GRPC, "Complete", "Job queue done");
-    }
+  protected void onStreamDisconnected() {
+    requestObserverRef.set(null);
   }
 
-  /** Run a single stream session with bidirectional communication. */
-  private void runStream()
+  @Override
+  protected void runStream()
       throws UnconfiguredException, InterruptedException, HungConnectionException {
     var latch = new CountDownLatch(1);
     var errorRef = new AtomicReference<Throwable>();
     var firstResponseReceived = new AtomicBoolean(false);
 
-    // Create response handler
     var responseObserver =
         new StreamObserver<JobQueueStreamResponse>() {
           @Override
           public void onNext(JobQueueStreamResponse response) {
             lastMessageTime.set(Instant.now());
 
-            // Log connected on first server response
             if (firstResponseReceived.compareAndSet(false, true)) {
-              connectionEstablishedTime.set(Instant.now());
-              successfulReconnections.incrementAndGet();
-              consecutiveFailures.set(0);
-              lastErrorType.set(null);
-
-              log.info(
-                  LogCategory.GRPC,
-                  "ConnectionEstablished",
-                  "Job queue connection took %s",
-                  Duration.between(reconnectionStartTime.get(), connectionEstablishedTime.get()));
+              onConnectionEstablished();
             }
 
             if (!response.hasJob()) {
@@ -165,7 +90,7 @@ public class GateClientJobQueue extends GateClientAbstract {
             var job = response.getJob();
             String jobId = job.getJobId();
 
-            // Handle keepalive - must ACK to register with presence store
+            // Handle keepalive — must ACK to register with presence store
             if (KEEPALIVE_JOB_ID.equals(jobId)) {
               log.debug(
                   LogCategory.GRPC, "Keepalive", "Received keepalive, sending ACK to register");
@@ -180,11 +105,7 @@ public class GateClientJobQueue extends GateClientAbstract {
                 jobId,
                 getJobType(job));
 
-            // Process the job
-            boolean success = processJob(job);
-
-            // Send ACK only on success - if not success, job will be redelivered
-            if (success) {
+            if (processJob(job)) {
               sendAck(jobId);
               jobsProcessed.incrementAndGet();
             } else {
@@ -219,52 +140,44 @@ public class GateClientJobQueue extends GateClientAbstract {
     log.debug(LogCategory.GRPC, "Init", "Sending initial keepalive to job queue...");
     requestObserver.onNext(JobQueueStreamRequest.newBuilder().setJobId(KEEPALIVE_JOB_ID).build());
 
-    // Wait for stream to complete, with periodic hung-connection checks
-    boolean completed = false;
-    long startTime = System.currentTimeMillis();
-    long maxDurationMs = TimeUnit.MINUTES.toMillis(STREAM_TIMEOUT_MINUTES);
+    awaitStreamWithHungDetection(latch);
 
-    while (!completed && (System.currentTimeMillis() - startTime) < maxDurationMs) {
-      completed = latch.await(HUNG_CONNECTION_THRESHOLD_SECONDS, TimeUnit.SECONDS);
-      if (!completed) {
-        // Check for hung connection
-        checkForHungConnection();
-      }
-    }
-
-    // Propagate error if any
     var error = errorRef.get();
     if (error != null) {
       throw new RuntimeException("Stream error", error);
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // ACK management
+  // ---------------------------------------------------------------------------
+
   /** Send acknowledgment for a job. */
   private void sendAck(String jobId) {
     var observer = requestObserverRef.get();
-    if (observer != null) {
-      try {
-        observer.onNext(JobQueueStreamRequest.newBuilder().setJobId(jobId).build());
-        log.debug(LogCategory.GRPC, "AckSent", "Sent ACK for job: %s", jobId);
-      } catch (Exception e) {
-        log.error(
-            LogCategory.GRPC,
-            "AckFailed",
-            "Failed to send ACK for job %s: %s",
-            jobId,
-            e.getMessage());
-      }
-    } else {
+    if (observer == null) {
       log.warn(
           LogCategory.GRPC, "AckFailed", "Cannot send ACK for job %s - no active observer", jobId);
+      return;
+    }
+    try {
+      observer.onNext(JobQueueStreamRequest.newBuilder().setJobId(jobId).build());
+      log.debug(LogCategory.GRPC, "AckSent", "Sent ACK for job: %s", jobId);
+    } catch (Exception e) {
+      log.error(
+          LogCategory.GRPC,
+          "AckFailed",
+          "Failed to send ACK for job %s: %s",
+          jobId,
+          e.getMessage());
     }
   }
 
-  /**
-   * Process a job. Returns true if successfully processed.
-   *
-   * <p>This mirrors the job handling logic from GateClientJobStream exactly.
-   */
+  // ---------------------------------------------------------------------------
+  // Job processing
+  // ---------------------------------------------------------------------------
+
+  /** Process a job by dispatching to the plugin. Returns true if successfully processed. */
   private boolean processJob(StreamJobsResponse value) {
     long jobStartTime = System.currentTimeMillis();
 
@@ -398,6 +311,11 @@ public class GateClientJobQueue extends GateClientAbstract {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  @Override
   public void stop() {
     log.info(
         LogCategory.GRPC,
@@ -408,9 +326,6 @@ public class GateClientJobQueue extends GateClientAbstract {
         jobsProcessed.get(),
         jobsFailed.get());
 
-    isRunning.set(false);
-
-    // Gracefully close the stream
     var observer = requestObserverRef.get();
     if (observer != null) {
       try {
@@ -420,47 +335,19 @@ public class GateClientJobQueue extends GateClientAbstract {
       }
     }
 
-    shutdown();
-    log.info(LogCategory.GRPC, "GateClientJobQueueStopped", "GateClientJobQueue stopped");
+    doStop();
+    log.info(LogCategory.GRPC, "Stopped", "GateClientJobQueue stopped");
   }
 
   @PreDestroy
   public void destroy() {
-    log.info(
-        LogCategory.GRPC,
-        "GateClientJobQueue@PreDestroyCalled",
-        "GateClientJobQueue @PreDestroy called");
     stop();
   }
 
   public Map<String, Object> getStreamStatus() {
-    Instant lastDisconnect = lastDisconnectTime.get();
-    Instant connectionEstablished = connectionEstablishedTime.get();
-    Instant reconnectStart = reconnectionStartTime.get();
-    Instant lastMessage = lastMessageTime.get();
-
-    Map<String, Object> status = new HashMap<>();
-    status.put("isRunning", isRunning.get());
-    status.put("totalReconnectionAttempts", totalReconnectionAttempts.get());
-    status.put("successfulReconnections", successfulReconnections.get());
-    status.put("consecutiveFailures", consecutiveFailures.get());
+    Map<String, Object> status = buildStreamStatus();
     status.put("jobsProcessed", jobsProcessed.get());
     status.put("jobsFailed", jobsFailed.get());
-    status.put("lastDisconnectTime", lastDisconnect != null ? lastDisconnect.toString() : null);
-    status.put(
-        "connectionEstablishedTime",
-        connectionEstablished != null ? connectionEstablished.toString() : null);
-    status.put("reconnectionStartTime", reconnectStart != null ? reconnectStart.toString() : null);
-    status.put("lastErrorType", lastErrorType.get());
-    status.put("lastMessageTime", lastMessage != null ? lastMessage.toString() : null);
-
     return status;
-  }
-
-  /** Exception for hung connection detection. */
-  public static class HungConnectionException extends Exception {
-    public HungConnectionException(String message) {
-      super(message);
-    }
   }
 }
