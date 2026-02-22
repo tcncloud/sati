@@ -101,7 +101,7 @@ public class AgentsController {
               agent.getLastName(),
               agent.getCurrentSessionId() != 0 ? agent.getCurrentSessionId() : null,
               agent.getAgentState()
-                      != build.buf.gen.tcnapi.exile.gate.v2.AgentState.AGENT_STATE_UNAVALIABLE
+                      != build.buf.gen.tcnapi.exile.gate.v2.AgentState.AGENT_STATE_UNAVAILABLE
                   ? AgentState.values()[agent.getAgentState().getNumber()]
                   : null,
               agent.getIsLoggedIn()));
@@ -181,7 +181,7 @@ public class AgentsController {
           ret.getAgent().getLastName(),
           ret.getAgent().getCurrentSessionId() != 0 ? ret.getAgent().getCurrentSessionId() : null,
           ret.getAgent().getAgentState()
-                  != build.buf.gen.tcnapi.exile.gate.v2.AgentState.AGENT_STATE_UNAVALIABLE
+                  != build.buf.gen.tcnapi.exile.gate.v2.AgentState.AGENT_STATE_UNAVAILABLE
               ? AgentState.values()[ret.getAgent().getAgentState().getNumber()]
               : null,
           ret.getAgent().getIsLoggedIn());

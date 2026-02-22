@@ -20,7 +20,7 @@ import io.micronaut.serde.annotation.Serdeable;
 
 @Serdeable
 public enum AgentState {
-  AGENT_STATE_UNAVALIABLE(0),
+  AGENT_STATE_UNAVAILABLE(0),
   AGENT_STATE_IDLE(1),
   AGENT_STATE_READY(2),
   AGENT_STATE_HUNGUP(3),
