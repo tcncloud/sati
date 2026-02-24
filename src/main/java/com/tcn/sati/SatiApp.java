@@ -2,14 +2,9 @@ package com.tcn.sati;
 
 import com.tcn.sati.config.BackendType;
 import com.tcn.sati.config.SatiConfig;
-import com.tcn.sati.core.route.TransferRoutes;
-import com.tcn.sati.core.route.AdminRoutes;
-import com.tcn.sati.core.route.AgentRoutes;
-import com.tcn.sati.core.route.BackendRoutes;
-import com.tcn.sati.core.route.GateRoutes;
+import com.tcn.sati.core.route.*;
+import com.tcn.sati.core.service.*;
 import io.javalin.http.staticfiles.Location;
-import com.tcn.sati.core.service.TransferService;
-import com.tcn.sati.core.service.AgentService;
 import com.tcn.sati.core.tenant.TenantContext;
 import com.tcn.sati.core.tenant.TenantManager;
 import com.tcn.sati.infra.backend.TenantBackendClient;
@@ -58,12 +53,20 @@ public class SatiApp {
     private final SatiConfig config;
     private final BackendType backendType;
     private final TenantBackendClient customBackendClient;
-    private final TransferService transferService;
-    private final AgentService agentService;
     private final String appName;
+    private final String appVersion;
     private final boolean multiTenant;
     private final Supplier<List<TenantManager.TenantConfig>> tenantDiscovery;
     private final long discoveryIntervalSeconds;
+
+    // Optional service override factories (finvi can provide custom constructors)
+    private final java.util.function.Function<com.tcn.sati.infra.gate.GateClient, TransferService> transferServiceFactory;
+    private final java.util.function.Function<com.tcn.sati.infra.gate.GateClient, AgentService> agentServiceFactory;
+    private final java.util.function.Function<com.tcn.sati.infra.gate.GateClient, ScrubListService> scrubListServiceFactory;
+    private final java.util.function.Function<com.tcn.sati.infra.gate.GateClient, SkillsService> skillsServiceFactory;
+    private final java.util.function.Function<com.tcn.sati.infra.gate.GateClient, NCLRulesetService> nclRulesetServiceFactory;
+    private final java.util.function.Function<com.tcn.sati.infra.gate.GateClient, VoiceRecordingService> voiceRecordingServiceFactory;
+    private final java.util.function.Function<com.tcn.sati.infra.gate.GateClient, JourneyBufferService> journeyBufferServiceFactory;
 
     private Javalin app;
 
@@ -77,12 +80,18 @@ public class SatiApp {
         this.config = builder.config;
         this.backendType = builder.backendType;
         this.customBackendClient = builder.customBackendClient;
-        this.transferService = builder.transferService != null ? builder.transferService : new TransferService();
-        this.agentService = builder.agentService != null ? builder.agentService : new AgentService();
         this.appName = builder.appName != null ? builder.appName : backendType.name() + " API";
+        this.appVersion = builder.appVersion;
         this.multiTenant = builder.multiTenant;
         this.tenantDiscovery = builder.tenantDiscovery;
         this.discoveryIntervalSeconds = builder.discoveryIntervalSeconds;
+        this.transferServiceFactory = builder.transferServiceFactory;
+        this.agentServiceFactory = builder.agentServiceFactory;
+        this.scrubListServiceFactory = builder.scrubListServiceFactory;
+        this.skillsServiceFactory = builder.skillsServiceFactory;
+        this.nclRulesetServiceFactory = builder.nclRulesetServiceFactory;
+        this.voiceRecordingServiceFactory = builder.voiceRecordingServiceFactory;
+        this.journeyBufferServiceFactory = builder.journeyBufferServiceFactory;
     }
 
     /**
@@ -121,10 +130,6 @@ public class SatiApp {
 
         // Redirect root to dashboard
         app.get("/", ctx -> ctx.redirect("/index.html"));
-
-        // Register Routes
-        TransferRoutes.register(app, transferService);
-        AgentRoutes.register(app, agentService);
 
         // Register tenant-aware routes
         if (multiTenant) {
@@ -191,8 +196,28 @@ public class SatiApp {
     private void registerSingleTenantRoutes() {
         BackendRoutes.register(app, singleTenantContext.getBackendClient());
 
-        if (singleTenantContext.getGateClient() != null) {
-            GateRoutes.register(app, singleTenantContext.getGateClient());
+        var gate = singleTenantContext.getGateClient();
+        if (gate != null) {
+            GateRoutes.register(app, gate);
+
+            // Create services — use factory if provided, otherwise default with GateClient
+            AgentRoutes.register(app,
+                    agentServiceFactory != null ? agentServiceFactory.apply(gate) : new AgentService(gate));
+            TransferRoutes.register(app,
+                    transferServiceFactory != null ? transferServiceFactory.apply(gate) : new TransferService(gate));
+            ScrubListRoutes.register(app,
+                    scrubListServiceFactory != null ? scrubListServiceFactory.apply(gate) : new ScrubListService(gate));
+            SkillsRoutes.register(app,
+                    skillsServiceFactory != null ? skillsServiceFactory.apply(gate) : new SkillsService(gate));
+            NCLRulesetRoutes.register(app,
+                    nclRulesetServiceFactory != null ? nclRulesetServiceFactory.apply(gate)
+                            : new NCLRulesetService(gate));
+            VoiceRecordingRoutes.register(app,
+                    voiceRecordingServiceFactory != null ? voiceRecordingServiceFactory.apply(gate)
+                            : new VoiceRecordingService(gate));
+            JourneyBufferRoutes.register(app,
+                    journeyBufferServiceFactory != null ? journeyBufferServiceFactory.apply(gate)
+                            : new JourneyBufferService(gate));
         }
 
         // Status endpoint
@@ -201,7 +226,7 @@ public class SatiApp {
         });
 
         // Admin routes (dashboard APIs)
-        AdminRoutes.register(app, singleTenantContext, config, null);
+        AdminRoutes.register(app, singleTenantContext, config, null, appVersion);
     }
 
     private void registerMultiTenantRoutes() {
@@ -278,12 +303,20 @@ public class SatiApp {
         private SatiConfig config;
         private BackendType backendType;
         private TenantBackendClient customBackendClient;
-        private TransferService transferService;
-        private AgentService agentService;
         private String appName;
+        private String appVersion;
         private boolean multiTenant = false;
         private Supplier<List<TenantManager.TenantConfig>> tenantDiscovery;
         private long discoveryIntervalSeconds = 30;
+
+        // Service override factories
+        private java.util.function.Function<com.tcn.sati.infra.gate.GateClient, TransferService> transferServiceFactory;
+        private java.util.function.Function<com.tcn.sati.infra.gate.GateClient, AgentService> agentServiceFactory;
+        private java.util.function.Function<com.tcn.sati.infra.gate.GateClient, ScrubListService> scrubListServiceFactory;
+        private java.util.function.Function<com.tcn.sati.infra.gate.GateClient, SkillsService> skillsServiceFactory;
+        private java.util.function.Function<com.tcn.sati.infra.gate.GateClient, NCLRulesetService> nclRulesetServiceFactory;
+        private java.util.function.Function<com.tcn.sati.infra.gate.GateClient, VoiceRecordingService> voiceRecordingServiceFactory;
+        private java.util.function.Function<com.tcn.sati.infra.gate.GateClient, JourneyBufferService> journeyBufferServiceFactory;
 
         public Builder config(SatiConfig config) {
             this.config = config;
@@ -305,18 +338,13 @@ public class SatiApp {
             return this;
         }
 
-        public Builder transferService(TransferService service) {
-            this.transferService = service;
-            return this;
-        }
-
-        public Builder agentService(AgentService service) {
-            this.agentService = service;
-            return this;
-        }
-
         public Builder appName(String name) {
             this.appName = name;
+            return this;
+        }
+
+        public Builder appVersion(String version) {
+            this.appVersion = version;
             return this;
         }
 
@@ -341,6 +369,50 @@ public class SatiApp {
          */
         public Builder discoveryIntervalSeconds(long seconds) {
             this.discoveryIntervalSeconds = seconds;
+            return this;
+        }
+
+        // --- Service override methods (accept factory: GateClient -> Service) ---
+
+        public Builder transferService(
+                java.util.function.Function<com.tcn.sati.infra.gate.GateClient, TransferService> factory) {
+            this.transferServiceFactory = factory;
+            return this;
+        }
+
+        public Builder agentService(
+                java.util.function.Function<com.tcn.sati.infra.gate.GateClient, AgentService> factory) {
+            this.agentServiceFactory = factory;
+            return this;
+        }
+
+        public Builder scrubListService(
+                java.util.function.Function<com.tcn.sati.infra.gate.GateClient, ScrubListService> factory) {
+            this.scrubListServiceFactory = factory;
+            return this;
+        }
+
+        public Builder skillsService(
+                java.util.function.Function<com.tcn.sati.infra.gate.GateClient, SkillsService> factory) {
+            this.skillsServiceFactory = factory;
+            return this;
+        }
+
+        public Builder nclRulesetService(
+                java.util.function.Function<com.tcn.sati.infra.gate.GateClient, NCLRulesetService> factory) {
+            this.nclRulesetServiceFactory = factory;
+            return this;
+        }
+
+        public Builder voiceRecordingService(
+                java.util.function.Function<com.tcn.sati.infra.gate.GateClient, VoiceRecordingService> factory) {
+            this.voiceRecordingServiceFactory = factory;
+            return this;
+        }
+
+        public Builder journeyBufferService(
+                java.util.function.Function<com.tcn.sati.infra.gate.GateClient, JourneyBufferService> factory) {
+            this.journeyBufferServiceFactory = factory;
             return this;
         }
 

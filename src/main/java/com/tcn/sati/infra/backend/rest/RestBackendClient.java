@@ -346,6 +346,141 @@ public class RestBackendClient implements TenantBackendClient {
         }
     }
 
+    /**
+     * Get REST API connection stats for the admin dashboard.
+     */
+    public Map<String, Object> getConnectionStats() {
+        Map<String, Object> stats = new HashMap<>();
+        stats.put("baseUrl", baseUrl);
+        stats.put("authMethod", authHeader != null ? "Basic Auth" : "None");
+        return stats;
+    }
+
+    // ========== Job Handlers ==========
+
+    @Override
+    public PopAccountResult popAccount(PopAccountRequest request) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("recordId", request.recordId());
+            payload.put("userId", request.userId());
+            payload.put("callSid", request.callSid());
+            payload.put("callType", request.callType());
+
+            var req = requestBuilder("/api/v1/pop-account")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+                    .build();
+            var resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            return new PopAccountResult(resp.statusCode() < 400);
+
+        } catch (Exception e) {
+            log.error("Failed to pop account", e);
+            throw new RuntimeException("API error", e);
+        }
+    }
+
+    @Override
+    public List<SearchResult> searchRecords(SearchRecordsRequest request) {
+        try {
+            String url = String.format("/api/v1/search?type=%s&value=%s",
+                    request.lookupType(), request.lookupValue());
+            var req = requestBuilder(url).GET().build();
+            var resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+
+            List<SearchResult> results = new ArrayList<>();
+            JsonNode root = objectMapper.readTree(resp.body());
+            if (root.isArray()) {
+                for (JsonNode node : root) {
+                    Map<String, Object> fields = new HashMap<>();
+                    node.fields().forEachRemaining(e -> fields.put(e.getKey(), e.getValue().asText()));
+                    results.add(new SearchResult(
+                            node.path("recordId").asText(), node.path("poolId").asText(""), fields));
+                }
+            }
+            return results;
+
+        } catch (Exception e) {
+            log.error("Failed to search records", e);
+            throw new RuntimeException("API error", e);
+        }
+    }
+
+    @Override
+    public List<RecordField> readFields(ReadFieldsRequest request) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("recordId", request.recordId());
+            payload.put("fieldNames", request.fieldNames());
+
+            var req = requestBuilder("/api/v1/record-fields/read")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+                    .build();
+            var resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+
+            List<RecordField> fields = new ArrayList<>();
+            JsonNode root = objectMapper.readTree(resp.body());
+            if (root.isArray()) {
+                for (JsonNode node : root) {
+                    fields.add(new RecordField(
+                            request.recordId(), request.poolId(),
+                            node.path("fieldName").asText(), node.path("fieldValue").asText()));
+                }
+            }
+            return fields;
+
+        } catch (Exception e) {
+            log.error("Failed to read fields", e);
+            throw new RuntimeException("API error", e);
+        }
+    }
+
+    @Override
+    public void writeFields(WriteFieldsRequest request) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("recordId", request.recordId());
+            payload.put("fields", request.fields());
+
+            var req = requestBuilder("/api/v1/record-fields/write")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+                    .build();
+            httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+
+        } catch (Exception e) {
+            log.error("Failed to write fields", e);
+            throw new RuntimeException("API error", e);
+        }
+    }
+
+    @Override
+    public void createPayment(CreatePaymentRequest request) {
+        try {
+            var req = requestBuilder("/api/v1/payments")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)))
+                    .build();
+            httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+
+        } catch (Exception e) {
+            log.error("Failed to create payment", e);
+            throw new RuntimeException("API error", e);
+        }
+    }
+
+    @Override
+    public String executeLogic(ExecuteLogicRequest request) {
+        try {
+            var req = requestBuilder("/api/v1/execute-logic")
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(request)))
+                    .build();
+            var resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
+            return resp.body();
+
+        } catch (Exception e) {
+            log.error("Failed to execute logic", e);
+            throw new RuntimeException("API error", e);
+        }
+    }
+
     @Override
     public void close() {
         log.info("Closing RestBackendClient");

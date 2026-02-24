@@ -122,6 +122,40 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
     protected abstract String getCallRecordingSql();
 
     /**
+     * SQL to pop (screen-pop) an account. Single ? parameter for JSON payload.
+     * Expected to return at least one row on success.
+     */
+    protected abstract String getPopAccountSql();
+
+    /**
+     * SQL to search records. Single ? parameter for JSON payload.
+     * Expected to return rows with recordId, poolId, and JSON fields.
+     */
+    protected abstract String getSearchRecordsSql();
+
+    /**
+     * SQL to read record fields. Single ? parameter for JSON payload.
+     * Expected to return JSON with field name/value pairs.
+     */
+    protected abstract String getReadFieldsSql();
+
+    /**
+     * SQL to write record fields. Single ? parameter for JSON payload.
+     */
+    protected abstract String getWriteFieldsSql();
+
+    /**
+     * SQL to create a payment. Single ? parameter for JSON payload.
+     */
+    protected abstract String getCreatePaymentSql();
+
+    /**
+     * SQL to execute a custom logic block. Single ? parameter for JSON payload.
+     * Expected to return JSON result.
+     */
+    protected abstract String getExecuteLogicSql();
+
+    /**
      * Build a JDBC URL from the BackendConfig components.
      * Called when BackendConfig.getEffectiveJdbcUrl() returns null.
      * 
@@ -502,6 +536,193 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
         } while (stmt.getMoreResults() || stmt.getUpdateCount() != -1);
     }
 
+    // ========== Job Handlers ==========
+
+    @Override
+    public PopAccountResult popAccount(PopAccountRequest request) {
+        log.info("Popping account for recordId: {} userId: {}", request.recordId(), request.userId());
+
+        try (Connection con = getConnection();
+                var stmt = con.prepareStatement(getPopAccountSql())) {
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("recordId", request.recordId());
+            payload.put("userId", request.userId());
+            payload.put("callSid", request.callSid());
+            payload.put("callType", request.callType());
+            if (request.callerId() != null)
+                payload.put("callerId", request.callerId());
+            if (request.phoneNumber() != null)
+                payload.put("phoneNumber", request.phoneNumber());
+
+            stmt.setString(1, objectMapper.writeValueAsString(payload));
+            boolean hasResult = stmt.execute();
+
+            return new PopAccountResult(hasResult);
+
+        } catch (Exception e) {
+            log.error("Failed to pop account for recordId: {}", request.recordId(), e);
+            throw new RuntimeException("Stored procedure error", e);
+        }
+    }
+
+    @Override
+    public List<SearchResult> searchRecords(SearchRecordsRequest request) {
+        log.info("Searching records: type={} value={}", request.lookupType(), request.lookupValue());
+        List<SearchResult> results = new ArrayList<>();
+
+        try (Connection con = getConnection();
+                var stmt = con.prepareStatement(getSearchRecordsSql())) {
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("lookupType", request.lookupType());
+            payload.put("lookupValue", request.lookupValue());
+            if (request.filters() != null)
+                payload.putAll(request.filters());
+
+            stmt.setString(1, objectMapper.writeValueAsString(payload));
+            stmt.execute();
+
+            try (var rs = stmt.getResultSet()) {
+                if (rs != null) {
+                    while (rs.next()) {
+                        String json = rs.getString(1);
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> value = objectMapper.readValue(json, HashMap.class);
+                        String recordId = String.valueOf(value.getOrDefault("recordId", ""));
+                        results.add(new SearchResult(recordId, "", value));
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to search records", e);
+            throw new RuntimeException("Stored procedure error", e);
+        }
+
+        return results;
+    }
+
+    @Override
+    public List<RecordField> readFields(ReadFieldsRequest request) {
+        log.info("Reading fields for recordId: {}", request.recordId());
+        List<RecordField> fields = new ArrayList<>();
+
+        try (Connection con = getConnection();
+                var stmt = con.prepareStatement(getReadFieldsSql())) {
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("recordId", request.recordId());
+            payload.put("fields", request.fieldNames());
+            if (request.filters() != null)
+                payload.putAll(request.filters());
+
+            stmt.setString(1, objectMapper.writeValueAsString(payload));
+            stmt.execute();
+
+            try (var rs = stmt.getResultSet()) {
+                if (rs != null) {
+                    while (rs.next()) {
+                        String json = rs.getString(1);
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> value = objectMapper.readValue(json, HashMap.class);
+
+                        @SuppressWarnings("unchecked")
+                        Map<String, Object> fieldMap = value.containsKey("fields")
+                                ? (Map<String, Object>) value.get("fields")
+                                : new HashMap<>();
+
+                        String poolId = request.poolId() != null ? request.poolId()
+                                : String.valueOf(value.getOrDefault("poolId", ""));
+                        String recId = String.valueOf(value.getOrDefault("recordId", request.recordId()));
+
+                        fieldMap.forEach((k, v) -> fields.add(
+                                new RecordField(recId, poolId, k, String.valueOf(v))));
+                    }
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to read fields for recordId: {}", request.recordId(), e);
+            throw new RuntimeException("Stored procedure error", e);
+        }
+
+        return fields;
+    }
+
+    @Override
+    public void writeFields(WriteFieldsRequest request) {
+        log.info("Writing fields for recordId: {}", request.recordId());
+
+        try (Connection con = getConnection();
+                var stmt = con.prepareStatement(getWriteFieldsSql())) {
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("recordId", request.recordId());
+            payload.put("fields", request.fields());
+            if (request.filters() != null)
+                payload.putAll(request.filters());
+
+            stmt.setString(1, objectMapper.writeValueAsString(payload));
+            stmt.execute();
+
+        } catch (Exception e) {
+            log.error("Failed to write fields for recordId: {}", request.recordId(), e);
+            throw new RuntimeException("Stored procedure error", e);
+        }
+    }
+
+    @Override
+    public void createPayment(CreatePaymentRequest request) {
+        log.info("Creating payment for recordId: {}", request.recordId());
+
+        try (Connection con = getConnection();
+                var stmt = con.prepareStatement(getCreatePaymentSql())) {
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("recordId", request.recordId());
+            payload.put("paymentId", request.paymentId());
+            payload.put("paymentType", request.paymentType());
+            payload.put("paymentAmount", request.paymentAmount());
+            payload.put("paymentDate", java.time.Instant.ofEpochSecond(request.paymentDateEpochSeconds()));
+
+            stmt.setString(1, objectMapper.writeValueAsString(payload));
+            stmt.execute();
+
+        } catch (Exception e) {
+            log.error("Failed to create payment for recordId: {}", request.recordId(), e);
+            throw new RuntimeException("Stored procedure error", e);
+        }
+    }
+
+    @Override
+    public String executeLogic(ExecuteLogicRequest request) {
+        log.info("Executing logic block: {}", request.logicBlockId());
+
+        try (Connection con = getConnection();
+                var stmt = con.prepareStatement(getExecuteLogicSql())) {
+
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("logicBlockId", request.logicBlockId());
+            payload.put("logicBlockParams", request.logicBlockParams());
+
+            stmt.setString(1, objectMapper.writeValueAsString(payload));
+            stmt.execute();
+
+            try (var rs = stmt.getResultSet()) {
+                if (rs != null && rs.next()) {
+                    return rs.getString(1);
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to execute logic block: {}", request.logicBlockId(), e);
+            throw new RuntimeException("Stored procedure error", e);
+        }
+
+        return "{}";
+    }
+
     // ========== Health & Utilities ==========
 
     @Override
@@ -522,6 +743,26 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
     public int getConnectionFailureCount() {
         return connectionFailureCount.get();
+    }
+
+    /**
+     * Get JDBC connection pool stats for the admin dashboard.
+     */
+    public Map<String, Object> getConnectionStats() {
+        Map<String, Object> stats = new HashMap<>();
+        HikariDataSource ds = dataSourceRef.get();
+        if (ds != null && !ds.isClosed()) {
+            stats.put("jdbcUrl", ds.getJdbcUrl());
+            stats.put("driverClass", ds.getDriverClassName());
+            stats.put("username", ds.getUsername());
+            stats.put("totalConnections",
+                    ds.getHikariPoolMXBean() != null ? ds.getHikariPoolMXBean().getTotalConnections() : 0);
+            stats.put("activeConnections",
+                    ds.getHikariPoolMXBean() != null ? ds.getHikariPoolMXBean().getActiveConnections() : 0);
+            stats.put("idleConnections",
+                    ds.getHikariPoolMXBean() != null ? ds.getHikariPoolMXBean().getIdleConnections() : 0);
+        }
+        return stats;
     }
 
     @Override

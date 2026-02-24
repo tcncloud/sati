@@ -1,16 +1,20 @@
 package com.tcn.sati.core.job;
 
+import build.buf.gen.tcnapi.exile.core.v2.Field;
 import build.buf.gen.tcnapi.exile.core.v2.Pool;
 import build.buf.gen.tcnapi.exile.core.v2.Record;
 import build.buf.gen.tcnapi.exile.gate.v2.GateServiceGrpc;
 import build.buf.gen.tcnapi.exile.gate.v2.StreamJobsResponse;
 import build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest;
 import com.tcn.sati.infra.backend.TenantBackendClient;
+import com.tcn.sati.infra.backend.TenantBackendClient.*;
 import com.tcn.sati.infra.gate.GateClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -25,15 +29,15 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public class JobProcessor implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(JobProcessor.class);
-    
+
     private final TenantBackendClient backendClient;
     private final GateClient gateClient;
     private final ThreadPoolExecutor executor;
     private final BlockingQueue<Runnable> jobQueue;
-    
+
     private final AtomicLong processedJobs = new AtomicLong(0);
     private final AtomicLong failedJobs = new AtomicLong(0);
-    
+
     private volatile boolean shuttingDown = false;
 
     public JobProcessor(TenantBackendClient backendClient, GateClient gateClient) {
@@ -45,18 +49,17 @@ public class JobProcessor implements AutoCloseable {
         this.gateClient = gateClient;
         this.jobQueue = new LinkedBlockingQueue<>(1000); // Bounded queue
         this.executor = new ThreadPoolExecutor(
-            2,              // core threads
-            maxWorkers,     // max threads
-            60L,            // idle timeout
-            TimeUnit.SECONDS,
-            jobQueue,
-            r -> {
-                Thread t = new Thread(r, "job-worker");
-                t.setDaemon(true);
-                return t;
-            }
-        );
-        
+                2, // core threads
+                maxWorkers, // max threads
+                60L, // idle timeout
+                TimeUnit.SECONDS,
+                jobQueue,
+                r -> {
+                    Thread t = new Thread(r, "job-worker");
+                    t.setDaemon(true);
+                    return t;
+                });
+
         log.info("JobProcessor initialized with {} max workers", maxWorkers);
     }
 
@@ -69,54 +72,72 @@ public class JobProcessor implements AutoCloseable {
             submitError(job.getJobId(), "Processor shutting down");
             return;
         }
-        
+
         // Check if this is an admin job (can run even if backend unavailable)
         boolean isAdminJob = isAdminJob(job);
-        
+
         if (!isAdminJob && !backendClient.isConnected()) {
             log.warn("Rejecting job {} - backend not connected", job.getJobId());
             submitError(job.getJobId(), "Backend not connected");
             return;
         }
-        
+
         executor.execute(() -> executeJob(job));
     }
 
     private void executeJob(StreamJobsResponse job) {
         String jobId = job.getJobId();
         long startTime = System.currentTimeMillis();
-        
+
         try {
             log.debug("Executing job: {}", jobId);
-            
+
             if (job.hasListPools()) {
                 handleListPools(jobId);
-                
+
             } else if (job.hasGetPoolStatus()) {
                 handleGetPoolStatus(jobId, job.getGetPoolStatus().getPoolId());
-                
+
             } else if (job.hasGetPoolRecords()) {
                 handleGetPoolRecords(jobId, job.getGetPoolRecords().getPoolId());
-                
+
             } else if (job.hasInfo()) {
                 handleInfo(jobId);
-                
+
             } else if (job.hasDiagnostics()) {
                 handleDiagnostics(jobId);
-                
+
             } else if (job.hasShutdown()) {
                 handleShutdown(jobId);
-                
+
+            } else if (job.hasPopAccount()) {
+                handlePopAccount(jobId, job.getPopAccount());
+
+            } else if (job.hasSearchRecords()) {
+                handleSearchRecords(jobId, job.getSearchRecords());
+
+            } else if (job.hasGetRecordFields()) {
+                handleReadFields(jobId, job.getGetRecordFields());
+
+            } else if (job.hasSetRecordFields()) {
+                handleWriteFields(jobId, job.getSetRecordFields());
+
+            } else if (job.hasCreatePayment()) {
+                handleCreatePayment(jobId, job.getCreatePayment());
+
+            } else if (job.hasExecuteLogic()) {
+                handleExecuteLogic(jobId, job.getExecuteLogic());
+
             } else {
                 log.warn("Unknown job type for job: {}", jobId);
                 submitError(jobId, "Unknown job type");
                 return;
             }
-            
+
             processedJobs.incrementAndGet();
             long elapsed = System.currentTimeMillis() - startTime;
             log.debug("Job {} completed in {}ms", jobId, elapsed);
-            
+
         } catch (Exception e) {
             failedJobs.incrementAndGet();
             log.error("Job {} failed: {}", jobId, e.getMessage(), e);
@@ -128,68 +149,65 @@ public class JobProcessor implements AutoCloseable {
 
     private void handleListPools(String jobId) throws Exception {
         var pools = backendClient.listPools();
-        
+
         // Build result using the correct Pool protobuf
         var resultBuilder = SubmitJobResultsRequest.ListPoolsResult.newBuilder();
-        
+
         for (var pool : pools) {
             resultBuilder.addPools(
-                Pool.newBuilder()
-                    .setPoolId(pool.id())
-                    .setDescription(pool.name())
-                    .build()
-            );
+                    Pool.newBuilder()
+                            .setPoolId(pool.id())
+                            .setDescription(pool.name())
+                            .build());
         }
-        
+
         var request = SubmitJobResultsRequest.newBuilder()
                 .setJobId(jobId)
                 .setEndOfTransmission(true)
                 .setListPoolsResult(resultBuilder)
                 .build();
-        
+
         submitResult(request);
     }
 
     private void handleGetPoolStatus(String jobId, String poolId) throws Exception {
         var status = backendClient.getPoolStatus(poolId);
-        
+
         // GetPoolStatusResult doesn't have direct setters for these fields
         // Submit a pool with record count instead
         var request = SubmitJobResultsRequest.newBuilder()
                 .setJobId(jobId)
                 .setEndOfTransmission(true)
                 .setGetPoolStatusResult(
-                    SubmitJobResultsRequest.GetPoolStatusResult.newBuilder()
-                        .setPool(Pool.newBuilder()
-                            .setPoolId(poolId)
-                            .setRecordCount(status.totalRecords())
-                            .build())
-                        .build()
-                )
+                        SubmitJobResultsRequest.GetPoolStatusResult.newBuilder()
+                                .setPool(Pool.newBuilder()
+                                        .setPoolId(poolId)
+                                        .setRecordCount(status.totalRecords())
+                                        .build())
+                                .build())
                 .build();
-        
+
         submitResult(request);
     }
 
     private void handleGetPoolRecords(String jobId, String poolId) throws Exception {
         var records = backendClient.getPoolRecords(poolId, 0);
-        
+
         var resultBuilder = SubmitJobResultsRequest.GetPoolRecordsResult.newBuilder();
-        
+
         for (var rec : records) {
             resultBuilder.addRecords(
-                Record.newBuilder()
-                    .setRecordId(rec.recordId())
-                    .build()
-            );
+                    Record.newBuilder()
+                            .setRecordId(rec.recordId())
+                            .build());
         }
-        
+
         var request = SubmitJobResultsRequest.newBuilder()
                 .setJobId(jobId)
                 .setEndOfTransmission(true)
                 .setGetPoolRecordsResult(resultBuilder)
                 .build();
-        
+
         submitResult(request);
     }
 
@@ -200,20 +218,19 @@ public class JobProcessor implements AutoCloseable {
         } catch (Exception e) {
             serverName = "unknown";
         }
-        
+
         var request = SubmitJobResultsRequest.newBuilder()
                 .setJobId(jobId)
                 .setEndOfTransmission(true)
                 .setInfoResult(
-                    SubmitJobResultsRequest.InfoResult.newBuilder()
-                        .setServerName(serverName)
-                        .setCoreVersion("sati-rewrite-1.0")
-                        .setPluginName("Sati Rewrite")
-                        .setPluginVersion("1.0.0")
-                        .build()
-                )
+                        SubmitJobResultsRequest.InfoResult.newBuilder()
+                                .setServerName(serverName)
+                                .setCoreVersion("sati-rewrite-1.0")
+                                .setPluginName("Sati Rewrite")
+                                .setPluginVersion("1.0.0")
+                                .build())
                 .build();
-        
+
         submitResult(request);
     }
 
@@ -224,28 +241,26 @@ public class JobProcessor implements AutoCloseable {
                 .setJobId(jobId)
                 .setEndOfTransmission(true)
                 .setDiagnosticsResult(
-                    SubmitJobResultsRequest.DiagnosticsResult.newBuilder()
-                        .build()
-                )
+                        SubmitJobResultsRequest.DiagnosticsResult.newBuilder()
+                                .build())
                 .build();
-        
+
         submitResult(request);
     }
 
     private void handleShutdown(String jobId) {
         log.warn("Received shutdown request, initiating graceful shutdown...");
-        
+
         var request = SubmitJobResultsRequest.newBuilder()
                 .setJobId(jobId)
                 .setEndOfTransmission(true)
                 .setShutdownResult(
-                    SubmitJobResultsRequest.SeppukuResult.newBuilder()
-                        .build()
-                )
+                        SubmitJobResultsRequest.SeppukuResult.newBuilder()
+                                .build())
                 .build();
-        
+
         submitResult(request);
-        
+
         // Trigger shutdown in background
         new Thread(() -> {
             try {
@@ -257,11 +272,141 @@ public class JobProcessor implements AutoCloseable {
         }, "shutdown-thread").start();
     }
 
+    private void handlePopAccount(String jobId, StreamJobsResponse.PopAccountRequest pop) throws Exception {
+        // Extract callerId and phoneNumber from filters
+        String callerId = null;
+        String phoneNumber = null;
+        for (var filter : pop.getFiltersList()) {
+            if (filter.getKey().equalsIgnoreCase("callerId"))
+                callerId = filter.getValue();
+            if (filter.getKey().equalsIgnoreCase("phoneNumber"))
+                phoneNumber = filter.getValue();
+        }
+
+        var request = new PopAccountRequest(
+                pop.getRecordId(), pop.getPartnerAgentId(), pop.getCallSid(),
+                "inbound", callerId, phoneNumber);
+        backendClient.popAccount(request);
+
+        submitResult(SubmitJobResultsRequest.newBuilder()
+                .setJobId(jobId)
+                .setEndOfTransmission(true)
+                .setPopAccountResult(SubmitJobResultsRequest.PopAccountResult.newBuilder().build())
+                .build());
+    }
+
+    private void handleSearchRecords(String jobId, StreamJobsResponse.SearchRecordsRequest search) throws Exception {
+        Map<String, String> filters = new HashMap<>();
+        for (var filter : search.getFiltersList()) {
+            filters.put(filter.getKey(), filter.getValue());
+        }
+
+        var request = new SearchRecordsRequest(search.getLookupType(), search.getLookupValue(), filters);
+        var results = backendClient.searchRecords(request);
+
+        for (var result : results) {
+            submitResult(SubmitJobResultsRequest.newBuilder()
+                    .setJobId(jobId)
+                    .setEndOfTransmission(false)
+                    .setSearchRecordResult(SubmitJobResultsRequest.SearchRecordResult.newBuilder()
+                            .addRecords(Record.newBuilder()
+                                    .setRecordId(result.recordId())
+                                    .setPoolId(result.poolId())
+                                    .build())
+                            .build())
+                    .build());
+        }
+
+        // End transmission
+        submitResult(SubmitJobResultsRequest.newBuilder()
+                .setJobId(jobId)
+                .setEndOfTransmission(true)
+                .build());
+    }
+
+    private void handleReadFields(String jobId, StreamJobsResponse.GetRecordFieldsRequest readReq) throws Exception {
+        Map<String, String> filters = new HashMap<>();
+        for (var filter : readReq.getFiltersList()) {
+            filters.put(filter.getKey(), filter.getValue());
+        }
+
+        var request = new ReadFieldsRequest(
+                readReq.getRecordId(), readReq.getPoolId(),
+                readReq.getFieldNamesList(), filters);
+        var fields = backendClient.readFields(request);
+
+        var resultBuilder = SubmitJobResultsRequest.GetRecordFieldsResult.newBuilder();
+        for (var field : fields) {
+            resultBuilder.addFields(Field.newBuilder()
+                    .setRecordId(field.recordId())
+                    .setPoolId(field.poolId())
+                    .setFieldName(field.fieldName())
+                    .setFieldValue(field.fieldValue())
+                    .build());
+        }
+
+        submitResult(SubmitJobResultsRequest.newBuilder()
+                .setJobId(jobId)
+                .setEndOfTransmission(true)
+                .setGetRecordFieldsResult(resultBuilder.build())
+                .build());
+    }
+
+    private void handleWriteFields(String jobId, StreamJobsResponse.SetRecordFieldsRequest writeReq) throws Exception {
+        Map<String, String> fieldMap = new HashMap<>();
+        for (var field : writeReq.getFieldsList()) {
+            fieldMap.put(field.getFieldName(), field.getFieldValue());
+        }
+        Map<String, String> filters = new HashMap<>();
+        for (var filter : writeReq.getFiltersList()) {
+            filters.put(filter.getKey(), filter.getValue());
+        }
+
+        var request = new WriteFieldsRequest(writeReq.getRecordId(), fieldMap, filters);
+        backendClient.writeFields(request);
+
+        submitResult(SubmitJobResultsRequest.newBuilder()
+                .setJobId(jobId)
+                .setEndOfTransmission(true)
+                .setSetRecordFieldsResult(SubmitJobResultsRequest.SetRecordFieldsResult.newBuilder().build())
+                .build());
+    }
+
+    private void handleCreatePayment(String jobId, StreamJobsResponse.CreatePaymentRequest payReq) throws Exception {
+        long epochSeconds = payReq.hasPaymentDate()
+                ? payReq.getPaymentDate().getSeconds()
+                : 0;
+
+        var request = new CreatePaymentRequest(
+                payReq.getRecordId(), payReq.getPaymentId(),
+                payReq.getPaymentType(), payReq.getPaymentAmount(), epochSeconds);
+        backendClient.createPayment(request);
+
+        submitResult(SubmitJobResultsRequest.newBuilder()
+                .setJobId(jobId)
+                .setEndOfTransmission(true)
+                .setCreatePaymentResult(SubmitJobResultsRequest.CreatePaymentResult.newBuilder().build())
+                .build());
+    }
+
+    private void handleExecuteLogic(String jobId, StreamJobsResponse.ExecuteLogicRequest execReq) throws Exception {
+        var request = new ExecuteLogicRequest(execReq.getLogicBlockId(), execReq.getLogicBlockParams());
+        String result = backendClient.executeLogic(request);
+
+        submitResult(SubmitJobResultsRequest.newBuilder()
+                .setJobId(jobId)
+                .setEndOfTransmission(true)
+                .setExecuteLogicResult(SubmitJobResultsRequest.ExecuteLogicResult.newBuilder()
+                        .setResult(result)
+                        .build())
+                .build());
+    }
+
     // ========== Helpers ==========
 
     private boolean isAdminJob(StreamJobsResponse job) {
-        return job.hasInfo() || job.hasDiagnostics() || job.hasShutdown() 
-            || job.hasLogging() || job.hasListTenantLogs() || job.hasSetLogLevel();
+        return job.hasInfo() || job.hasDiagnostics() || job.hasShutdown()
+                || job.hasLogging() || job.hasListTenantLogs() || job.hasSetLogLevel();
     }
 
     private void submitResult(SubmitJobResultsRequest request) {
@@ -269,7 +414,7 @@ public class JobProcessor implements AutoCloseable {
             GateServiceGrpc.newBlockingStub(gateClient.getChannel())
                     .withDeadlineAfter(30, TimeUnit.SECONDS)
                     .submitJobResults(request);
-                    
+
         } catch (Exception e) {
             log.error("Failed to submit result for job {}: {}", request.getJobId(), e.getMessage());
         }
@@ -284,9 +429,9 @@ public class JobProcessor implements AutoCloseable {
                             .setMessage(errorMessage)
                             .build())
                     .build();
-            
+
             submitResult(request);
-            
+
         } catch (Exception e) {
             log.error("Failed to submit error for job {}: {}", jobId, e.getMessage());
         }
@@ -319,7 +464,7 @@ public class JobProcessor implements AutoCloseable {
         log.info("Shutting down job processor...");
         shuttingDown = true;
         executor.shutdown();
-        
+
         try {
             if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
                 log.warn("Executor did not terminate gracefully, forcing shutdown");
@@ -329,8 +474,8 @@ public class JobProcessor implements AutoCloseable {
             executor.shutdownNow();
             Thread.currentThread().interrupt();
         }
-        
-        log.info("Job processor shutdown complete (processed: {}, failed: {})", 
-            processedJobs.get(), failedJobs.get());
+
+        log.info("Job processor shutdown complete (processed: {}, failed: {})",
+                processedJobs.get(), failedJobs.get());
     }
 }

@@ -30,7 +30,7 @@ public class EventStreamClient implements AutoCloseable {
     private static final int DEFAULT_BATCH_SIZE = 100;
     private static final long RECONNECT_DELAY_MS = 5_000;
     private static final long MAX_RECONNECT_DELAY_MS = 60_000;
-    private static final long POLL_INTERVAL_MS = 1_000;
+    private static final long POLL_INTERVAL_MS = 10_000;
 
     private final GateClient gateClient;
     private final TenantBackendClient backendClient;

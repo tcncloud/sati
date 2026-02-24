@@ -10,6 +10,8 @@ import io.javalin.openapi.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -25,6 +27,7 @@ public class AdminRoutes {
     private static TenantContext tenantContext;
     private static SatiConfig currentConfig;
     private static Consumer<SatiConfig> configReloadHandler;
+    private static String appVersion;
 
     /**
      * Register admin routes.
@@ -36,49 +39,88 @@ public class AdminRoutes {
      *                      supported)
      */
     public static void register(Javalin app, TenantContext context, SatiConfig config,
-            Consumer<SatiConfig> reloadHandler) {
+            Consumer<SatiConfig> reloadHandler, String version) {
         tenantContext = context;
         currentConfig = config;
         configReloadHandler = reloadHandler;
+        appVersion = version;
 
         app.get("/api/admin/status", AdminRoutes::getStatus);
         app.get("/api/admin/logs", AdminRoutes::getLogs);
         app.post("/api/admin/config", AdminRoutes::loadConfig);
+        app.post("/api/admin/restart", AdminRoutes::restart);
     }
 
     // ========== Status ==========
 
     @OpenApi(path = "/api/admin/status", methods = HttpMethod.GET, summary = "Get system status", tags = {
-            "Admin" }, responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = StatusResponse.class)))
+            "Admin" }, responses = @OpenApiResponse(status = "200"))
     private static void getStatus(Context ctx) {
         var tenantStatus = tenantContext != null ? tenantContext.getStatus() : null;
 
-        StatusResponse response = new StatusResponse(
-                tenantStatus != null && tenantStatus.running(),
-                tenantStatus != null && tenantStatus.gateConnected(),
-                tenantStatus != null && tenantStatus.backendConnected(),
-                tenantStatus != null && tenantStatus.jobQueueConnected(),
-                tenantStatus != null && tenantStatus.eventStreamRunning(),
-                currentConfig != null ? currentConfig.apiHostname() : null,
-                currentConfig != null ? currentConfig.org() : null,
-                tenantStatus != null ? tenantStatus.processedJobs() : 0,
-                tenantStatus != null ? tenantStatus.failedJobs() : 0,
-                tenantStatus != null ? tenantStatus.processedEvents() : 0);
+        String satiVersion = AdminRoutes.class.getPackage().getImplementationVersion();
+        if (satiVersion == null)
+            satiVersion = "dev";
+
+        Map<String, Object> response = new java.util.LinkedHashMap<>();
+
+        // Versions
+        response.put("satiVersion", satiVersion);
+        response.put("appVersion", appVersion != null ? appVersion : "dev");
+
+        // Connection status
+        response.put("running", tenantStatus != null && tenantStatus.running());
+        response.put("gateConnected", tenantStatus != null && tenantStatus.gateConnected());
+        response.put("backendConnected", tenantStatus != null && tenantStatus.backendConnected());
+        response.put("jobQueueConnected", tenantStatus != null && tenantStatus.jobQueueConnected());
+        response.put("eventStreamRunning", tenantStatus != null && tenantStatus.eventStreamRunning());
+
+        // Config
+        response.put("apiEndpoint", currentConfig != null ? currentConfig.apiHostname() : null);
+        response.put("org", currentConfig != null ? currentConfig.org() : null);
+
+        // Event stream / job stats
+        if (tenantContext != null && tenantContext.getJobProcessor() != null) {
+            var jp = tenantContext.getJobProcessor();
+            response.put("maxJobs", 5); // default configured in JobProcessor
+            response.put("runningJobs", jp.getActiveWorkers());
+            response.put("completedJobs", jp.getProcessedJobs());
+            response.put("queuedJobs", jp.getQueueSize());
+            response.put("failedJobs", jp.getFailedJobs());
+        } else {
+            response.put("maxJobs", 0);
+            response.put("runningJobs", 0);
+            response.put("completedJobs", 0);
+            response.put("queuedJobs", 0);
+            response.put("failedJobs", 0);
+        }
+
+        response.put("processedEvents", tenantStatus != null ? tenantStatus.processedEvents() : 0);
+
+        // Backend connection stats (JDBC or REST API)
+        if (tenantContext != null
+                && tenantContext
+                        .getBackendClient() instanceof com.tcn.sati.infra.backend.jdbc.JdbcBackendClient jdbcClient) {
+            response.put("jdbc", jdbcClient.getConnectionStats());
+            response.put("backendType", "JDBC");
+        } else if (tenantContext != null
+                && tenantContext
+                        .getBackendClient() instanceof com.tcn.sati.infra.backend.rest.RestBackendClient restClient) {
+            response.put("api", restClient.getConnectionStats());
+            response.put("backendType", "API");
+        }
+
+        // TCN connection details (Gate)
+        if (tenantContext != null && tenantContext.getGateClient() != null) {
+            var gate = tenantContext.getGateClient();
+            response.put("orgName", gate.getOrgName());
+            response.put("configName", gate.getConfigName());
+            response.put("certExpiration", gate.getCertExpiration());
+        }
+
+        response.put("configured", currentConfig != null && currentConfig.isConfigured());
 
         ctx.json(response);
-    }
-
-    public record StatusResponse(
-            boolean running,
-            boolean gateConnected,
-            boolean backendConnected,
-            boolean jobQueueConnected,
-            boolean eventStreamRunning,
-            String apiEndpoint,
-            String org,
-            long processedJobs,
-            long failedJobs,
-            long processedEvents) {
     }
 
     // ========== Logs ==========
@@ -155,5 +197,21 @@ public class AdminRoutes {
     }
 
     public record ConfigResponse(boolean success, String message) {
+    }
+
+    // ========== Restart ==========
+
+    @OpenApi(path = "/api/admin/restart", methods = HttpMethod.POST, summary = "Restart the application", tags = {
+            "Admin" }, responses = @OpenApiResponse(status = "202"))
+    private static void restart(Context ctx) {
+        log.info("Restart requested");
+        try {
+            Files.createDirectories(Paths.get("/tmp/restart-trigger"));
+            Files.write(Paths.get("/tmp/restart-trigger/restart"), "restart".getBytes());
+            log.info("Created restart trigger file - wrapper script will handle restart");
+        } catch (Exception e) {
+            log.info("Wrapper script not available. Ignoring restart request.");
+        }
+        ctx.status(202).result("Restart triggered");
     }
 }

@@ -1,5 +1,6 @@
 plugins {
     id 'java-library'
+    id 'maven-publish'
 }
 
 repositories {
@@ -7,6 +8,33 @@ repositories {
     maven {
         name = 'buf'
         url 'https://buf.build/gen/maven'
+    }
+}
+
+// Publish to GitHub Packages (same pattern as old sati)
+// Artifact: com.tcn.exile.sati:sati_rewrite (coexists with old sati's :core)
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId = 'com.tcn.exile.sati'
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/tcncloud/sati")
+            credentials {
+                username = project.findProperty("gpr.user") ?: System.getenv("GITHUB_USERNAME")
+                password = project.findProperty("gpr.key") ?: System.getenv("GITHUB_TOKEN")
+            }
+        }
+    }
+}
+
+jar {
+    manifest {
+        attributes 'Implementation-Version': project.version
     }
 }
 
@@ -42,4 +70,13 @@ dependencies {
     // Exile API (Generated Protos)
     api "build.buf.gen:tcn_exileapi_grpc_java:${exileapiGrpcVersion}"
     api "build.buf.gen:tcn_exileapi_protocolbuffers_java:${exileapiProtobufVersion}"
+
+    // Testing
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testImplementation 'ch.qos.logback:logback-classic:1.5.6'
+    testImplementation 'com.h2database:h2:2.2.224'
+}
+
+test {
+    useJUnitPlatform()
 }

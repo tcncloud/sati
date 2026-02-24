@@ -58,6 +58,39 @@ public interface TenantBackendClient extends AutoCloseable {
      */
     void handleCallRecording(CallRecording recording);
 
+    // ========== Job Handlers ==========
+
+    /**
+     * Pop (screen-pop) an account for an agent.
+     * Called when an inbound/outbound call connects to an agent.
+     */
+    PopAccountResult popAccount(PopAccountRequest request);
+
+    /**
+     * Search records by lookup type and value (e.g., phone number lookup).
+     */
+    List<SearchResult> searchRecords(SearchRecordsRequest request);
+
+    /**
+     * Read specific fields from a record.
+     */
+    List<RecordField> readFields(ReadFieldsRequest request);
+
+    /**
+     * Write/update fields on a record.
+     */
+    void writeFields(WriteFieldsRequest request);
+
+    /**
+     * Create a payment record.
+     */
+    void createPayment(CreatePaymentRequest request);
+
+    /**
+     * Execute a custom logic block.
+     */
+    String executeLogic(ExecuteLogicRequest request);
+
     // ========== Health ==========
 
     /**
@@ -92,5 +125,39 @@ public interface TenantBackendClient extends AutoCloseable {
     }
 
     record CallRecording(String recordingSid, String callSid, String status) {
+    }
+
+    // Job request/result DTOs
+
+    record PopAccountRequest(String recordId, String userId, String callSid, String callType,
+            String callerId, String phoneNumber) {
+    }
+
+    record PopAccountResult(boolean success) {
+    }
+
+    record SearchRecordsRequest(String lookupType, String lookupValue,
+            Map<String, String> filters) {
+    }
+
+    record SearchResult(String recordId, String poolId, Map<String, Object> fields) {
+    }
+
+    record ReadFieldsRequest(String recordId, String poolId, List<String> fieldNames,
+            Map<String, String> filters) {
+    }
+
+    record RecordField(String recordId, String poolId, String fieldName, String fieldValue) {
+    }
+
+    record WriteFieldsRequest(String recordId, Map<String, String> fields,
+            Map<String, String> filters) {
+    }
+
+    record CreatePaymentRequest(String recordId, String paymentId, String paymentType,
+            String paymentAmount, long paymentDateEpochSeconds) {
+    }
+
+    record ExecuteLogicRequest(String logicBlockId, String logicBlockParams) {
     }
 }

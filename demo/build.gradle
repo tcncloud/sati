@@ -1,0 +1,57 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    maven {
+        name = 'buf'
+        url 'https://buf.build/gen/maven'
+    }
+    def gprUser = project.findProperty("gpr.user") ?: System.getenv("GITHUB_USERNAME")
+    def gprKey = project.findProperty("gpr.key") ?: System.getenv("GITHUB_TOKEN")
+    
+    if (gprUser != null && gprKey != null) {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/tcncloud/sati")
+            credentials {
+                username = gprUser
+                password = gprKey
+            }
+        }
+    }
+}
+
+application {
+    mainClass = 'com.example.app.Main'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+dependencies {
+    // Sati library from GitHub Packages
+    implementation 'com.tcn.exile.sati:beta:0.1.0-SNAPSHOT' // Update version as needed
+
+    // PostgreSQL JDBC Driver
+    implementation 'org.postgresql:postgresql:42.7.2'
+    
+    // Connection Pooling (Sati requires this if using JdbcBackendClient)
+    implementation 'com.zaxxer:HikariCP:5.1.0'
+
+    // JSON Serialization
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.0'
+
+    // Logging Implementation (Sati provides SLF4J API)
+    implementation 'ch.qos.logback:logback-classic:1.5.6'
+}
+
+test {
+    useJUnitPlatform()
+}

@@ -46,6 +46,9 @@ public class GateClient implements AutoCloseable {
 
     private Consumer<BackendConfig> configListener;
     private BackendConfig lastConfig;
+    private volatile String orgName;
+    private volatile String configName;
+    private volatile String certExpiration;
 
     /**
      * Backend configuration received from Gate.
@@ -128,6 +131,16 @@ public class GateClient implements AutoCloseable {
             t.setDaemon(true);
             return t;
         });
+
+        // Extract cert expiration
+        try {
+            java.security.cert.CertificateFactory cf = java.security.cert.CertificateFactory.getInstance("X.509");
+            var cert = (java.security.cert.X509Certificate) cf.generateCertificate(
+                    new ByteArrayInputStream(config.publicCert().getBytes()));
+            this.certExpiration = cert.getNotAfter().toString();
+        } catch (Exception e) {
+            this.certExpiration = "Unknown";
+        }
 
         // Create initial channel
         getOrCreateChannel();
@@ -255,8 +268,14 @@ public class GateClient implements AutoCloseable {
             var request = build.buf.gen.tcnapi.exile.gate.v2.GetClientConfigurationRequest.newBuilder().build();
             var response = stub.getClientConfiguration(request);
 
-            log.debug("Received config from Gate: orgId={}, orgName={}, configName={}",
-                    response.getOrgId(), response.getOrgName(), response.getConfigName());
+            // Log config identity once on first receive
+            if (this.orgName == null) {
+                log.info("Received config from Gate: orgId={}, orgName={}, configName={}",
+                        response.getOrgId(), response.getOrgName(), response.getConfigName());
+            }
+
+            this.orgName = response.getOrgName();
+            this.configName = response.getConfigName();
 
             String configPayload = response.getConfigPayload();
             if (configPayload != null && !configPayload.isBlank()) {
@@ -324,6 +343,190 @@ public class GateClient implements AutoCloseable {
     public boolean isChannelActive() {
         ManagedChannel channel = channelRef.get();
         return channel != null && !channel.isShutdown() && !channel.isTerminated();
+    }
+
+    public String getOrgName() {
+        return orgName;
+    }
+
+    public String getConfigName() {
+        return configName;
+    }
+
+    public String getCertExpiration() {
+        return certExpiration;
+    }
+
+    // ========== gRPC Convenience Methods ==========
+
+    /**
+     * Get a blocking stub with a 30s deadline. All convenience methods use this.
+     */
+    private build.buf.gen.tcnapi.exile.gate.v2.GateServiceGrpc.GateServiceBlockingStub getStub() {
+        return build.buf.gen.tcnapi.exile.gate.v2.GateServiceGrpc.newBlockingStub(getOrCreateChannel())
+                .withDeadlineAfter(30, TimeUnit.SECONDS);
+    }
+
+    // --- Agent Operations ---
+
+    public java.util.Iterator<build.buf.gen.tcnapi.exile.gate.v2.ListAgentsResponse> listAgents(
+            build.buf.gen.tcnapi.exile.gate.v2.ListAgentsRequest request) {
+        return getStub().listAgents(request);
+    }
+
+    public build.buf.gen.tcnapi.exile.gate.v2.UpsertAgentResponse upsertAgent(
+            build.buf.gen.tcnapi.exile.gate.v2.UpsertAgentRequest request) {
+        return getStub().upsertAgent(request);
+    }
+
+    public build.buf.gen.tcnapi.exile.gate.v2.DialResponse dial(
+            build.buf.gen.tcnapi.exile.gate.v2.DialRequest request) {
+        return getStub().dial(request);
+    }
+
+    public build.buf.gen.tcnapi.exile.gate.v2.GetRecordingStatusResponse getRecordingStatus(
+            build.buf.gen.tcnapi.exile.gate.v2.GetRecordingStatusRequest request) {
+        return getStub().getRecordingStatus(request);
+    }
+
+    public void startCallRecording(build.buf.gen.tcnapi.exile.gate.v2.StartCallRecordingRequest request) {
+        getStub().startCallRecording(request);
+    }
+
+    public void stopCallRecording(build.buf.gen.tcnapi.exile.gate.v2.StopCallRecordingRequest request) {
+        getStub().stopCallRecording(request);
+    }
+
+    public build.buf.gen.tcnapi.exile.gate.v2.GetAgentStatusResponse getAgentStatus(
+            build.buf.gen.tcnapi.exile.gate.v2.GetAgentStatusRequest request) {
+        return getStub().getAgentStatus(request);
+    }
+
+    public build.buf.gen.tcnapi.exile.gate.v2.UpdateAgentStatusResponse updateAgentStatus(
+            build.buf.gen.tcnapi.exile.gate.v2.UpdateAgentStatusRequest request) {
+        return getStub().updateAgentStatus(request);
+    }
+
+    public build.buf.gen.tcnapi.exile.gate.v2.ListHuntGroupPauseCodesResponse listHuntGroupPauseCodes(
+            build.buf.gen.tcnapi.exile.gate.v2.ListHuntGroupPauseCodesRequest request) {
+        return getStub().listHuntGroupPauseCodes(request);
+    }
+
+    public void putCallOnSimpleHold(build.buf.gen.tcnapi.exile.gate.v2.PutCallOnSimpleHoldRequest request) {
+        getStub().putCallOnSimpleHold(request);
+    }
+
+    public void takeCallOffSimpleHold(build.buf.gen.tcnapi.exile.gate.v2.TakeCallOffSimpleHoldRequest request) {
+        getStub().takeCallOffSimpleHold(request);
+    }
+
+    public void muteAgent(build.buf.gen.tcnapi.exile.gate.v2.MuteAgentRequest request) {
+        getStub().muteAgent(request);
+    }
+
+    public void unmuteAgent(build.buf.gen.tcnapi.exile.gate.v2.UnmuteAgentRequest request) {
+        getStub().unmuteAgent(request);
+    }
+
+    public void addAgentCallResponse(build.buf.gen.tcnapi.exile.gate.v2.AddAgentCallResponseRequest request) {
+        getStub().addAgentCallResponse(request);
+    }
+
+    // --- Transfer Operations ---
+
+    public void transfer(build.buf.gen.tcnapi.exile.gate.v2.TransferRequest request) {
+        getStub().transfer(request);
+    }
+
+    public void holdTransferMemberCaller(
+            build.buf.gen.tcnapi.exile.gate.v2.HoldTransferMemberCallerRequest request) {
+        getStub().holdTransferMemberCaller(request);
+    }
+
+    public void unholdTransferMemberCaller(
+            build.buf.gen.tcnapi.exile.gate.v2.UnholdTransferMemberCallerRequest request) {
+        getStub().unholdTransferMemberCaller(request);
+    }
+
+    public void holdTransferMemberAgent(
+            build.buf.gen.tcnapi.exile.gate.v2.HoldTransferMemberAgentRequest request) {
+        getStub().holdTransferMemberAgent(request);
+    }
+
+    public void unholdTransferMemberAgent(
+            build.buf.gen.tcnapi.exile.gate.v2.UnholdTransferMemberAgentRequest request) {
+        getStub().unholdTransferMemberAgent(request);
+    }
+
+    // --- Scrub List Operations ---
+
+    public build.buf.gen.tcnapi.exile.gate.v2.ListScrubListsResponse listScrubLists(
+            build.buf.gen.tcnapi.exile.gate.v2.ListScrubListsRequest request) {
+        return getStub().listScrubLists(request);
+    }
+
+    public void updateScrubListEntry(build.buf.gen.tcnapi.exile.gate.v2.UpdateScrubListEntryRequest request) {
+        getStub().updateScrubListEntry(request);
+    }
+
+    public void removeScrubListEntries(build.buf.gen.tcnapi.exile.gate.v2.RemoveScrubListEntriesRequest request) {
+        getStub().removeScrubListEntries(request);
+    }
+
+    // --- Skill Operations ---
+
+    public build.buf.gen.tcnapi.exile.gate.v2.ListSkillsResponse listSkills(
+            build.buf.gen.tcnapi.exile.gate.v2.ListSkillsRequest request) {
+        return getStub().listSkills(request);
+    }
+
+    public build.buf.gen.tcnapi.exile.gate.v2.ListAgentSkillsResponse listAgentSkills(
+            build.buf.gen.tcnapi.exile.gate.v2.ListAgentSkillsRequest request) {
+        return getStub().listAgentSkills(request);
+    }
+
+    public void assignAgentSkill(build.buf.gen.tcnapi.exile.gate.v2.AssignAgentSkillRequest request) {
+        getStub().assignAgentSkill(request);
+    }
+
+    public void unassignAgentSkill(build.buf.gen.tcnapi.exile.gate.v2.UnassignAgentSkillRequest request) {
+        getStub().unassignAgentSkill(request);
+    }
+
+    // --- NCL Ruleset Operations ---
+
+    public build.buf.gen.tcnapi.exile.gate.v2.ListNCLRulesetNamesResponse listNCLRulesetNames(
+            build.buf.gen.tcnapi.exile.gate.v2.ListNCLRulesetNamesRequest request) {
+        return getStub().listNCLRulesetNames(request);
+    }
+
+    // --- Voice Recording Operations ---
+
+    public java.util.Iterator<build.buf.gen.tcnapi.exile.gate.v2.SearchVoiceRecordingsResponse> searchVoiceRecordings(
+            build.buf.gen.tcnapi.exile.gate.v2.SearchVoiceRecordingsRequest request) {
+        return getStub().searchVoiceRecordings(request);
+    }
+
+    public build.buf.gen.tcnapi.exile.gate.v2.GetVoiceRecordingDownloadLinkResponse getVoiceRecordingDownloadLink(
+            build.buf.gen.tcnapi.exile.gate.v2.GetVoiceRecordingDownloadLinkRequest request) {
+        return getStub().getVoiceRecordingDownloadLink(request);
+    }
+
+    public build.buf.gen.tcnapi.exile.gate.v2.ListSearchableRecordingFieldsResponse listSearchableRecordingFields(
+            build.buf.gen.tcnapi.exile.gate.v2.ListSearchableRecordingFieldsRequest request) {
+        return getStub().listSearchableRecordingFields(request);
+    }
+
+    public build.buf.gen.tcnapi.exile.gate.v2.CreateRecordingLabelResponse createRecordingLabel(
+            build.buf.gen.tcnapi.exile.gate.v2.CreateRecordingLabelRequest request) {
+        return getStub().createRecordingLabel(request);
+    }
+
+    // --- Journey Buffer Operations ---
+
+    public build.buf.gen.tcnapi.exile.gate.v2.AddRecordToJourneyBufferResponse addRecordToJourneyBuffer(
+            build.buf.gen.tcnapi.exile.gate.v2.AddRecordToJourneyBufferRequest request) {
+        return getStub().addRecordToJourneyBuffer(request);
     }
 
     @Override
