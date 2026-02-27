@@ -37,7 +37,7 @@ java {
 
 dependencies {
     // Sati library from GitHub Packages
-    implementation 'com.tcn.exile.sati:beta:0.1.0-SNAPSHOT' // Update version as needed
+    implementation 'com.tcn.exile.sati:beta:0.1.0' // Update version as needed
 
     // PostgreSQL JDBC Driver
     implementation 'org.postgresql:postgresql:42.7.2'
@@ -54,4 +54,10 @@ dependencies {
 
 test {
     useJUnitPlatform()
+}
+
+// Run multi-tenant demo: ./gradlew :demo:runMultiTenant
+tasks.register('runMultiTenant', JavaExec) {
+    mainClass = 'com.example.app.MultiTenantMain'
+    classpath = sourceSets.main.runtimeClasspath
 }

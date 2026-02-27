@@ -147,16 +147,6 @@ public class AppBackendClient extends JdbcBackendClient {
     // ================================================================
 
     @Override
-    public void handleAgentCall(AgentCall call) {
-        log.info("DEMO: Intercepted agent call: agentCallSid={}, callSid={}, userId={}",
-                call.agentCallSid, call.callSid, call.userId);
-
-        // Custom pre-processing here (analytics, validation, etc.)
-
-        super.handleAgentCall(call); // delegate to base class for actual SQL call
-    }
-
-    @Override
     public void handleTelephonyResult(TelephonyResult result) {
         log.info("DEMO: Intercepted telephony result: callSid={}, status={}, result={}",
                 result.callSid, result.status, result.result);

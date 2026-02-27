@@ -75,60 +75,6 @@ public class CustomAgentService extends AgentService {
         }).toList();
     }
 
-    // ================================================================
-    // Overriding Requests — extend the request DTO with custom fields
-    //
-    // Subclass the request DTO and add your own fields (filters, flags,
-    // etc.). Use instanceof to check if the caller constructed the
-    // extended version.
-    //
-    // Note: to actually populate custom request fields, you'd also need
-    // to override the route or add a query param handler.
-    // ================================================================
-
-    // Custom request DTO — adds filter fields
-    public static class CustomListAgentsRequest extends ListAgentsRequest {
-        public boolean includeInactive;
-    }
-
-    // Example usage of the custom request (checked in listAgents above):
-    // if (request instanceof CustomListAgentsRequest custom) {
-    // log.info("Custom flag: includeInactive={}", custom.includeInactive);
-    // }
-
-    // ================================================================
-    // Validation — reject bad requests before delegating
-    //
-    // curl -X POST http://localhost:8080/api/agents \
-    // -H "Content-Type: application/json" \
-    // -d '{"username":"","firstName":"John"}'
-    // -> throws IllegalArgumentException ("Username is required")
-    // ================================================================
-
-    @Override
-    public AgentInfo upsertAgent(UpsertAgentRequest request) {
-        if (request.username == null || request.username.isBlank()) {
-            throw new IllegalArgumentException("Username is required");
-        }
-
-        log.info("CustomAgentService: upserting agent '{}'", request.username);
-        return super.upsertAgent(request);
-    }
-
-    // ================================================================
-    // Audit logging — log sensitive actions for compliance
-    // ================================================================
-
-    @Override
-    public DialResult dial(DialRequest request) {
-        log.info("AUDIT: {} dialing {}", request.partnerAgentId, request.phoneNumber);
-
-        DialResult result = super.dial(request);
-
-        log.info("AUDIT: dial result for {}: callSid={}, status={}",
-                request.partnerAgentId, result.callSid, result.status);
-        return result;
-    }
 
     // ================================================================
     // Restrict behavior — enforce business rules on state transitions

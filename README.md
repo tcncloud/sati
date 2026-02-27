@@ -10,25 +10,25 @@ Your application is a **thin shell**: a small Java project that loads configurat
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                       Your Application (Thin Shell)                   │
-│                                                                       │
-│   Main.java              YourBackendClient.java                       │
-│   - Load config           - JDBC driver / REST client                 │
-│   - Start SatiApp         - SQL statements or API calls               │
-│   - Wire config listener  - Event handlers                            │
-│                                                                       │
+│                       Your Application (Thin Shell)                  │
+│                                                                      │
+│   Main.java              YourBackendClient.java                      │
+│   - Load config           - JDBC driver / REST client                │
+│   - Start SatiApp         - SQL statements or API calls              │
+│   - Wire config listener  - Event handlers                           │
+│                                                                      │
 │ ──────────────────────────────────────────────────────────────────── │
-│                                                                       │
-│   ┌──────────────────────────────────────────────────────────────┐    │
-│   │                        Sati SDK (Library)                     │    │
-│   │                                                               │    │
-│   │  SatiApp Builder     │  Javalin HTTP + Swagger UI             │    │
-│   │  GateClient (gRPC)   │  Admin Dashboard + Health Checks       │    │
-│   │  JobQueueStream      │  HikariCP Connection Pooling           │    │
-│   │  EventStreamClient   │  Dynamic Config from Gate              │    │
-│   └──────────────────────────────────────────────────────────────┘    │
-│                             │                                         │
-└─────────────────────────────┼─────────────────────────────────────────┘
+│                                                                      │
+│   ┌──────────────────────────────────────────────────────────────┐   │
+│   │                        Sati SDK (Library)                    │   │
+│   │                                                              │   │
+│   │  SatiApp Builder     │  Javalin HTTP + Swagger UI            │   │
+│   │  GateClient (gRPC)   │  Admin Dashboard + Health Checks      │   │
+│   │  JobQueueStream      │  HikariCP Connection Pooling          │   │
+│   │  EventStreamClient   │  Dynamic Config from Gate             │   │
+│   └──────────────────────────────────────────────────────────────┘   │
+│                             │                                        │
+└─────────────────────────────┼────────────────────────────────────────┘
                               │  gRPC (mTLS)
                               ▼
                     ┌───────────────────┐
@@ -566,15 +566,15 @@ CMD ["java", "-jar", "app.jar"]
 
 ---
 
-## Reference: Finvi Implementation
+## Reference: Database Implementation
 
-The `finvi_rewrite` project in this repository is a complete, production reference implementation. It consists of just **4 files**:
+The `database_rewrite` project in this repository is a complete, production reference implementation. It consists of just **4 files**:
 
 | File | Purpose |
 |------|---------|
 | `Main.java` | Loads `.cfg`, builds `SatiConfig`, starts `SatiApp`, wires config listener + file watcher |
-| `FinviBackendClient.java` | Extends `JdbcBackendClient` for IRIS/Caché databases — driver config + stored procedure SQL |
-| `FinviTransferService.java` | Custom transfer logic with extended DTOs and queue-level policies |
+| `CustomAppBackendClient.java` | Extends `JdbcBackendClient` for IRIS/Caché databases — driver config + stored procedure SQL |
+| `CustomAppTransferService.java` | Custom transfer logic with extended DTOs and queue-level policies |
 | `ConfigWatcher.java` | Watches the `.cfg` file for certificate rotation and triggers `reconnectGate()` |
 
 Use this as a template when building your own integration.
