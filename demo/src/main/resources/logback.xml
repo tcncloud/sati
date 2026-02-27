@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Logback Configuration for Sati Demo
+    ====================================
+
+    Two appenders are required:
+    1. CONSOLE — standard console output for production logging
+    2. MEMORY  — in-memory ring buffer used by Sati's admin dashboard log viewer
+                 (the "Logs" tab on the dashboard reads from this appender)
+
+    Gate can also dynamically change log levels at runtime via the
+    "setLogLevel" and "logging" job types — no restart needed. Those jobs
+    call Logback's API directly.
+
+    Tuning tips:
+    - Set noisy libraries to WARN to keep logs readable
+    - Set your app package and com.tcn.sati to DEBUG during development
+    - In production, set root to INFO and tune per-package as needed
+-->
+<configuration>
+    <!-- Console Appender — standard output -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- In-Memory Appender — REQUIRED for Sati's admin dashboard log viewer -->
+    <appender name="MEMORY" class="com.tcn.sati.infra.logging.MemoryLogAppender"/>
+
+    <!-- Root Logger — both appenders must be attached -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="MEMORY"/>
+    </root>
+
+    <!-- Reduce noise from framework libraries -->
+    <logger name="io.javalin" level="WARN"/>
+    <logger name="io.grpc" level="WARN"/>
+    <logger name="org.eclipse.jetty" level="WARN"/>
+
+    <!-- Sati core — set to DEBUG during development -->
+    <logger name="com.tcn.sati" level="DEBUG"/>
+
+    <!-- Your app — set to DEBUG during development -->
+    <logger name="com.example.app" level="DEBUG"/>
+</configuration>

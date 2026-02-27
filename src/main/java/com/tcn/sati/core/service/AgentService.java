@@ -1,12 +1,18 @@
 package com.tcn.sati.core.service;
 
+import com.tcn.sati.core.service.dto.AgentDto.AgentInfo;
+import com.tcn.sati.core.service.dto.AgentDto.AgentStateInfo;
+import com.tcn.sati.core.service.dto.AgentDto.CallResponseRequest;
+import com.tcn.sati.core.service.dto.AgentDto.DialRequest;
+import com.tcn.sati.core.service.dto.AgentDto.DialResult;
+import com.tcn.sati.core.service.dto.AgentDto.ListAgentsRequest;
+import com.tcn.sati.core.service.dto.AgentDto.RecordingStatus;
+import com.tcn.sati.core.service.dto.AgentDto.UpsertAgentRequest;
+import com.tcn.sati.core.service.dto.SuccessResult;
 import com.tcn.sati.infra.gate.GateClient;
 
 import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Agent service — contains the business logic for agent operations.
@@ -23,13 +29,13 @@ public class AgentService {
 
     // ========== Business Logic (override these) ==========
 
-    public List<Map<String, Object>> listAgents(Boolean loggedIn, String state) {
+    public List<AgentInfo> listAgents(ListAgentsRequest request) {
         var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.ListAgentsRequest.newBuilder();
-        if (loggedIn != null) {
-            reqBuilder.setLoggedIn(loggedIn);
+        if (request.loggedIn != null) {
+            reqBuilder.setLoggedIn(request.loggedIn);
         }
-        if (state != null && !state.isBlank()) {
-            String normalized = state.trim().toUpperCase();
+        if (request.state != null && !request.state.isBlank()) {
+            String normalized = request.state.trim().toUpperCase();
             if (!normalized.startsWith("AGENT_STATE_")) {
                 normalized = "AGENT_STATE_" + normalized;
             }
@@ -37,54 +43,53 @@ public class AgentService {
         }
 
         var results = gate.listAgents(reqBuilder.build());
-        List<Map<String, Object>> agents = new ArrayList<>();
+        List<AgentInfo> agents = new ArrayList<>();
         while (results.hasNext()) {
             var resp = results.next();
             var a = resp.getAgent();
-            agents.add(agentToMap(a));
+            agents.add(toAgentInfo(a));
         }
         return agents;
     }
 
-    public Map<String, Object> upsertAgent(String username, String firstName, String lastName,
-            String partnerAgentId, String password) {
+    public AgentInfo upsertAgent(UpsertAgentRequest request) {
         var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.UpsertAgentRequest.newBuilder()
-                .setUsername(username);
-        if (firstName != null)
-            reqBuilder.setFirstName(firstName);
-        if (lastName != null)
-            reqBuilder.setLastName(lastName);
-        if (partnerAgentId != null)
-            reqBuilder.setPartnerAgentId(partnerAgentId);
-        if (password != null)
-            reqBuilder.setPassword(password);
+                .setUsername(request.username);
+        if (request.firstName != null)
+            reqBuilder.setFirstName(request.firstName);
+        if (request.lastName != null)
+            reqBuilder.setLastName(request.lastName);
+        if (request.partnerAgentId != null)
+            reqBuilder.setPartnerAgentId(request.partnerAgentId);
+        if (request.password != null)
+            reqBuilder.setPassword(request.password);
 
         var resp = gate.upsertAgent(reqBuilder.build());
-        return agentToMap(resp.getAgent());
+        return toAgentInfo(resp.getAgent());
     }
 
-    public Map<String, Object> getAgentState(String agentId) {
+    public AgentStateInfo getAgentState(String agentId) {
         var resp = gate.getAgentStatus(
                 build.buf.gen.tcnapi.exile.gate.v2.GetAgentStatusRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
 
-        var result = new LinkedHashMap<String, Object>();
-        result.put("partnerAgentId", resp.getPartnerAgentId());
-        result.put("agentState", resp.getAgentState().name().replace("AGENT_STATE_", ""));
-        result.put("currentSessionId", resp.getCurrentSessionId());
-        result.put("agentIsMuted", resp.getAgentIsMuted());
+        var result = new AgentStateInfo();
+        result.partnerAgentId = resp.getPartnerAgentId();
+        result.agentState = resp.getAgentState().name().replace("AGENT_STATE_", "");
+        result.currentSessionId = resp.getCurrentSessionId();
+        result.agentIsMuted = resp.getAgentIsMuted();
         if (resp.hasConnectedParty()) {
             var cp = resp.getConnectedParty();
-            var cpMap = new HashMap<String, Object>();
-            cpMap.put("callSid", cp.getCallSid());
-            cpMap.put("callType", cp.getCallType().name().replace("CALL_TYPE_", "").toLowerCase());
-            cpMap.put("isInbound", cp.getIsInbound());
-            result.put("connectedParty", cpMap);
+            var cpDto = new AgentStateInfo.ConnectedParty();
+            cpDto.callSid = cp.getCallSid();
+            cpDto.callType = cp.getCallType().name().replace("CALL_TYPE_", "").toLowerCase();
+            cpDto.isInbound = cp.getIsInbound();
+            result.connectedParty = cpDto;
         }
         return result;
     }
 
-    public Map<String, Object> updateAgentState(String agentId, String state, String reason) {
+    public SuccessResult updateAgentState(String agentId, String state, String reason) {
         String normalized = state.startsWith("AGENT_STATE_") ? state : "AGENT_STATE_" + state;
         var agentState = build.buf.gen.tcnapi.exile.gate.v2.AgentState.valueOf(normalized);
 
@@ -95,61 +100,59 @@ public class AgentService {
             reqBuilder.setReason(reason);
 
         gate.updateAgentStatus(reqBuilder.build());
-        return Map.of("success", true);
+        return new SuccessResult();
     }
 
-    public Map<String, Object> dial(String agentId, String phoneNumber, String callerId,
-            String poolId, String recordId, String rulesetName,
-            Boolean skipComplianceChecks, Boolean recordCall) {
+    public DialResult dial(DialRequest request) {
         var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.DialRequest.newBuilder()
-                .setPartnerAgentId(agentId)
-                .setPhoneNumber(phoneNumber);
-        if (callerId != null)
-            reqBuilder.setCallerId(com.google.protobuf.StringValue.of(callerId));
-        if (poolId != null)
-            reqBuilder.setPoolId(com.google.protobuf.StringValue.of(poolId));
-        if (recordId != null)
-            reqBuilder.setRecordId(com.google.protobuf.StringValue.of(recordId));
-        if (rulesetName != null)
-            reqBuilder.setRulesetName(com.google.protobuf.StringValue.of(rulesetName));
-        if (skipComplianceChecks != null)
-            reqBuilder.setSkipComplianceChecks(skipComplianceChecks);
-        if (recordCall != null)
-            reqBuilder.setRecordCall(com.google.protobuf.BoolValue.of(recordCall));
+                .setPartnerAgentId(request.partnerAgentId)
+                .setPhoneNumber(request.phoneNumber);
+        if (request.callerId != null)
+            reqBuilder.setCallerId(com.google.protobuf.StringValue.of(request.callerId));
+        if (request.poolId != null)
+            reqBuilder.setPoolId(com.google.protobuf.StringValue.of(request.poolId));
+        if (request.recordId != null)
+            reqBuilder.setRecordId(com.google.protobuf.StringValue.of(request.recordId));
+        if (request.rulesetName != null)
+            reqBuilder.setRulesetName(com.google.protobuf.StringValue.of(request.rulesetName));
+        if (request.skipComplianceChecks != null)
+            reqBuilder.setSkipComplianceChecks(request.skipComplianceChecks);
+        if (request.recordCall != null)
+            reqBuilder.setRecordCall(com.google.protobuf.BoolValue.of(request.recordCall));
 
         var resp = gate.dial(reqBuilder.build());
-        var result = new HashMap<String, Object>();
-        result.put("phoneNumber", resp.getPhoneNumber());
-        result.put("callerId", resp.getCallerId());
-        result.put("callSid", resp.getCallSid());
-        result.put("callType", resp.getCallType().name().replace("CALL_TYPE_", "").toLowerCase());
-        result.put("orgId", resp.getOrgId());
-        result.put("partnerAgentId", resp.getPartnerAgentId());
-        result.put("attempted", resp.getAttempted());
-        result.put("status", resp.getStatus());
-        result.put("callerSid", resp.getCallerSid());
+        var result = new DialResult();
+        result.phoneNumber = resp.getPhoneNumber();
+        result.callerId = resp.getCallerId();
+        result.callSid = resp.getCallSid();
+        result.callType = resp.getCallType().name().replace("CALL_TYPE_", "").toLowerCase();
+        result.orgId = resp.getOrgId();
+        result.partnerAgentId = resp.getPartnerAgentId();
+        result.attempted = resp.getAttempted();
+        result.status = resp.getStatus();
+        result.callerSid = resp.getCallerSid();
         return result;
     }
 
-    public Map<String, Object> getRecordingStatus(String agentId) {
+    public RecordingStatus getRecordingStatus(String agentId) {
         var resp = gate.getRecordingStatus(
                 build.buf.gen.tcnapi.exile.gate.v2.GetRecordingStatusRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
-        return Map.of("isRecording", resp.getIsRecording());
+        return new RecordingStatus(resp.getIsRecording());
     }
 
-    public Map<String, Object> startRecording(String agentId) {
+    public RecordingStatus startRecording(String agentId) {
         gate.startCallRecording(
                 build.buf.gen.tcnapi.exile.gate.v2.StartCallRecordingRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
-        return Map.of("isRecording", true);
+        return new RecordingStatus(true);
     }
 
-    public Map<String, Object> stopRecording(String agentId) {
+    public RecordingStatus stopRecording(String agentId) {
         gate.stopCallRecording(
                 build.buf.gen.tcnapi.exile.gate.v2.StopCallRecordingRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
-        return Map.of("isRecording", false);
+        return new RecordingStatus(false);
     }
 
     public Object listPauseCodes(String agentId) {
@@ -159,61 +162,60 @@ public class AgentService {
         return resp.getPauseCodesList();
     }
 
-    public Map<String, Object> simpleHold(String agentId) {
+    public SuccessResult simpleHold(String agentId) {
         gate.putCallOnSimpleHold(
                 build.buf.gen.tcnapi.exile.gate.v2.PutCallOnSimpleHoldRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
-        return Map.of("success", true);
+        return new SuccessResult();
     }
 
-    public Map<String, Object> simpleUnhold(String agentId) {
+    public SuccessResult simpleUnhold(String agentId) {
         gate.takeCallOffSimpleHold(
                 build.buf.gen.tcnapi.exile.gate.v2.TakeCallOffSimpleHoldRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
-        return Map.of("success", true);
+        return new SuccessResult();
     }
 
-    public Map<String, Object> mute(String agentId) {
+    public SuccessResult mute(String agentId) {
         gate.muteAgent(
                 build.buf.gen.tcnapi.exile.gate.v2.MuteAgentRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
-        return Map.of("success", true);
+        return new SuccessResult();
     }
 
-    public Map<String, Object> unmute(String agentId) {
+    public SuccessResult unmute(String agentId) {
         gate.unmuteAgent(
                 build.buf.gen.tcnapi.exile.gate.v2.UnmuteAgentRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
-        return Map.of("success", true);
+        return new SuccessResult();
     }
 
-    public Map<String, Object> addCallResponse(String agentId, String callSid,
-            Long currentSessionId, String key, String value) {
+    public SuccessResult addCallResponse(CallResponseRequest request) {
         var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.AddAgentCallResponseRequest.newBuilder()
-                .setPartnerAgentId(agentId)
-                .setCallSid(callSid)
-                .setKey(key)
-                .setValue(value);
-        if (currentSessionId != null)
-            reqBuilder.setCurrentSessionId(currentSessionId);
+                .setPartnerAgentId(request.partnerAgentId)
+                .setCallSid(request.callSid)
+                .setKey(request.key)
+                .setValue(request.value);
+        if (request.currentSessionId != null)
+            reqBuilder.setCurrentSessionId(request.currentSessionId);
 
         gate.addAgentCallResponse(reqBuilder.build());
-        return Map.of("success", true);
+        return new SuccessResult();
     }
 
     // ========== Helpers ==========
 
-    protected Map<String, Object> agentToMap(build.buf.gen.tcnapi.exile.gate.v2.Agent a) {
-        var map = new HashMap<String, Object>();
-        map.put("userId", a.getUserId());
-        map.put("orgId", a.getOrgId());
-        map.put("partnerAgentId", a.getPartnerAgentId());
-        map.put("username", a.getUsername());
-        map.put("firstName", a.getFirstName());
-        map.put("lastName", a.getLastName());
-        map.put("currentSessionId", a.getCurrentSessionId());
-        map.put("agentState", a.getAgentState().name().replace("AGENT_STATE_", ""));
-        map.put("isLoggedIn", a.getIsLoggedIn());
-        return map;
+    protected AgentInfo toAgentInfo(build.buf.gen.tcnapi.exile.gate.v2.Agent a) {
+        var info = new AgentInfo();
+        info.userId = a.getUserId();
+        info.orgId = a.getOrgId();
+        info.partnerAgentId = a.getPartnerAgentId();
+        info.username = a.getUsername();
+        info.firstName = a.getFirstName();
+        info.lastName = a.getLastName();
+        info.currentSessionId = a.getCurrentSessionId();
+        info.agentState = a.getAgentState().name().replace("AGENT_STATE_", "");
+        info.isLoggedIn = a.getIsLoggedIn();
+        return info;
     }
 }

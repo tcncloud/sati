@@ -21,21 +21,21 @@ import java.util.function.Supplier;
  * Unified entry point for Sati applications.
  * 
  * Supports two modes:
- * - SINGLE_TENANT: For Finvi-style deployments (one customer per instance)
- * - MULTI_TENANT: For Velosidy-style deployments (shared service, multiple
+ * - SINGLE_TENANT: For database-style deployments (one customer per instance)
+ * - MULTI_TENANT: For api-style deployments (shared service, multiple
  * customers)
  * 
- * Usage (Single-Tenant - Finvi):
+ * Usage (Single-Tenant - database):
  * 
  * <pre>
  * SatiApp.builder()
  *         .config(myConfig)
  *         .backendType(BackendType.JDBC)
- *         .appName("Finvi API")
+ *         .appName("APP")
  *         .start(8080);
  * </pre>
  * 
- * Usage (Multi-Tenant - Velosidy):
+ * Usage (Multi-Tenant - api):
  * 
  * <pre>
  * SatiApp.builder()
@@ -43,7 +43,7 @@ import java.util.function.Supplier;
  *         .multiTenant(true)
  *         .tenantDiscovery(() -> fetchTenantsFromExternalService())
  *         .discoveryIntervalSeconds(30)
- *         .appName("Velosidy API")
+ *         .appName("API")
  *         .start(8080);
  * </pre>
  */
@@ -59,7 +59,7 @@ public class SatiApp {
     private final Supplier<List<TenantManager.TenantConfig>> tenantDiscovery;
     private final long discoveryIntervalSeconds;
 
-    // Optional service override factories (finvi can provide custom constructors)
+    // Optional service override factories (can provide custom constructors)
     private final java.util.function.Function<com.tcn.sati.infra.gate.GateClient, TransferService> transferServiceFactory;
     private final java.util.function.Function<com.tcn.sati.infra.gate.GateClient, AgentService> agentServiceFactory;
     private final java.util.function.Function<com.tcn.sati.infra.gate.GateClient, ScrubListService> scrubListServiceFactory;
@@ -138,6 +138,45 @@ public class SatiApp {
             registerSingleTenantRoutes();
         }
 
+        // Filter swagger docs to only show routes for the current mode
+        final boolean isMultiTenant = multiTenant;
+        app.after("/swagger-docs*", ctx -> {
+            if (!"application/json".equals(ctx.res().getContentType())
+                    && !"application/json;charset=utf-8".equalsIgnoreCase(ctx.res().getContentType())) {
+                return;
+            }
+            String body = ctx.result();
+            if (body == null || body.isEmpty())
+                return;
+            try {
+                var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+                var root = mapper.readTree(body);
+                var paths = (com.fasterxml.jackson.databind.node.ObjectNode) root.get("paths");
+                if (paths == null)
+                    return;
+                var toRemove = new java.util.ArrayList<String>();
+                paths.fieldNames().forEachRemaining(path -> {
+                    if (isMultiTenant) {
+                        // In multi-tenant mode, remove flat /api/* routes (keep /api/orgs/* and
+                        // /api/admin/*)
+                        if (!path.startsWith("/api/orgs") && !path.startsWith("/api/admin")) {
+                            toRemove.add(path);
+                        }
+                    } else {
+                        // In single-tenant mode, remove /api/orgs/* routes
+                        if (path.startsWith("/api/orgs")) {
+                            toRemove.add(path);
+                        }
+                    }
+                });
+                toRemove.forEach(paths::remove);
+                ctx.result(mapper.writeValueAsString(root));
+            } catch (Exception e) {
+                // If filtering fails, just serve the original spec
+                log.debug("Failed to filter OpenAPI spec", e);
+            }
+        });
+
         // Shutdown hook
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             log.info("Shutting down {}...", appName);
@@ -172,9 +211,11 @@ public class SatiApp {
         // Use custom backend if provided, otherwise TenantContext creates one via
         // factory
         if (customBackendClient != null) {
-            singleTenantContext = new TenantContext(tenantKey, config, customBackendClient);
+            singleTenantContext = new TenantContext(tenantKey, config, null,
+                    customBackendClient, appName, appVersion);
         } else {
-            singleTenantContext = new TenantContext(tenantKey, config, backendType);
+            singleTenantContext = new TenantContext(tenantKey, config, backendType,
+                    null, appName, appVersion);
         }
         singleTenantContext.start();
 
@@ -230,37 +271,7 @@ public class SatiApp {
     }
 
     private void registerMultiTenantRoutes() {
-        // Tenant list endpoint
-        app.get("/api/tenants", ctx -> {
-            ctx.json(tenantManager.getAllStatus());
-        });
-
-        // Per-tenant status endpoint
-        app.get("/api/tenants/{tenantKey}/status", ctx -> {
-            String tenantKey = ctx.pathParam("tenantKey");
-            TenantContext tenant = tenantManager.getTenant(tenantKey);
-            if (tenant == null) {
-                ctx.status(404).json(java.util.Map.of("error", "Tenant not found: " + tenantKey));
-            } else {
-                ctx.json(tenant.getStatus());
-            }
-        });
-
-        // Per-tenant pool listing
-        app.get("/api/tenants/{tenantKey}/pools", ctx -> {
-            String tenantKey = ctx.pathParam("tenantKey");
-            TenantContext tenant = tenantManager.getTenantOrThrow(tenantKey);
-            ctx.json(tenant.getBackendClient().listPools());
-        });
-
-        // Per-tenant pool records
-        app.get("/api/tenants/{tenantKey}/pools/{poolId}/records", ctx -> {
-            String tenantKey = ctx.pathParam("tenantKey");
-            String poolId = ctx.pathParam("poolId");
-            TenantContext tenant = tenantManager.getTenantOrThrow(tenantKey);
-            int page = ctx.queryParamAsClass("page", Integer.class).getOrDefault(0);
-            ctx.json(tenant.getBackendClient().getPoolRecords(poolId, page));
-        });
+        OrgRoutes.register(app, tenantManager);
     }
 
     // ========== Getters ==========
@@ -331,7 +342,7 @@ public class SatiApp {
         /**
          * Set a custom backend client (skips factory creation).
          * Use this to inject tenant-specific implementations (e.g.,
-         * FinviBackendClient).
+         * CustomAppBackendClient).
          */
         public Builder backendClient(TenantBackendClient client) {
             this.customBackendClient = client;

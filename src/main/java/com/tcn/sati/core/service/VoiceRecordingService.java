@@ -1,5 +1,11 @@
 package com.tcn.sati.core.service;
 
+import com.tcn.sati.core.service.dto.SuccessResult;
+import com.tcn.sati.core.service.dto.VoiceRecordingDto.CreateLabelRequest;
+import com.tcn.sati.core.service.dto.VoiceRecordingDto.DownloadLink;
+import com.tcn.sati.core.service.dto.VoiceRecordingDto.DownloadLinkRequest;
+import com.tcn.sati.core.service.dto.VoiceRecordingDto.RecordingInfo;
+import com.tcn.sati.core.service.dto.VoiceRecordingDto.SearchRecordingsRequest;
 import com.tcn.sati.infra.gate.GateClient;
 
 import build.buf.gen.tcnapi.exile.gate.v2.SearchOption;
@@ -7,9 +13,7 @@ import build.buf.gen.tcnapi.exile.gate.v2.Operator;
 import build.buf.gen.tcnapi.exile.gate.v2.Recording;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * Voice recording service. Subclass to override behavior.
@@ -21,9 +25,9 @@ public class VoiceRecordingService {
         this.gate = gate;
     }
 
-    public List<Map<String, Object>> search(List<String> searchOptions) {
+    public List<RecordingInfo> search(SearchRecordingsRequest request) {
         var searchOptionsList = new ArrayList<SearchOption>();
-        for (String option : searchOptions) {
+        for (String option : request.searchOptions) {
             String[] parts = option.split(",", 3);
             if (parts.length != 3)
                 continue;
@@ -43,35 +47,35 @@ public class VoiceRecordingService {
                 .addAllSearchOptions(searchOptionsList).build();
 
         var resIterator = gate.searchVoiceRecordings(req);
-        var recordings = new ArrayList<Map<String, Object>>();
+        var recordings = new ArrayList<RecordingInfo>();
         while (resIterator.hasNext()) {
             var response = resIterator.next();
             for (Recording r : response.getRecordingsList()) {
-                var rec = new HashMap<String, Object>();
-                rec.put("recordingId", r.getRecordingId());
-                rec.put("callSid", r.getCallSid());
-                rec.put("callType", r.getCallType().name()
-                        .replace("CALL_TYPE_", "").toLowerCase());
-                rec.put("startTime", r.hasStartTime()
+                var rec = new RecordingInfo();
+                rec.recordingId = r.getRecordingId();
+                rec.callSid = r.getCallSid();
+                rec.callType = r.getCallType().name()
+                        .replace("CALL_TYPE_", "").toLowerCase();
+                rec.startTime = r.hasStartTime()
                         ? java.time.Instant.ofEpochSecond(
                                 r.getStartTime().getSeconds(),
                                 r.getStartTime().getNanos()).toString()
-                        : null);
-                rec.put("startOffset", r.hasStartOffset()
+                        : null;
+                rec.startOffset = r.hasStartOffset()
                         ? formatDurationSeconds(r.getStartOffset())
-                        : null);
-                rec.put("endOffset", r.hasEndOffset()
+                        : null;
+                rec.endOffset = r.hasEndOffset()
                         ? formatDurationSeconds(r.getEndOffset())
-                        : null);
-                rec.put("duration", r.hasDuration()
+                        : null;
+                rec.duration = r.hasDuration()
                         ? formatDurationSeconds(r.getDuration())
-                        : null);
-                rec.put("agentPhone", r.getAgentPhone());
-                rec.put("clientPhone", r.getClientPhone());
-                rec.put("campaign", emptyToNull(r.getCampaign()));
-                rec.put("partnerAgentIds", r.getPartnerAgentIdsList());
-                rec.put("label", emptyToNull(r.getLabel()));
-                rec.put("value", emptyToNull(r.getValue()));
+                        : null;
+                rec.agentPhone = r.getAgentPhone();
+                rec.clientPhone = r.getClientPhone();
+                rec.campaign = emptyToNull(r.getCampaign());
+                rec.partnerAgentIds = r.getPartnerAgentIdsList();
+                rec.label = emptyToNull(r.getLabel());
+                rec.value = emptyToNull(r.getValue());
                 recordings.add(rec);
             }
         }
@@ -84,30 +88,26 @@ public class VoiceRecordingService {
         int nanos = d.getNanos();
         if (nanos == 0)
             return String.valueOf(seconds);
-        // Convert nanos to fractional seconds, trim trailing zeros
         String frac = String.format("%09d", nanos).replaceAll("0+$", "");
         return seconds + "." + frac;
     }
 
-    /**
-     * Returns null for empty strings so the JSON field shows as null instead of "".
-     */
     private static String emptyToNull(String s) {
         return (s == null || s.isEmpty()) ? null : s;
     }
 
-    public Map<String, Object> getDownloadLink(String recordingId, String startOffset, String endOffset) {
+    public DownloadLink getDownloadLink(DownloadLinkRequest request) {
         var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.GetVoiceRecordingDownloadLinkRequest.newBuilder()
-                .setRecordingId(recordingId);
-        if (startOffset != null && !startOffset.isBlank())
-            reqBuilder.setStartOffset(parseDuration(startOffset));
-        if (endOffset != null && !endOffset.isBlank())
-            reqBuilder.setEndOffset(parseDuration(endOffset));
+                .setRecordingId(request.recordingId);
+        if (request.startOffset != null && !request.startOffset.isBlank())
+            reqBuilder.setStartOffset(parseDuration(request.startOffset));
+        if (request.endOffset != null && !request.endOffset.isBlank())
+            reqBuilder.setEndOffset(parseDuration(request.endOffset));
 
         var resp = gate.getVoiceRecordingDownloadLink(reqBuilder.build());
-        var result = new HashMap<String, Object>();
-        result.put("downloadLink", resp.getDownloadLink());
-        result.put("playbackLink", emptyToNull(resp.getPlaybackLink()));
+        var result = new DownloadLink();
+        result.downloadLink = resp.getDownloadLink();
+        result.playbackLink = emptyToNull(resp.getPlaybackLink());
         return result;
     }
 
@@ -117,13 +117,13 @@ public class VoiceRecordingService {
         return resp.getFieldsList();
     }
 
-    public Map<String, Object> createLabel(long callSid, String callType, String key, String value) {
+    public SuccessResult createLabel(CreateLabelRequest request) {
         var builder = build.buf.gen.tcnapi.exile.gate.v2.CreateRecordingLabelRequest.newBuilder()
-                .setCallSid(callSid)
-                .setKey(key)
-                .setValue(value);
+                .setCallSid(request.callSid)
+                .setKey(request.key)
+                .setValue(request.value);
         gate.createRecordingLabel(builder.build());
-        return Map.of("success", true);
+        return new SuccessResult();
     }
 
     protected com.google.protobuf.Duration parseDuration(String durationStr) {

@@ -9,11 +9,13 @@ import build.buf.gen.tcnapi.exile.gate.v2.SubmitJobResultsRequest;
 import com.tcn.sati.infra.backend.TenantBackendClient;
 import com.tcn.sati.infra.backend.TenantBackendClient.*;
 import com.tcn.sati.infra.gate.GateClient;
+import com.tcn.sati.infra.logging.MemoryLogAppender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.InetAddress;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
@@ -34,6 +36,8 @@ public class JobProcessor implements AutoCloseable {
     private final GateClient gateClient;
     private final ThreadPoolExecutor executor;
     private final BlockingQueue<Runnable> jobQueue;
+    private final String appName;
+    private final String appVersion;
 
     private final AtomicLong processedJobs = new AtomicLong(0);
     private final AtomicLong failedJobs = new AtomicLong(0);
@@ -41,12 +45,15 @@ public class JobProcessor implements AutoCloseable {
     private volatile boolean shuttingDown = false;
 
     public JobProcessor(TenantBackendClient backendClient, GateClient gateClient) {
-        this(backendClient, gateClient, 5); // Default 5 worker threads
+        this(backendClient, gateClient, 5, null, null);
     }
 
-    public JobProcessor(TenantBackendClient backendClient, GateClient gateClient, int maxWorkers) {
+    public JobProcessor(TenantBackendClient backendClient, GateClient gateClient,
+            int maxWorkers, String appName, String appVersion) {
         this.backendClient = backendClient;
         this.gateClient = gateClient;
+        this.appName = appName != null ? appName : "Sati";
+        this.appVersion = appVersion != null ? appVersion : "dev";
         this.jobQueue = new LinkedBlockingQueue<>(1000); // Bounded queue
         this.executor = new ThreadPoolExecutor(
                 2, // core threads
@@ -128,6 +135,15 @@ public class JobProcessor implements AutoCloseable {
             } else if (job.hasExecuteLogic()) {
                 handleExecuteLogic(jobId, job.getExecuteLogic());
 
+            } else if (job.hasListTenantLogs()) {
+                handleListTenantLogs(jobId);
+
+            } else if (job.hasSetLogLevel()) {
+                handleSetLogLevel(jobId, job.getSetLogLevel());
+
+            } else if (job.hasLogging()) {
+                handleLogging(jobId, job.getLogging());
+
             } else {
                 log.warn("Unknown job type for job: {}", jobId);
                 submitError(jobId, "Unknown job type");
@@ -156,8 +172,8 @@ public class JobProcessor implements AutoCloseable {
         for (var pool : pools) {
             resultBuilder.addPools(
                     Pool.newBuilder()
-                            .setPoolId(pool.id())
-                            .setDescription(pool.name())
+                            .setPoolId(pool.id)
+                            .setDescription(pool.name)
                             .build());
         }
 
@@ -182,7 +198,7 @@ public class JobProcessor implements AutoCloseable {
                         SubmitJobResultsRequest.GetPoolStatusResult.newBuilder()
                                 .setPool(Pool.newBuilder()
                                         .setPoolId(poolId)
-                                        .setRecordCount(status.totalRecords())
+                                        .setRecordCount(status.totalRecords)
                                         .build())
                                 .build())
                 .build();
@@ -198,7 +214,7 @@ public class JobProcessor implements AutoCloseable {
         for (var rec : records) {
             resultBuilder.addRecords(
                     Record.newBuilder()
-                            .setRecordId(rec.recordId())
+                            .setRecordId(rec.recordId)
                             .build());
         }
 
@@ -219,15 +235,20 @@ public class JobProcessor implements AutoCloseable {
             serverName = "unknown";
         }
 
+        // Read Sati SDK version from JAR manifest, fall back to "dev"
+        String satiVersion = JobProcessor.class.getPackage().getImplementationVersion();
+        if (satiVersion == null)
+            satiVersion = "dev";
+
         var request = SubmitJobResultsRequest.newBuilder()
                 .setJobId(jobId)
                 .setEndOfTransmission(true)
                 .setInfoResult(
                         SubmitJobResultsRequest.InfoResult.newBuilder()
                                 .setServerName(serverName)
-                                .setCoreVersion("sati-rewrite-1.0")
-                                .setPluginName("Sati Rewrite")
-                                .setPluginVersion("1.0.0")
+                                .setCoreVersion("sati-" + satiVersion)
+                                .setPluginName(appName)
+                                .setPluginVersion(appVersion)
                                 .build())
                 .build();
 
@@ -235,14 +256,39 @@ public class JobProcessor implements AutoCloseable {
     }
 
     private void handleDiagnostics(String jobId) throws Exception {
-        // DiagnosticsResult is built by a separate DiagnosticsService in the old code
-        // For now, just return an empty result to acknowledge
+        Runtime rt = Runtime.getRuntime();
+        String serverName;
+        try {
+            serverName = InetAddress.getLocalHost().getHostName();
+        } catch (Exception e) {
+            serverName = "unknown";
+        }
+
+        var diagnosticsBuilder = SubmitJobResultsRequest.DiagnosticsResult.newBuilder()
+                .setHostname(serverName)
+                .setOperatingSystem(
+                        SubmitJobResultsRequest.DiagnosticsResult.OperatingSystem.newBuilder()
+                                .setName(System.getProperty("os.name", "unknown"))
+                                .setVersion(System.getProperty("os.version", "unknown"))
+                                .setArchitecture(System.getProperty("os.arch", "unknown"))
+                                .setAvailableProcessors(rt.availableProcessors())
+                                .build())
+                .setJavaRuntime(
+                        SubmitJobResultsRequest.DiagnosticsResult.JavaRuntime.newBuilder()
+                                .setVersion(System.getProperty("java.version", "unknown"))
+                                .setVendor(System.getProperty("java.vendor", "unknown"))
+                                .build())
+                .setMemory(
+                        SubmitJobResultsRequest.DiagnosticsResult.Memory.newBuilder()
+                                .setHeapMemoryUsed(rt.totalMemory() - rt.freeMemory())
+                                .setHeapMemoryMax(rt.maxMemory())
+                                .setHeapMemoryCommitted(rt.totalMemory())
+                                .build());
+
         var request = SubmitJobResultsRequest.newBuilder()
                 .setJobId(jobId)
                 .setEndOfTransmission(true)
-                .setDiagnosticsResult(
-                        SubmitJobResultsRequest.DiagnosticsResult.newBuilder()
-                                .build())
+                .setDiagnosticsResult(diagnosticsBuilder.build())
                 .build();
 
         submitResult(request);
@@ -310,8 +356,8 @@ public class JobProcessor implements AutoCloseable {
                     .setEndOfTransmission(false)
                     .setSearchRecordResult(SubmitJobResultsRequest.SearchRecordResult.newBuilder()
                             .addRecords(Record.newBuilder()
-                                    .setRecordId(result.recordId())
-                                    .setPoolId(result.poolId())
+                                    .setRecordId(result.recordId)
+                                    .setPoolId(result.poolId)
                                     .build())
                             .build())
                     .build());
@@ -338,10 +384,10 @@ public class JobProcessor implements AutoCloseable {
         var resultBuilder = SubmitJobResultsRequest.GetRecordFieldsResult.newBuilder();
         for (var field : fields) {
             resultBuilder.addFields(Field.newBuilder()
-                    .setRecordId(field.recordId())
-                    .setPoolId(field.poolId())
-                    .setFieldName(field.fieldName())
-                    .setFieldValue(field.fieldValue())
+                    .setRecordId(field.recordId)
+                    .setPoolId(field.poolId)
+                    .setFieldName(field.fieldName)
+                    .setFieldValue(field.fieldValue)
                     .build());
         }
 
@@ -399,6 +445,68 @@ public class JobProcessor implements AutoCloseable {
                 .setExecuteLogicResult(SubmitJobResultsRequest.ExecuteLogicResult.newBuilder()
                         .setResult(result)
                         .build())
+                .build());
+    }
+
+    // ========== Tenant Log/Level Handlers ==========
+
+    private void handleListTenantLogs(String jobId) {
+        List<String> logs = MemoryLogAppender.getRecentLogs(200);
+
+        var logGroup = SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.newBuilder()
+                .setName("application")
+                .addAllLogs(logs)
+                .build();
+
+        submitResult(SubmitJobResultsRequest.newBuilder()
+                .setJobId(jobId)
+                .setEndOfTransmission(true)
+                .setListTenantLogsResult(SubmitJobResultsRequest.ListTenantLogsResult.newBuilder()
+                        .addLogGroups(logGroup)
+                        .build())
+                .build());
+    }
+
+    private void handleSetLogLevel(String jobId, StreamJobsResponse.SetLogLevelRequest req) {
+        String level = req.getLogLevel().name();
+        log.info("Setting log level to: {}", level);
+
+        try {
+            ch.qos.logback.classic.Logger rootLogger = (ch.qos.logback.classic.Logger) LoggerFactory
+                    .getLogger(Logger.ROOT_LOGGER_NAME);
+            rootLogger.setLevel(ch.qos.logback.classic.Level.toLevel(level, ch.qos.logback.classic.Level.INFO));
+            log.info("Log level set to: {}", rootLogger.getLevel());
+        } catch (Exception e) {
+            log.warn("Failed to set log level: {}", e.getMessage());
+        }
+
+        submitResult(SubmitJobResultsRequest.newBuilder()
+                .setJobId(jobId)
+                .setEndOfTransmission(true)
+                .setSetLogLevelResult(SubmitJobResultsRequest.SetLogLevelResult.newBuilder().build())
+                .build());
+    }
+
+    private void handleLogging(String jobId, StreamJobsResponse.LoggingRequest req) {
+        // Legacy logging job — applies per-logger level settings
+        for (var loggerLevel : req.getLoggerLevelsList()) {
+            String loggerName = loggerLevel.getLoggerName();
+            String level = loggerLevel.getLoggerLevel().name();
+            log.info("Logging request: setting {} to level {}", loggerName, level);
+
+            try {
+                ch.qos.logback.classic.Logger logger = (ch.qos.logback.classic.Logger) LoggerFactory
+                        .getLogger(loggerName.isEmpty() ? Logger.ROOT_LOGGER_NAME : loggerName);
+                logger.setLevel(ch.qos.logback.classic.Level.toLevel(level, ch.qos.logback.classic.Level.INFO));
+            } catch (Exception e) {
+                log.warn("Failed to set log level for {}: {}", loggerName, e.getMessage());
+            }
+        }
+
+        submitResult(SubmitJobResultsRequest.newBuilder()
+                .setJobId(jobId)
+                .setEndOfTransmission(true)
+                .setLoggingResult(SubmitJobResultsRequest.LoggingResult.newBuilder().build())
                 .build());
     }
 

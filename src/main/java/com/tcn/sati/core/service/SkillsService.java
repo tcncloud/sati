@@ -1,9 +1,12 @@
 package com.tcn.sati.core.service;
 
+import com.tcn.sati.core.service.dto.SkillDto.AssignSkillRequest;
+import com.tcn.sati.core.service.dto.SkillDto.SkillInfo;
+import com.tcn.sati.core.service.dto.SkillDto.UnassignSkillRequest;
+import com.tcn.sati.core.service.dto.SuccessResult;
 import com.tcn.sati.infra.gate.GateClient;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 import java.util.stream.Collectors;
 
 /**
@@ -16,53 +19,48 @@ public class SkillsService {
                 this.gate = gate;
         }
 
-        public Object listSkills() {
+        public List<SkillInfo> listSkills() {
                 var resp = gate.listSkills(
                                 build.buf.gen.tcnapi.exile.gate.v2.ListSkillsRequest.newBuilder().build());
                 return resp.getSkillsList().stream()
-                                .map(s -> {
-                                        var map = new HashMap<String, Object>();
-                                        map.put("skillId", s.getSkillId());
-                                        map.put("name", s.getName());
-                                        map.put("description", s.getDescription());
-                                        map.put("proficiency", s.getProficiency());
-                                        return (Map<String, Object>) map;
-                                })
+                                .map(this::toSkillInfo)
                                 .collect(Collectors.toList());
         }
 
-        public Object listAgentSkills(String agentId) {
+        public List<SkillInfo> listAgentSkills(String agentId) {
                 var resp = gate.listAgentSkills(
                                 build.buf.gen.tcnapi.exile.gate.v2.ListAgentSkillsRequest.newBuilder()
                                                 .setPartnerAgentId(agentId).build());
                 return resp.getSkillsList().stream()
-                                .map(s -> {
-                                        var map = new HashMap<String, Object>();
-                                        map.put("skillId", s.getSkillId());
-                                        map.put("name", s.getName());
-                                        map.put("description", s.getDescription());
-                                        map.put("proficiency", s.getProficiency());
-                                        return (Map<String, Object>) map;
-                                })
+                                .map(this::toSkillInfo)
                                 .collect(Collectors.toList());
         }
 
-        public Map<String, Object> assignSkill(String agentId, String skillId, int proficiency) {
+        public SuccessResult assignSkill(AssignSkillRequest request) {
                 gate.assignAgentSkill(
                                 build.buf.gen.tcnapi.exile.gate.v2.AssignAgentSkillRequest.newBuilder()
-                                                .setPartnerAgentId(agentId)
-                                                .setSkillId(skillId)
-                                                .setProficiency(proficiency)
+                                                .setPartnerAgentId(request.partnerAgentId)
+                                                .setSkillId(request.skillId)
+                                                .setProficiency(request.proficiency)
                                                 .build());
-                return Map.of("success", true);
+                return new SuccessResult();
         }
 
-        public Map<String, Object> unassignSkill(String agentId, String skillId) {
+        public SuccessResult unassignSkill(UnassignSkillRequest request) {
                 gate.unassignAgentSkill(
                                 build.buf.gen.tcnapi.exile.gate.v2.UnassignAgentSkillRequest.newBuilder()
-                                                .setPartnerAgentId(agentId)
-                                                .setSkillId(skillId)
+                                                .setPartnerAgentId(request.partnerAgentId)
+                                                .setSkillId(request.skillId)
                                                 .build());
-                return Map.of("success", true);
+                return new SuccessResult();
+        }
+
+        protected SkillInfo toSkillInfo(build.buf.gen.tcnapi.exile.gate.v2.Skill s) {
+                var info = new SkillInfo();
+                info.skillId = s.getSkillId();
+                info.name = s.getName();
+                info.description = s.getDescription();
+                info.proficiency = s.getProficiency();
+                return info;
         }
 }

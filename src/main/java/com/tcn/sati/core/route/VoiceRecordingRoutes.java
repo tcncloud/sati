@@ -1,11 +1,12 @@
 package com.tcn.sati.core.route;
 
 import com.tcn.sati.core.service.VoiceRecordingService;
+import com.tcn.sati.core.service.dto.VoiceRecordingDto;
+import com.tcn.sati.core.service.dto.SuccessResult;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.openapi.*;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -23,48 +24,48 @@ public class VoiceRecordingRoutes {
         app.post("/api/voice-recordings/label-recording", VoiceRecordingRoutes::labelRecording);
     }
 
-    public record LabelRecordingRequest(long callSid, String callType, String key, String value) {
-    }
-
     @OpenApi(path = "/api/voice-recordings", methods = HttpMethod.GET, summary = "Search Voice Recordings", tags = {
-            "Voice Recordings" }, queryParams = {
-                    @OpenApiParam(name = "searchOption", description = "Format: field,operator,value (e.g. client_phone.region_name,CONTAINS,California)", required = true)
-            })
+            "Voice Recordings" }, queryParams = @OpenApiParam(name = "searchOption", description = "Format: field,operator,value (e.g. client_phone.region_name,CONTAINS,California)", required = true), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = VoiceRecordingDto.RecordingInfo[].class)))
     private static void search(Context ctx) {
-        List<String> searchOptions = ctx.queryParams("searchOption");
+        var searchOptions = ctx.queryParams("searchOption");
         if (searchOptions == null || searchOptions.isEmpty()) {
             ctx.status(400).json(Map.of("error", "searchOption query param required"));
             return;
         }
-        ctx.json(service.search(searchOptions));
+        var request = new VoiceRecordingDto.SearchRecordingsRequest();
+        request.searchOptions = searchOptions;
+        ctx.json(service.search(request));
     }
 
     @OpenApi(path = "/api/voice-recordings/download-link", methods = HttpMethod.GET, summary = "Get Voice Recording Download Link", tags = {
             "Voice Recordings" }, queryParams = {
                     @OpenApiParam(name = "recordingId", required = true),
-                    @OpenApiParam(name = "startOffset", required = false),
-                    @OpenApiParam(name = "endOffset", required = false)
-            })
+                    @OpenApiParam(name = "startOffset"),
+                    @OpenApiParam(name = "endOffset")
+            }, responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = VoiceRecordingDto.DownloadLink.class)))
     private static void downloadLink(Context ctx) {
         String recordingId = ctx.queryParam("recordingId");
         if (recordingId == null || recordingId.isBlank()) {
             ctx.status(400).json(Map.of("error", "recordingId required"));
             return;
         }
-        ctx.json(service.getDownloadLink(recordingId,
-                ctx.queryParam("startOffset"), ctx.queryParam("endOffset")));
+        var request = new VoiceRecordingDto.DownloadLinkRequest();
+        request.recordingId = recordingId;
+        request.startOffset = ctx.queryParam("startOffset");
+        request.endOffset = ctx.queryParam("endOffset");
+        ctx.json(service.getDownloadLink(request));
     }
 
     @OpenApi(path = "/api/voice-recordings/list-search-options", methods = HttpMethod.GET, summary = "List Searchable Recording Fields", tags = {
-            "Voice Recordings" })
+            "Voice Recordings" }, responses = @OpenApiResponse(status = "200"))
     private static void listSearchOptions(Context ctx) {
         ctx.json(service.listSearchableFields());
     }
 
     @OpenApi(path = "/api/voice-recordings/label-recording", methods = HttpMethod.POST, summary = "Create Recording Label", tags = {
-            "Voice Recordings" }, requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = LabelRecordingRequest.class)))
+            "Voice Recordings" }, requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = VoiceRecordingDto.CreateLabelRequest.class)), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SuccessResult.class)))
     private static void labelRecording(Context ctx) {
-        var body = ctx.bodyAsClass(LabelRecordingRequest.class);
-        ctx.json(service.createLabel(body.callSid(), body.callType(), body.key(), body.value()));
+        var body = ctx.bodyAsClass(VoiceRecordingDto.CreateLabelRequest.class);
+        ctx.json(service.createLabel(body));
     }
 }

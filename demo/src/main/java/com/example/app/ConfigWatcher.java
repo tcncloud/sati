@@ -7,6 +7,15 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.*;
 import java.util.function.Consumer;
 
+// Watches the Gate config file for changes and triggers a gRPC reconnect.
+// In production, Gate TLS certificates are rotated periodically. When a new
+// cert is deployed, this detects the change and calls reconnectGate().
+//
+// Usage (from Main.java):
+//   ConfigWatcher watcher = new ConfigWatcher(configPath, newConfig -> {
+//       satiApp.getTenantContext().reconnectGate(newConfig);
+//   });
+//   watcher.start();
 public class ConfigWatcher {
     private static final Logger log = LoggerFactory.getLogger(ConfigWatcher.class);
 
@@ -42,7 +51,7 @@ public class ConfigWatcher {
                     Path changed = (Path) event.context();
                     if (changed.getFileName().equals(configFile.getFileName())) {
                         log.info("Config file changed, reloading...");
-                        Thread.sleep(100);
+                        Thread.sleep(100); // brief delay to let the file write complete
                         try {
                             SatiConfig newConfig = Main.loadGateConfig(configFile.toString());
                             onConfigChange.accept(newConfig);

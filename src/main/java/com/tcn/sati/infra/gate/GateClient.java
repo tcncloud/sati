@@ -116,6 +116,12 @@ public class GateClient implements AutoCloseable {
         }
 
         @Override
+        public int hashCode() {
+            return java.util.Objects.hash(databaseUrl, databaseUsername, databasePassword,
+                    databaseHost, databasePort, databaseName);
+        }
+
+        @Override
         public String toString() {
             return String.format("BackendConfig[url=%s, host=%s, port=%s, db=%s, type=%s, tls=%s]",
                     databaseUrl != null ? "***SET***" : getEffectiveJdbcUrl(),

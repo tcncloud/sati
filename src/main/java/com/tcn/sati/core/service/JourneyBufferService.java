@@ -1,8 +1,8 @@
 package com.tcn.sati.core.service;
 
+import com.tcn.sati.core.service.dto.JourneyBufferDto.AddRecordRequest;
+import com.tcn.sati.core.service.dto.SuccessResult;
 import com.tcn.sati.infra.gate.GateClient;
-
-import java.util.Map;
 
 /**
  * Journey buffer service. Subclass to override behavior.
@@ -14,16 +14,24 @@ public class JourneyBufferService {
         this.gate = gate;
     }
 
-    public Map<String, Object> addRecord(String poolId, String recordId, String jsonPayload) {
+    public SuccessResult addRecord(AddRecordRequest request) {
+        String jsonPayload;
+        try {
+            jsonPayload = new com.fasterxml.jackson.databind.ObjectMapper()
+                    .writeValueAsString(request.jsonRecordPayload);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Failed to serialize jsonRecordPayload", e);
+        }
+
         var recordBuilder = build.buf.gen.tcnapi.exile.core.v2.Record.newBuilder()
-                .setPoolId(poolId)
-                .setRecordId(recordId)
+                .setPoolId(request.poolId)
+                .setRecordId(request.recordId)
                 .setJsonRecordPayload(jsonPayload);
 
         gate.addRecordToJourneyBuffer(
                 build.buf.gen.tcnapi.exile.gate.v2.AddRecordToJourneyBufferRequest.newBuilder()
                         .setRecord(recordBuilder.build())
                         .build());
-        return Map.of("success", true);
+        return new SuccessResult();
     }
 }

@@ -169,14 +169,14 @@ public class RestBackendClient implements TenantBackendClient {
     @Override
     public void handleTelephonyResult(TelephonyResult result) {
         try {
-            log.info("Handling telephony result for callSid: {}", result.callSid());
+            log.info("Handling telephony result for callSid: {}", result.callSid);
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("callSid", result.callSid());
-            payload.put("status", result.status());
-            payload.put("result", result.result());
-            if (result.metadata() != null) {
-                payload.putAll(result.metadata());
+            payload.put("callSid", result.callSid);
+            payload.put("status", result.status);
+            payload.put("result", result.result);
+            if (result.metadata != null) {
+                payload.putAll(result.metadata);
             }
 
             var request = requestBuilder("/api/v1/telephony-results")
@@ -198,13 +198,13 @@ public class RestBackendClient implements TenantBackendClient {
     @Override
     public void handleTask(ExileTask task) {
         try {
-            log.info("Handling task: {} for pool: {}", task.taskSid(), task.poolId());
+            log.info("Handling task: {} for pool: {}", task.taskSid, task.poolId);
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("taskSid", task.taskSid());
-            payload.put("poolId", task.poolId());
-            payload.put("recordId", task.recordId());
-            payload.put("status", task.status());
+            payload.put("taskSid", task.taskSid);
+            payload.put("poolId", task.poolId);
+            payload.put("recordId", task.recordId);
+            payload.put("status", task.status);
 
             var request = requestBuilder("/api/v1/tasks")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
@@ -225,14 +225,14 @@ public class RestBackendClient implements TenantBackendClient {
     @Override
     public void handleAgentCall(AgentCall call) {
         try {
-            log.info("Handling agent call: {} for callSid: {}", call.agentCallSid(), call.callSid());
+            log.info("Handling agent call: {} for callSid: {}", call.agentCallSid, call.callSid);
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("agentCallSid", call.agentCallSid());
-            payload.put("callSid", call.callSid());
-            payload.put("userId", call.userId());
-            if (call.durations() != null) {
-                payload.putAll(call.durations());
+            payload.put("agentCallSid", call.agentCallSid);
+            payload.put("callSid", call.callSid);
+            payload.put("userId", call.userId);
+            if (call.durations != null) {
+                payload.putAll(call.durations);
             }
 
             var request = requestBuilder("/api/v1/agent-calls")
@@ -254,13 +254,13 @@ public class RestBackendClient implements TenantBackendClient {
     @Override
     public void handleAgentResponse(AgentResponse response) {
         try {
-            log.info("Handling agent response: {} key: {}", response.agentCallResponseSid(), response.responseKey());
+            log.info("Handling agent response: {} key: {}", response.agentCallResponseSid, response.responseKey);
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("agentCallResponseSid", response.agentCallResponseSid());
-            payload.put("callSid", response.callSid());
-            payload.put("responseKey", response.responseKey());
-            payload.put("responseValue", response.responseValue());
+            payload.put("agentCallResponseSid", response.agentCallResponseSid);
+            payload.put("callSid", response.callSid);
+            payload.put("responseKey", response.responseKey);
+            payload.put("responseValue", response.responseValue);
 
             var request = requestBuilder("/api/v1/agent-responses")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
@@ -281,12 +281,12 @@ public class RestBackendClient implements TenantBackendClient {
     @Override
     public void handleTransferInstance(TransferInstance transfer) {
         try {
-            log.info("Handling transfer instance: {}", transfer.transferInstanceSid());
+            log.info("Handling transfer instance: {}", transfer.transferInstanceSid);
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("transferInstanceSid", transfer.transferInstanceSid());
-            payload.put("callSid", transfer.callSid());
-            payload.put("status", transfer.status());
+            payload.put("transferInstanceSid", transfer.transferInstanceSid);
+            payload.put("callSid", transfer.callSid);
+            payload.put("status", transfer.status);
 
             var request = requestBuilder("/api/v1/transfer-instances")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
@@ -307,12 +307,12 @@ public class RestBackendClient implements TenantBackendClient {
     @Override
     public void handleCallRecording(CallRecording recording) {
         try {
-            log.info("Handling call recording: {} for callSid: {}", recording.recordingSid(), recording.callSid());
+            log.info("Handling call recording: {} for callSid: {}", recording.recordingSid, recording.callSid);
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("recordingSid", recording.recordingSid());
-            payload.put("callSid", recording.callSid());
-            payload.put("status", recording.status());
+            payload.put("recordingSid", recording.recordingSid);
+            payload.put("callSid", recording.callSid);
+            payload.put("status", recording.status);
 
             var request = requestBuilder("/api/v1/call-recordings")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
@@ -362,10 +362,10 @@ public class RestBackendClient implements TenantBackendClient {
     public PopAccountResult popAccount(PopAccountRequest request) {
         try {
             Map<String, Object> payload = new HashMap<>();
-            payload.put("recordId", request.recordId());
-            payload.put("userId", request.userId());
-            payload.put("callSid", request.callSid());
-            payload.put("callType", request.callType());
+            payload.put("recordId", request.recordId);
+            payload.put("userId", request.userId);
+            payload.put("callSid", request.callSid);
+            payload.put("callType", request.callType);
 
             var req = requestBuilder("/api/v1/pop-account")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
@@ -383,7 +383,7 @@ public class RestBackendClient implements TenantBackendClient {
     public List<SearchResult> searchRecords(SearchRecordsRequest request) {
         try {
             String url = String.format("/api/v1/search?type=%s&value=%s",
-                    request.lookupType(), request.lookupValue());
+                    request.lookupType, request.lookupValue);
             var req = requestBuilder(url).GET().build();
             var resp = httpClient.send(req, HttpResponse.BodyHandlers.ofString());
 
@@ -409,8 +409,8 @@ public class RestBackendClient implements TenantBackendClient {
     public List<RecordField> readFields(ReadFieldsRequest request) {
         try {
             Map<String, Object> payload = new HashMap<>();
-            payload.put("recordId", request.recordId());
-            payload.put("fieldNames", request.fieldNames());
+            payload.put("recordId", request.recordId);
+            payload.put("fieldNames", request.fieldNames);
 
             var req = requestBuilder("/api/v1/record-fields/read")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
@@ -422,7 +422,7 @@ public class RestBackendClient implements TenantBackendClient {
             if (root.isArray()) {
                 for (JsonNode node : root) {
                     fields.add(new RecordField(
-                            request.recordId(), request.poolId(),
+                            request.recordId, request.poolId,
                             node.path("fieldName").asText(), node.path("fieldValue").asText()));
                 }
             }
@@ -438,8 +438,8 @@ public class RestBackendClient implements TenantBackendClient {
     public void writeFields(WriteFieldsRequest request) {
         try {
             Map<String, Object> payload = new HashMap<>();
-            payload.put("recordId", request.recordId());
-            payload.put("fields", request.fields());
+            payload.put("recordId", request.recordId);
+            payload.put("fields", request.fields);
 
             var req = requestBuilder("/api/v1/record-fields/write")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))

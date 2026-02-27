@@ -12,10 +12,30 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.List;
 
+// Demo entry point for a single-tenant Sati app.
+//
+// Shows: config discovery, config loading, PostgreSQL backend,
+// service override, config file watcher, and logback integration.
+//
+// Quick start:
+//   mkdir -p workdir/config
+//   echo "BASE64_GATE_CONFIG" > workdir/config/com.tcn.exiles.sati.config.cfg
+//   ./gradlew :demo:run
+//   Dashboard: http://localhost:8080/
+//   Swagger:   http://localhost:8080/swagger
 public class Main {
     private static final Logger log = LoggerFactory.getLogger(Main.class);
 
+    private static final String CONFIG_FILE_NAME = "com.tcn.exiles.sati.config.cfg";
+
+    // Docker absolute path first, then local dev relative path
+    private static final List<Path> CONFIG_SEARCH_PATHS = List.of(
+            Path.of("/workdir/config"),
+            Path.of("workdir/config"));
+
+    // JSON structure of the Gate config file (after Base64 decode)
     @JsonIgnoreProperties(ignoreUnknown = true)
     private static class GateConfig {
         @JsonProperty("ca_certificate")
@@ -31,43 +51,59 @@ public class Main {
     public static void main(String[] args) {
         log.info("Starting Demo Application...");
 
-        // Ensure a config file exists (touching dummy path for the demo context)
-        String configPath = System.getProperty("user.dir") + "/config.cfg";
+        // 1. Config Discovery
+        String configPath = findConfigFile();
 
         try {
             if (!Files.exists(Path.of(configPath))) {
                 log.warn("Config file not found at " + configPath
                         + ". Sati relies on Gate configuration to run properly.");
                 log.info("You can provide a valid Gate configuration string mapped to the above file.");
-                // For demonstration purposes, we will exit if config is missing, since Sati
-                // needs Gate to issue Database credentials
                 System.exit(1);
             }
 
+            // 2. Config Loading
             SatiConfig satiConfig = loadGateConfig(configPath);
+
+            // 3. PostgreSQL Backend
             AppBackendClient backend = new AppBackendClient(satiConfig);
 
-            // Version and name
-            String version = "1.0.0-Demo";
-            String appName = "Sati Demo App";
+            // Version from JAR manifest (falls back to "dev" when running unpackaged)
+            String version = Main.class.getPackage().getImplementationVersion() != null
+                    ? Main.class.getPackage().getImplementationVersion()
+                    : "dev";
+            String appName = Main.class.getPackage().getImplementationTitle() != null
+                    ? Main.class.getPackage().getImplementationTitle()
+                    : "Sati Demo App";
 
+            // 4. Build and Start Sati
+            // Any of the 7 services can be overridden via the builder:
+            // .agentService(CustomAgentService::new)
+            // .transferService(...)
+            // .scrubListService(...)
+            // .skillsService(...)
+            // .nclRulesetService(...)
+            // .voiceRecordingService(...)
+            // .journeyBufferService(...)
             SatiApp satiApp = SatiApp.builder()
                     .config(satiConfig)
                     .backendClient(backend)
-                    .agentService(CustomAgentService::new) // Example of how to override a service (in this case
-                                                           // AgentService) with custom logic
+                    .agentService(CustomAgentService::new)
                     .appName(appName)
                     .appVersion(version)
                     .start(8080);
 
-            // Wire Gate config listener to the backend so DB can rotate credentials
-            // properly
+            // 5. Wire Gate Config Listener (DB credential rotation)
+            // When Gate sends new backend credentials, the backend client
+            // automatically recreates the HikariCP pool.
             if (satiApp.getTenantContext().getGateClient() != null) {
                 satiApp.getTenantContext().getGateClient().setConfigListener(backend::onBackendConfigReceived);
                 satiApp.getTenantContext().getGateClient().startConfigPolling();
             }
 
-            // Watch the application config file
+            // 6. Config File Watcher (certificate rotation)
+            // Monitors the Gate config file on disk. If it changes (e.g., new TLS certs),
+            // the watcher reloads it and reconnects gRPC.
             ConfigWatcher watcher = new ConfigWatcher(configPath, newConfig -> {
                 satiApp.getTenantContext().reconnectGate(newConfig);
             });
@@ -79,6 +115,8 @@ public class Main {
         }
     }
 
+    // Load Gate config from a Base64-encoded file.
+    // The file contains JSON with TLS certs and the Gate API endpoint.
     public static SatiConfig loadGateConfig(String configPath) {
         try {
             log.info("Loading Gate config from: {}", configPath);
@@ -106,5 +144,24 @@ public class Main {
         } catch (Exception e) {
             throw new RuntimeException("Failed to load Gate configuration", e);
         }
+    }
+
+    // Search known paths for the config file.
+    // Checks /workdir/config (Docker) first, then workdir/config (local dev).
+    static String findConfigFile() {
+        for (Path dir : CONFIG_SEARCH_PATHS) {
+            Path configFile = dir.resolve(CONFIG_FILE_NAME);
+            if (configFile.toFile().exists()) {
+                String path = configFile.toAbsolutePath().toString();
+                System.out.println("Found config at: " + path);
+                return path;
+            }
+        }
+
+        throw new RuntimeException(
+                "Config file not found. Searched:\n" +
+                        "  - /workdir/config/" + CONFIG_FILE_NAME + "\n" +
+                        "  - workdir/config/" + CONFIG_FILE_NAME + "\n" +
+                        "Please place your config file in one of these locations.");
     }
 }

@@ -172,8 +172,8 @@ class JdbcBackendClientTest {
         var pools = client.listPools();
 
         assertFalse(pools.isEmpty());
-        assertEquals("pool-1", pools.get(0).id());
-        assertEquals("Test Pool", pools.get(0).name());
+        assertEquals("pool-1", pools.get(0).id);
+        assertEquals("Test Pool", pools.get(0).name);
     }
 
     /**
@@ -186,9 +186,9 @@ class JdbcBackendClientTest {
 
         var status = client.getPoolStatus("pool-1");
 
-        assertEquals("pool-1", status.poolId());
-        assertEquals(10, status.totalRecords());
-        assertEquals(5, status.availableRecords());
+        assertEquals("pool-1", status.poolId);
+        assertEquals(10, status.totalRecords);
+        assertEquals(5, status.availableRecords);
     }
 
     /**
@@ -202,7 +202,7 @@ class JdbcBackendClientTest {
         var records = client.getPoolRecords("pool-1", 0);
 
         assertFalse(records.isEmpty());
-        assertEquals("rec-1", records.get(0).recordId());
+        assertEquals("rec-1", records.get(0).recordId);
     }
 
     /**

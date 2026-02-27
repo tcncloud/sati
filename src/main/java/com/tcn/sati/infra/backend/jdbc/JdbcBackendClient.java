@@ -224,6 +224,7 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
             // Let subclass configure driver-specific settings
             configureDataSource(hc, backendConfig);
 
+            hc.setJdbcUrl(jdbcUrl);
             hc.setUsername(user);
             hc.setPassword(password);
 
@@ -374,16 +375,16 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
     @Override
     public void handleTelephonyResult(TelephonyResult result) {
-        log.info("Handling telephony result for callSid: {}", result.callSid());
+        log.info("Handling telephony result for callSid: {}", result.callSid);
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getTelephonyResultSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("call_sid", result.callSid());
-            payload.put("status", result.status());
-            payload.put("result", result.result());
-            payload.putAll(result.metadata());
+            payload.put("call_sid", result.callSid);
+            payload.put("status", result.status);
+            payload.put("result", result.result);
+            payload.putAll(result.metadata);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
@@ -391,128 +392,128 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
             // Process result sets from stored procedure
             processStoredProcedureResults(stmt);
 
-            log.info("Telephony result processed for callSid: {}", result.callSid());
+            log.info("Telephony result processed for callSid: {}", result.callSid);
 
         } catch (Exception e) {
-            log.error("Failed to handle telephony result for callSid: {}", result.callSid(), e);
+            log.error("Failed to handle telephony result for callSid: {}", result.callSid, e);
             throw new RuntimeException("Stored procedure error", e);
         }
     }
 
     @Override
     public void handleTask(ExileTask task) {
-        log.info("Handling task: {} for pool: {}", task.taskSid(), task.poolId());
+        log.info("Handling task: {} for pool: {}", task.taskSid, task.poolId);
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getTaskSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("task_sid", task.taskSid());
-            payload.put("pool_id", task.poolId());
-            payload.put("record_id", task.recordId());
-            payload.put("status", task.status());
+            payload.put("task_sid", task.taskSid);
+            payload.put("pool_id", task.poolId);
+            payload.put("record_id", task.recordId);
+            payload.put("status", task.status);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
 
-            log.info("Task processed: {}", task.taskSid());
+            log.info("Task processed: {}", task.taskSid);
 
         } catch (Exception e) {
-            log.error("Failed to handle task: {}", task.taskSid(), e);
+            log.error("Failed to handle task: {}", task.taskSid, e);
             throw new RuntimeException("Stored procedure error", e);
         }
     }
 
     @Override
     public void handleAgentCall(AgentCall call) {
-        log.info("Handling agent call: {} for callSid: {}", call.agentCallSid(), call.callSid());
+        log.info("Handling agent call: {} for callSid: {}", call.agentCallSid, call.callSid);
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getAgentCallSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("agent_call_sid", call.agentCallSid());
-            payload.put("call_sid", call.callSid());
-            payload.put("user_id", call.userId());
-            payload.putAll(call.durations());
+            payload.put("agent_call_sid", call.agentCallSid);
+            payload.put("call_sid", call.callSid);
+            payload.put("user_id", call.userId);
+            payload.putAll(call.durations);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
 
-            log.info("Agent call processed: {}", call.agentCallSid());
+            log.info("Agent call processed: {}", call.agentCallSid);
 
         } catch (Exception e) {
-            log.error("Failed to handle agent call: {}", call.agentCallSid(), e);
+            log.error("Failed to handle agent call: {}", call.agentCallSid, e);
             throw new RuntimeException("Stored procedure error", e);
         }
     }
 
     @Override
     public void handleAgentResponse(AgentResponse response) {
-        log.info("Handling agent response: {} key: {}", response.agentCallResponseSid(), response.responseKey());
+        log.info("Handling agent response: {} key: {}", response.agentCallResponseSid, response.responseKey);
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getAgentResponseSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("agent_call_response_sid", response.agentCallResponseSid());
-            payload.put("call_sid", response.callSid());
-            payload.put("response_key", response.responseKey());
-            payload.put("response_value", response.responseValue());
+            payload.put("agent_call_response_sid", response.agentCallResponseSid);
+            payload.put("call_sid", response.callSid);
+            payload.put("response_key", response.responseKey);
+            payload.put("response_value", response.responseValue);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
 
-            log.info("Agent response processed: {}", response.agentCallResponseSid());
+            log.info("Agent response processed: {}", response.agentCallResponseSid);
 
         } catch (Exception e) {
-            log.error("Failed to handle agent response: {}", response.agentCallResponseSid(), e);
+            log.error("Failed to handle agent response: {}", response.agentCallResponseSid, e);
             throw new RuntimeException("Stored procedure error", e);
         }
     }
 
     @Override
     public void handleTransferInstance(TransferInstance transfer) {
-        log.info("Handling transfer instance: {}", transfer.transferInstanceSid());
+        log.info("Handling transfer instance: {}", transfer.transferInstanceSid);
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getTransferInstanceSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("transfer_instance_sid", transfer.transferInstanceSid());
-            payload.put("call_sid", transfer.callSid());
-            payload.put("status", transfer.status());
+            payload.put("transfer_instance_sid", transfer.transferInstanceSid);
+            payload.put("call_sid", transfer.callSid);
+            payload.put("status", transfer.status);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
 
-            log.info("Transfer instance processed: {}", transfer.transferInstanceSid());
+            log.info("Transfer instance processed: {}", transfer.transferInstanceSid);
 
         } catch (Exception e) {
-            log.error("Failed to handle transfer instance: {}", transfer.transferInstanceSid(), e);
+            log.error("Failed to handle transfer instance: {}", transfer.transferInstanceSid, e);
             throw new RuntimeException("Stored procedure error", e);
         }
     }
 
     @Override
     public void handleCallRecording(CallRecording recording) {
-        log.info("Handling call recording: {} for callSid: {}", recording.recordingSid(), recording.callSid());
+        log.info("Handling call recording: {} for callSid: {}", recording.recordingSid, recording.callSid);
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getCallRecordingSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("recording_sid", recording.recordingSid());
-            payload.put("call_sid", recording.callSid());
-            payload.put("status", recording.status());
+            payload.put("recording_sid", recording.recordingSid);
+            payload.put("call_sid", recording.callSid);
+            payload.put("status", recording.status);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
 
-            log.info("Call recording processed: {}", recording.recordingSid());
+            log.info("Call recording processed: {}", recording.recordingSid);
 
         } catch (Exception e) {
-            log.error("Failed to handle call recording: {}", recording.recordingSid(), e);
+            log.error("Failed to handle call recording: {}", recording.recordingSid, e);
             throw new RuntimeException("Stored procedure error", e);
         }
     }
@@ -540,20 +541,20 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
     @Override
     public PopAccountResult popAccount(PopAccountRequest request) {
-        log.info("Popping account for recordId: {} userId: {}", request.recordId(), request.userId());
+        log.info("Popping account for recordId: {} userId: {}", request.recordId, request.userId);
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getPopAccountSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("recordId", request.recordId());
-            payload.put("userId", request.userId());
-            payload.put("callSid", request.callSid());
-            payload.put("callType", request.callType());
-            if (request.callerId() != null)
-                payload.put("callerId", request.callerId());
-            if (request.phoneNumber() != null)
-                payload.put("phoneNumber", request.phoneNumber());
+            payload.put("recordId", request.recordId);
+            payload.put("userId", request.userId);
+            payload.put("callSid", request.callSid);
+            payload.put("callType", request.callType);
+            if (request.callerId != null)
+                payload.put("callerId", request.callerId);
+            if (request.phoneNumber != null)
+                payload.put("phoneNumber", request.phoneNumber);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             boolean hasResult = stmt.execute();
@@ -561,24 +562,24 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
             return new PopAccountResult(hasResult);
 
         } catch (Exception e) {
-            log.error("Failed to pop account for recordId: {}", request.recordId(), e);
+            log.error("Failed to pop account for recordId: {}", request.recordId, e);
             throw new RuntimeException("Stored procedure error", e);
         }
     }
 
     @Override
     public List<SearchResult> searchRecords(SearchRecordsRequest request) {
-        log.info("Searching records: type={} value={}", request.lookupType(), request.lookupValue());
+        log.info("Searching records: type={} value={}", request.lookupType, request.lookupValue);
         List<SearchResult> results = new ArrayList<>();
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getSearchRecordsSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("lookupType", request.lookupType());
-            payload.put("lookupValue", request.lookupValue());
-            if (request.filters() != null)
-                payload.putAll(request.filters());
+            payload.put("lookupType", request.lookupType);
+            payload.put("lookupValue", request.lookupValue);
+            if (request.filters != null)
+                payload.putAll(request.filters);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
@@ -605,17 +606,17 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
     @Override
     public List<RecordField> readFields(ReadFieldsRequest request) {
-        log.info("Reading fields for recordId: {}", request.recordId());
+        log.info("Reading fields for recordId: {}", request.recordId);
         List<RecordField> fields = new ArrayList<>();
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getReadFieldsSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("recordId", request.recordId());
-            payload.put("fields", request.fieldNames());
-            if (request.filters() != null)
-                payload.putAll(request.filters());
+            payload.put("recordId", request.recordId);
+            payload.put("fields", request.fieldNames);
+            if (request.filters != null)
+                payload.putAll(request.filters);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
@@ -632,9 +633,9 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
                                 ? (Map<String, Object>) value.get("fields")
                                 : new HashMap<>();
 
-                        String poolId = request.poolId() != null ? request.poolId()
+                        String poolId = request.poolId != null ? request.poolId
                                 : String.valueOf(value.getOrDefault("poolId", ""));
-                        String recId = String.valueOf(value.getOrDefault("recordId", request.recordId()));
+                        String recId = String.valueOf(value.getOrDefault("recordId", request.recordId));
 
                         fieldMap.forEach((k, v) -> fields.add(
                                 new RecordField(recId, poolId, k, String.valueOf(v))));
@@ -643,7 +644,7 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
             }
 
         } catch (Exception e) {
-            log.error("Failed to read fields for recordId: {}", request.recordId(), e);
+            log.error("Failed to read fields for recordId: {}", request.recordId, e);
             throw new RuntimeException("Stored procedure error", e);
         }
 
@@ -652,59 +653,59 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
     @Override
     public void writeFields(WriteFieldsRequest request) {
-        log.info("Writing fields for recordId: {}", request.recordId());
+        log.info("Writing fields for recordId: {}", request.recordId);
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getWriteFieldsSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("recordId", request.recordId());
-            payload.put("fields", request.fields());
-            if (request.filters() != null)
-                payload.putAll(request.filters());
+            payload.put("recordId", request.recordId);
+            payload.put("fields", request.fields);
+            if (request.filters != null)
+                payload.putAll(request.filters);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
 
         } catch (Exception e) {
-            log.error("Failed to write fields for recordId: {}", request.recordId(), e);
+            log.error("Failed to write fields for recordId: {}", request.recordId, e);
             throw new RuntimeException("Stored procedure error", e);
         }
     }
 
     @Override
     public void createPayment(CreatePaymentRequest request) {
-        log.info("Creating payment for recordId: {}", request.recordId());
+        log.info("Creating payment for recordId: {}", request.recordId);
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getCreatePaymentSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("recordId", request.recordId());
-            payload.put("paymentId", request.paymentId());
-            payload.put("paymentType", request.paymentType());
-            payload.put("paymentAmount", request.paymentAmount());
-            payload.put("paymentDate", java.time.Instant.ofEpochSecond(request.paymentDateEpochSeconds()));
+            payload.put("recordId", request.recordId);
+            payload.put("paymentId", request.paymentId);
+            payload.put("paymentType", request.paymentType);
+            payload.put("paymentAmount", request.paymentAmount);
+            payload.put("paymentDate", java.time.Instant.ofEpochSecond(request.paymentDateEpochSeconds));
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
 
         } catch (Exception e) {
-            log.error("Failed to create payment for recordId: {}", request.recordId(), e);
+            log.error("Failed to create payment for recordId: {}", request.recordId, e);
             throw new RuntimeException("Stored procedure error", e);
         }
     }
 
     @Override
     public String executeLogic(ExecuteLogicRequest request) {
-        log.info("Executing logic block: {}", request.logicBlockId());
+        log.info("Executing logic block: {}", request.logicBlockId);
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getExecuteLogicSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("logicBlockId", request.logicBlockId());
-            payload.put("logicBlockParams", request.logicBlockParams());
+            payload.put("logicBlockId", request.logicBlockId);
+            payload.put("logicBlockParams", request.logicBlockParams);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
@@ -716,7 +717,7 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
             }
 
         } catch (Exception e) {
-            log.error("Failed to execute logic block: {}", request.logicBlockId(), e);
+            log.error("Failed to execute logic block: {}", request.logicBlockId, e);
             throw new RuntimeException("Stored procedure error", e);
         }
 

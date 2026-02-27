@@ -34,6 +34,8 @@ public class TenantContext implements AutoCloseable {
     private final SatiConfig config;
     private final BackendType backendType;
     private final TenantBackendClient customBackendClient;
+    private final String appName;
+    private final String appVersion;
 
     private GateClient gateClient;
     private TenantBackendClient backendClient;
@@ -50,10 +52,7 @@ public class TenantContext implements AutoCloseable {
      * Constructor for factory-created backend (standard flow).
      */
     public TenantContext(String tenantKey, SatiConfig config, BackendType backendType) {
-        this.tenantKey = tenantKey;
-        this.config = config;
-        this.backendType = backendType;
-        this.customBackendClient = null;
+        this(tenantKey, config, backendType, null, null, null);
     }
 
     /**
@@ -61,10 +60,20 @@ public class TenantContext implements AutoCloseable {
      * application).
      */
     public TenantContext(String tenantKey, SatiConfig config, TenantBackendClient customBackendClient) {
+        this(tenantKey, config, null, customBackendClient, null, null);
+    }
+
+    /**
+     * Full constructor with app metadata.
+     */
+    public TenantContext(String tenantKey, SatiConfig config, BackendType backendType,
+            TenantBackendClient customBackendClient, String appName, String appVersion) {
         this.tenantKey = tenantKey;
         this.config = config;
-        this.backendType = null; // Not used when custom client provided
+        this.backendType = backendType;
         this.customBackendClient = customBackendClient;
+        this.appName = appName;
+        this.appVersion = appVersion;
     }
 
     /**
@@ -110,7 +119,7 @@ public class TenantContext implements AutoCloseable {
 
             // 5. Initialize Job and Event Processing (new APIs with ACK support)
             if (gateClient != null) {
-                this.jobProcessor = new JobProcessor(backendClient, gateClient);
+                this.jobProcessor = new JobProcessor(backendClient, gateClient, 5, appName, appVersion);
 
                 // Job queue - bidirectional stream with acknowledgment
                 this.jobQueueClient = new JobQueueClient(gateClient, job -> {
@@ -209,7 +218,7 @@ public class TenantContext implements AutoCloseable {
                 jobProcessor != null ? jobProcessor.getProcessedJobs() : 0,
                 jobProcessor != null ? jobProcessor.getFailedJobs() : 0,
                 eventStreamClient != null ? eventStreamClient.getEventsProcessed() : 0,
-                createdAt);
+                createdAt.toString());
     }
 
     public record TenantStatus(
@@ -222,7 +231,7 @@ public class TenantContext implements AutoCloseable {
             long processedJobs,
             long failedJobs,
             long processedEvents,
-            Instant createdAt) {
+            String createdAt) {
     }
 
     /**
