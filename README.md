@@ -566,18 +566,19 @@ CMD ["java", "-jar", "app.jar"]
 
 ---
 
-## Reference: Database Implementation
+## Reference: Demo Application
 
-The `database_rewrite` project in this repository is a complete, production reference implementation. It consists of just **4 files**:
+The `demo/` folder in this repository is a standalone, template application demonstrating how to integrate the Sati SDK. It consists of just **5 files**:
 
 | File | Purpose |
 |------|---------|
 | `Main.java` | Loads `.cfg`, builds `SatiConfig`, starts `SatiApp`, wires config listener + file watcher |
-| `CustomAppBackendClient.java` | Extends `JdbcBackendClient` for IRIS/Caché databases — driver config + stored procedure SQL |
-| `CustomAppTransferService.java` | Custom transfer logic with extended DTOs and queue-level policies |
+| `AppBackendClient.java` | Extends `JdbcBackendClient` for PostgreSQL — driver config + stored procedure SQL stubs |
+| `CustomAgentService.java` | Example of overriding a default Sati service with custom logic |
 | `ConfigWatcher.java` | Watches the `.cfg` file for certificate rotation and triggers `reconnectGate()` |
+| `MultiTenantMain.java` | Alternate entry point demonstrating multi-tenant mode |
 
-Use this as a template when building your own integration.
+Copy this folder to a new location to start building your own integration.
 
 ---
 
