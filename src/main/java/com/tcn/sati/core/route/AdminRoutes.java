@@ -168,14 +168,29 @@ public class AdminRoutes {
                 }
             }
 
+            // Parse api_endpoint URL into hostname and port
+            java.net.URI uri = java.net.URI.create((String) configMap.get("api_endpoint"));
+            String hostname = uri.getHost();
+            int port = uri.getPort() == -1
+                    ? ("https".equals(uri.getScheme()) ? 443 : 80)
+                    : uri.getPort();
+
+            // Extract org from certificate DN
+            String cert = (String) configMap.get("certificate");
+            String orgFromCert = SatiConfig.extractOrgFromCert(cert);
+
             // Build new config
             SatiConfig newConfig = SatiConfig.builder()
-                    .apiHostname((String) configMap.get("api_endpoint"))
-                    .apiPort(443)
+                    .apiHostname(hostname)
+                    .apiPort(port)
                     .rootCert((String) configMap.get("ca_certificate"))
-                    .publicCert((String) configMap.get("certificate"))
+                    .publicCert(cert)
                     .privateKey((String) configMap.get("private_key"))
-                    .org((String) configMap.getOrDefault("org_id", currentConfig != null ? currentConfig.org() : null))
+                    .org(orgFromCert != null ? orgFromCert
+                            : (String) configMap.getOrDefault("org_id",
+                                    currentConfig != null ? currentConfig.org() : null))
+                    .tenant(orgFromCert != null ? orgFromCert
+                            : currentConfig != null ? currentConfig.tenant() : null)
                     .build();
 
             // Notify handler

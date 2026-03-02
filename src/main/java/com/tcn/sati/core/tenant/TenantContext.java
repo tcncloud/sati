@@ -272,8 +272,13 @@ public class TenantContext implements AutoCloseable {
         if (newConfig.isGateConfigured()) {
             this.gateClient = new GateClient(newConfig);
 
-            // Note: For custom backend clients,
-            // config listener re-wiring should be done in Main.java
+            // Re-wire config listener so backend gets DB credentials from new Gate
+            if (backendClient instanceof com.tcn.sati.infra.backend.jdbc.JdbcBackendClient jdbcClient) {
+                gateClient.setConfigListener(jdbcClient::onBackendConfigReceived);
+            }
+
+            // Restart config polling (populates org name, config name, etc.)
+            gateClient.startConfigPolling();
 
             // Recreate job queue and event stream
             if (jobProcessor != null && backendClient != null) {

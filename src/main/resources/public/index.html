@@ -226,8 +226,13 @@
             cursor: pointer;
         }
 
-        .btn:hover {
+        .btn:hover:not(:disabled) {
             background: #4a7c91;
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
         }
 
         .btn-sm {
@@ -391,7 +396,7 @@
                 <h3>Load Configuration</h3>
                 <textarea id="config-input" class="config-textarea"
                     placeholder="Paste base64-encoded certificate bundle from operator.tcn.com"></textarea>
-                <button class="btn" onclick="loadConfig()">Apply Configuration</button>
+                <button id="config-btn" class="btn" onclick="loadConfig()">Apply Configuration</button>
                 <div id="config-message"></div>
             </div>
         </div>
@@ -495,11 +500,17 @@
         async function loadConfig() {
             const input = document.getElementById('config-input').value.trim();
             const msgEl = document.getElementById('config-message');
+            const btn = document.getElementById('config-btn');
 
             if (!input) {
                 msgEl.innerHTML = '<div class="message error">Please paste a configuration bundle</div>';
                 return;
             }
+
+            // Show loading state
+            btn.disabled = true;
+            btn.textContent = 'Applying...';
+            msgEl.innerHTML = '';
 
             try {
                 const res = await fetch('/api/admin/config', {
@@ -519,6 +530,9 @@
                 }
             } catch (e) {
                 msgEl.innerHTML = '<div class="message error">Request failed</div>';
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Apply Configuration';
             }
         }
 

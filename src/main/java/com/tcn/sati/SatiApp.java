@@ -267,7 +267,8 @@ public class SatiApp {
         });
 
         // Admin routes (dashboard APIs)
-        AdminRoutes.register(app, singleTenantContext, config, null, appVersion);
+        AdminRoutes.register(app, singleTenantContext, config,
+                singleTenantContext::reconnectGate, appVersion);
     }
 
     private void registerMultiTenantRoutes() {
