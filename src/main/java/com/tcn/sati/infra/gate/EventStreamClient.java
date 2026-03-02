@@ -16,11 +16,11 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Streams events from Gate using the EventStream API with acknowledgment.
  * 
- * The Java stub uses a server-streaming pattern where:
- * 1. Client sends request with event_count and ACK list
+ * The Java stub uses a bidirectional streaming pattern where:
+ * 1. Client opens stream and sends request with event_count and ACK list
  * 2. Server streams back events
  * 3. Client processes events, collects ACK IDs
- * 4. Client sends next request with new ACK list
+ * 4. Client opens next stream with new ACK list
  * 
  * Server has a 5-minute timeout per stream connection.
  */
@@ -67,13 +67,6 @@ public class EventStreamClient implements AutoCloseable {
 
         while (running.get()) {
             try {
-                // Skip if backend not connected
-                if (!backendClient.isConnected()) {
-                    log.debug("Backend not connected, waiting...");
-                    sleep(currentDelay);
-                    continue;
-                }
-
                 // Request events (server-streaming pattern)
                 log.debug("Requesting events from Gate...");
                 var response = requestEvents(pendingAcks);
@@ -139,8 +132,8 @@ public class EventStreamClient implements AutoCloseable {
         var responseRef = new AtomicReference<EventStreamResponse>();
         var errorRef = new AtomicReference<Throwable>();
 
-        GateServiceGrpc.newStub(gateClient.getChannel())
-                .eventStream(request, new StreamObserver<EventStreamResponse>() {
+        var requestObserver = GateServiceGrpc.newStub(gateClient.getChannel())
+                .eventStream(new StreamObserver<EventStreamResponse>() {
                     @Override
                     public void onNext(EventStreamResponse response) {
                         responseRef.set(response);
@@ -157,6 +150,9 @@ public class EventStreamClient implements AutoCloseable {
                         latch.countDown();
                     }
                 });
+
+        requestObserver.onNext(request);
+        requestObserver.onCompleted();
 
         // Wait for response with timeout
         latch.await();
@@ -177,6 +173,11 @@ public class EventStreamClient implements AutoCloseable {
      * Process a single event. Returns true if successfully processed (should ACK).
      */
     private boolean processEvent(Event event) {
+        if (!backendClient.isConnected()) {
+            log.warn("Backend not connected, unable to process event");
+            return false; // Don't ACK - will be redelivered
+        }
+
         try {
             if (event.hasAgentCall()) {
                 backendClient.handleAgentCall(convertAgentCall(event.getAgentCall()));

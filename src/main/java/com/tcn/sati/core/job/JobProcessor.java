@@ -264,7 +264,14 @@ public class JobProcessor implements AutoCloseable {
             serverName = "unknown";
         }
 
+        java.time.Instant now = java.time.Instant.now();
+        var timestamp = com.google.protobuf.Timestamp.newBuilder()
+                .setSeconds(now.getEpochSecond())
+                .setNanos(now.getNano())
+                .build();
+
         var diagnosticsBuilder = SubmitJobResultsRequest.DiagnosticsResult.newBuilder()
+                .setTimestamp(timestamp)
                 .setHostname(serverName)
                 .setOperatingSystem(
                         SubmitJobResultsRequest.DiagnosticsResult.OperatingSystem.newBuilder()
@@ -283,7 +290,21 @@ public class JobProcessor implements AutoCloseable {
                                 .setHeapMemoryUsed(rt.totalMemory() - rt.freeMemory())
                                 .setHeapMemoryMax(rt.maxMemory())
                                 .setHeapMemoryCommitted(rt.totalMemory())
-                                .build());
+                                .build())
+                // Ensure empty but valid lists/objects are sent for the remaining fields to satisfy Gate
+                .setHardware(SubmitJobResultsRequest.DiagnosticsResult.Hardware.newBuilder().build())
+                .setContainer(SubmitJobResultsRequest.DiagnosticsResult.Container.newBuilder().build())
+                .setEnvironmentVariables(SubmitJobResultsRequest.DiagnosticsResult.EnvironmentVariables.newBuilder().build())
+                .setSystemProperties(SubmitJobResultsRequest.DiagnosticsResult.SystemProperties.newBuilder().build())
+                .setConfigDetails(SubmitJobResultsRequest.DiagnosticsResult.ConfigDetails.newBuilder().build())
+                .setEventStreamStats(SubmitJobResultsRequest.DiagnosticsResult.EventStreamStats.newBuilder()
+                        .setStreamName("application")
+                        .setStatus("running")
+                        .setMaxJobs(executor.getMaximumPoolSize())
+                        .setRunningJobs(executor.getActiveCount())
+                        .setCompletedJobs(processedJobs.get())
+                        .setQueuedJobs(jobQueue.size())
+                        .build());
 
         var request = SubmitJobResultsRequest.newBuilder()
                 .setJobId(jobId)
@@ -453,9 +474,17 @@ public class JobProcessor implements AutoCloseable {
     private void handleListTenantLogs(String jobId) {
         List<String> logs = MemoryLogAppender.getRecentLogs(200);
 
+        long now = System.currentTimeMillis();
+        var timeRange = build.buf.gen.tcnapi.exile.gate.v2.TimeRange.newBuilder()
+                .setStartTime(com.google.protobuf.Timestamp.newBuilder().setSeconds(now / 1000).build())
+                .setEndTime(com.google.protobuf.Timestamp.newBuilder().setSeconds(now / 1000).build())
+                .build();
+
         var logGroup = SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.newBuilder()
-                .setName("application")
+                .setName("logGroups/memory-logs")
                 .addAllLogs(logs)
+                .setTimeRange(timeRange)
+                .putLogLevels("memory", SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.LogLevel.INFO)
                 .build();
 
         submitResult(SubmitJobResultsRequest.newBuilder()
@@ -522,9 +551,8 @@ public class JobProcessor implements AutoCloseable {
             GateServiceGrpc.newBlockingStub(gateClient.getChannel())
                     .withDeadlineAfter(30, TimeUnit.SECONDS)
                     .submitJobResults(request);
-
         } catch (Exception e) {
-            log.error("Failed to submit result for job {}: {}", request.getJobId(), e.getMessage());
+            log.error("Failed to submit result for job {}: {}", request.getJobId(), e.getMessage(), e);
         }
     }
 

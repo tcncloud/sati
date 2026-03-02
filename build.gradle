@@ -58,10 +58,10 @@ dependencies {
     api 'org.slf4j:slf4j-api:2.0.12'
     compileOnly 'ch.qos.logback:logback-classic:1.5.6' // For MemoryLogAppender compilation
 
-    // gRPC
-    api 'io.grpc:grpc-protobuf:1.68.1'
-    api 'io.grpc:grpc-stub:1.68.1'
-    api 'io.grpc:grpc-netty-shaded:1.68.1'
+    // gRPC — must match the version pulled by buf-generated protos
+    api 'io.grpc:grpc-protobuf:1.79.0'
+    api 'io.grpc:grpc-stub:1.79.0'
+    api 'io.grpc:grpc-netty-shaded:1.79.0'
     compileOnly 'org.apache.tomcat:annotations-api:6.0.53'
 
     // Database (connection pooling only - JDBC drivers provided by consuming apps)
