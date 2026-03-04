@@ -41,39 +41,39 @@ public class CustomAgentService extends AgentService {
     // ================================================================
 
     // Custom response DTO — adds fields to the JSON response
-    public static class CustomAgentInfo extends AgentInfo {
-        public boolean demoFlag;
-        public long queryTimeMs;
-    }
+    // public static class CustomAgentInfo extends AgentInfo {
+    //     public boolean demoFlag;
+    //     public long queryTimeMs;
+    // }
 
-    @Override
-    public List<AgentInfo> listAgents(ListAgentsRequest request) {
-        log.info("CustomAgentService: intercepting listAgents");
-        long startTime = System.currentTimeMillis();
+    // @Override
+    // public List<AgentInfo> listAgents(ListAgentsRequest request) {
+    //     log.info("CustomAgentService: intercepting listAgents");
+    //     long startTime = System.currentTimeMillis();
 
-        List<AgentInfo> baseAgents = super.listAgents(request);
-        long duration = System.currentTimeMillis() - startTime;
+    //     List<AgentInfo> baseAgents = super.listAgents(request);
+    //     long duration = System.currentTimeMillis() - startTime;
 
-        log.info("CustomAgentService: retrieved {} agents in {}ms", baseAgents.size(), duration);
+    //     log.info("CustomAgentService: retrieved {} agents in {}ms", baseAgents.size(), duration);
 
-        // Convert each response to our extended version with extra fields
-        return baseAgents.stream().map(agent -> {
-            var custom = new CustomAgentInfo();
-            custom.userId = agent.userId;
-            custom.orgId = agent.orgId;
-            custom.partnerAgentId = agent.partnerAgentId;
-            custom.username = agent.username;
-            custom.firstName = agent.firstName;
-            custom.lastName = agent.lastName;
-            custom.currentSessionId = agent.currentSessionId;
-            custom.agentState = agent.agentState;
-            custom.isLoggedIn = agent.isLoggedIn;
-            // Custom response fields
-            custom.demoFlag = true;
-            custom.queryTimeMs = duration;
-            return (AgentInfo) custom;
-        }).toList();
-    }
+    //     // Convert each response to our extended version with extra fields
+    //     return baseAgents.stream().map(agent -> {
+    //         var custom = new CustomAgentInfo();
+    //         custom.userId = agent.userId;
+    //         custom.orgId = agent.orgId;
+    //         custom.partnerAgentId = agent.partnerAgentId;
+    //         custom.username = agent.username;
+    //         custom.firstName = agent.firstName;
+    //         custom.lastName = agent.lastName;
+    //         custom.currentSessionId = agent.currentSessionId;
+    //         custom.agentState = agent.agentState;
+    //         custom.isLoggedIn = agent.isLoggedIn;
+    //         // Custom response fields
+    //         custom.demoFlag = true;
+    //         custom.queryTimeMs = duration;
+    //         return (AgentInfo) custom;
+    //     }).toList();
+    // }
 
 
     // ================================================================
@@ -83,19 +83,19 @@ public class CustomAgentService extends AgentService {
     // -> throws IllegalArgumentException ("State LUNCH not allowed")
     // ================================================================
 
-    private static final Set<String> ALLOWED_STATES = Set.of(
-            "READY", "PAUSED", "WRAP_UP", "LOGGED_OUT");
+    // private static final Set<String> ALLOWED_STATES = Set.of(
+    //         "READY", "PAUSED", "WRAP_UP", "LOGGED_OUT");
 
-    @Override
-    public SuccessResult updateAgentState(String agentId, String state, String reason) {
-        String normalized = state.toUpperCase().replace("AGENT_STATE_", "");
+    // @Override
+    // public SuccessResult updateAgentState(String agentId, String state, String reason) {
+    //     String normalized = state.toUpperCase().replace("AGENT_STATE_", "");
 
-        if (!ALLOWED_STATES.contains(normalized)) {
-            throw new IllegalArgumentException(
-                    "State " + normalized + " not allowed. Allowed: " + ALLOWED_STATES);
-        }
+    //     if (!ALLOWED_STATES.contains(normalized)) {
+    //         throw new IllegalArgumentException(
+    //                 "State " + normalized + " not allowed. Allowed: " + ALLOWED_STATES);
+    //     }
 
-        log.info("CustomAgentService: {} -> state {} (reason: {})", agentId, normalized, reason);
-        return super.updateAgentState(agentId, state, reason);
-    }
+    //     log.info("CustomAgentService: {} -> state {} (reason: {})", agentId, normalized, reason);
+    //     return super.updateAgentState(agentId, state, reason);
+    // }
 }

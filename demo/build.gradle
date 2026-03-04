@@ -3,6 +3,8 @@ plugins {
     id 'application'
 }
 
+version = 'dev'
+
 repositories {
     mavenLocal()
     mavenCentral()
@@ -35,9 +37,21 @@ java {
     }
 }
 
+jar {
+    manifest {
+        attributes 'Implementation-Title': 'Sati Demo'
+        attributes 'Implementation-Version': project.version
+    }
+}
+
+// Make version available to ./gradlew run (no JAR manifest in dev mode)
+run {
+    systemProperty 'app.version', project.version
+}
+
 dependencies {
     // Sati library from GitHub Packages
-    implementation 'com.tcn.exile.sati:beta:0.1.0' // Update version as needed
+    implementation 'com.tcn.exile.sati:beta:0.2.3-beta' // Update version as needed
 
     // PostgreSQL JDBC Driver
     implementation 'org.postgresql:postgresql:42.7.2'

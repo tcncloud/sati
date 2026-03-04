@@ -146,19 +146,19 @@ public class AppBackendClient extends JdbcBackendClient {
     // handleTask, handleTransferInstance, handleCallRecording
     // ================================================================
 
-    @Override
-    public void handleTelephonyResult(TelephonyResult result) {
-        log.info("DEMO: Intercepted telephony result: callSid={}, status={}, result={}",
-                result.callSid, result.status, result.result);
+    // @Override
+    // public void handleTelephonyResult(TelephonyResult result) {
+    //     log.info("DEMO: Intercepted telephony result: callSid={}, status={}, result={}",
+    //             result.callSid, result.status, result.result);
 
-        // Example: skip the SQL call for certain statuses
-        if ("CANCELLED".equals(result.status)) {
-            log.info("DEMO: Skipping DB write for cancelled call {}", result.callSid);
-            return; // don't call super — handle it ourselves
-        }
+    //     // Example: skip the SQL call for certain statuses
+    //     if ("CANCELLED".equals(result.status)) {
+    //         log.info("DEMO: Skipping DB write for cancelled call {}", result.callSid);
+    //         return; // don't call super — handle it ourselves
+    //     }
 
-        super.handleTelephonyResult(result);
-    }
+    //     super.handleTelephonyResult(result);
+    // }
 
     // ================================================================
     // Overriding Incoming Jobs
@@ -171,26 +171,26 @@ public class AppBackendClient extends JdbcBackendClient {
     // ================================================================
 
     // Custom request DTO — adds fields a client might send
-    public static class CustomPopAccountRequest extends PopAccountRequest {
-        public String priorityFlag;
-        public boolean isVip;
-    }
+    // public static class CustomPopAccountRequest extends PopAccountRequest {
+    //     public String priorityFlag;
+    //     public boolean isVip;
+    // }
 
-    @Override
-    public PopAccountResult popAccount(PopAccountRequest request) {
-        // If constructed via Jackson/JSON, and we configured Sati to use our subclass,
-        // we can check and cast it (or just use it if the signature was overridden).
-        // For demonstration, we just show how you can check:
-        if (request instanceof CustomPopAccountRequest custom) {
-            log.info("DEMO: Intercepted VIP popAccount: recordId={}, isVip={}, priority={}",
-                    custom.recordId, custom.isVip, custom.priorityFlag);
-        } else {
-            log.info("DEMO: Intercepted popAccount: recordId={}, userId={}, callSid={}",
-                    request.recordId, request.userId, request.callSid);
-        }
+    // @Override
+    // public PopAccountResult popAccount(PopAccountRequest request) {
+    //     // If constructed via Jackson/JSON, and we configured Sati to use our subclass,
+    //     // we can check and cast it (or just use it if the signature was overridden).
+    //     // For demonstration, we just show how you can check:
+    //     if (request instanceof CustomPopAccountRequest custom) {
+    //         log.info("DEMO: Intercepted VIP popAccount: recordId={}, isVip={}, priority={}",
+    //                 custom.recordId, custom.isVip, custom.priorityFlag);
+    //     } else {
+    //         log.info("DEMO: Intercepted popAccount: recordId={}, userId={}, callSid={}",
+    //                 request.recordId, request.userId, request.callSid);
+    //     }
 
-        // Custom pre-processing here (look up extra data, enrich request, etc.)
+    //     // Custom pre-processing here (look up extra data, enrich request, etc.)
 
-        return super.popAccount(request); // delegate to base class for stored procedure
-    }
+    //     return super.popAccount(request); // delegate to base class for stored procedure
+    // }
 }

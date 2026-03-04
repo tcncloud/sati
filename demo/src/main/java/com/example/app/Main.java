@@ -14,7 +14,7 @@ import java.nio.file.Path;
 import java.util.Base64;
 import java.util.List;
 
-// Demo entry point for a single-tenant Sati app.
+// Entry point for a single-tenant Sati app.
 //
 // Shows: config discovery, config loading, PostgreSQL backend,
 // service override, config file watcher, and logback integration.
@@ -49,9 +49,9 @@ public class Main {
     }
 
     public static void main(String[] args) {
-        log.info("Starting Demo Application...");
+        log.info("Starting Application...");
 
-        // 1. Config Discovery
+        // Config Discovery
         String configPath = findConfigFile();
 
         try {
@@ -62,21 +62,19 @@ public class Main {
                 System.exit(1);
             }
 
-            // 2. Config Loading
+            // Config Loading
             SatiConfig satiConfig = loadGateConfig(configPath);
 
-            // 3. PostgreSQL Backend
+            // PostgreSQL Backend
             AppBackendClient backend = new AppBackendClient(satiConfig);
 
-            // Version from JAR manifest (falls back to "dev" when running unpackaged)
-            String version = Main.class.getPackage().getImplementationVersion() != null
-                    ? Main.class.getPackage().getImplementationVersion()
-                    : "dev";
-            String appName = Main.class.getPackage().getImplementationTitle() != null
-                    ? Main.class.getPackage().getImplementationTitle()
-                    : "Sati Demo App";
+            // Version: system prop (dev mode) or JAR manifest (Docker)
+            String version = System.getProperty("app.version",
+                    Main.class.getPackage().getImplementationVersion() != null
+                            ? Main.class.getPackage().getImplementationVersion() : "dev");
+            String appName = "Sati Demo";
 
-            // 4. Build and Start Sati
+            // Build and Start Sati
             // Any of the 7 services can be overridden via the builder:
             // .agentService(CustomAgentService::new)
             // .transferService(...)
@@ -88,12 +86,12 @@ public class Main {
             SatiApp satiApp = SatiApp.builder()
                     .config(satiConfig)
                     .backendClient(backend)
-                    .agentService(CustomAgentService::new)
+                    // .agentService(CustomAgentService::new) // example of overriding agent service
                     .appName(appName)
                     .appVersion(version)
                     .start(8080);
 
-            // 5. Wire Gate Config Listener (DB credential rotation)
+            // Wire Gate Config Listener (DB credential rotation)
             // When Gate sends new backend credentials, the backend client
             // automatically recreates the HikariCP pool.
             if (satiApp.getTenantContext().getGateClient() != null) {
@@ -101,7 +99,7 @@ public class Main {
                 satiApp.getTenantContext().getGateClient().startConfigPolling();
             }
 
-            // 6. Config File Watcher (certificate rotation)
+            // Config File Watcher (certificate rotation)
             // Monitors the Gate config file on disk. If it changes (e.g., new TLS certs),
             // the watcher reloads it and reconnects gRPC.
             ConfigWatcher watcher = new ConfigWatcher(configPath, newConfig -> {
