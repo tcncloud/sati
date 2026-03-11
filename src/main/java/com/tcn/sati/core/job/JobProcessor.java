@@ -136,7 +136,7 @@ public class JobProcessor implements AutoCloseable {
                 handleExecuteLogic(jobId, job.getExecuteLogic());
 
             } else if (job.hasListTenantLogs()) {
-                handleListTenantLogs(jobId);
+                handleListTenantLogs(jobId, job.getListTenantLogs());
 
             } else if (job.hasSetLogLevel()) {
                 handleSetLogLevel(jobId, job.getSetLogLevel());
@@ -207,24 +207,33 @@ public class JobProcessor implements AutoCloseable {
     }
 
     private void handleGetPoolRecords(String jobId, String poolId) throws Exception {
-        var records = backendClient.getPoolRecords(poolId, 0);
+        int page = 0;
+        boolean hasMore = true;
 
-        var resultBuilder = SubmitJobResultsRequest.GetPoolRecordsResult.newBuilder();
+        while (hasMore) {
+            var records = backendClient.getPoolRecords(poolId, page);
+            hasMore = records != null && !records.isEmpty();
 
-        for (var rec : records) {
-            resultBuilder.addRecords(
-                    Record.newBuilder()
-                            .setRecordId(rec.recordId)
-                            .build());
+            var resultBuilder = SubmitJobResultsRequest.GetPoolRecordsResult.newBuilder();
+            if (hasMore) {
+                for (var rec : records) {
+                    resultBuilder.addRecords(
+                            Record.newBuilder()
+                                    .setRecordId(rec.recordId)
+                                    .build());
+                }
+            }
+
+            boolean isLast = !hasMore || records.size() < 100; // assume default page size
+            submitResult(SubmitJobResultsRequest.newBuilder()
+                    .setJobId(jobId)
+                    .setEndOfTransmission(isLast)
+                    .setGetPoolRecordsResult(resultBuilder)
+                    .build());
+
+            if (isLast) break;
+            page++;
         }
-
-        var request = SubmitJobResultsRequest.newBuilder()
-                .setJobId(jobId)
-                .setEndOfTransmission(true)
-                .setGetPoolRecordsResult(resultBuilder)
-                .build();
-
-        submitResult(request);
     }
 
     private void handleInfo(String jobId) throws Exception {
@@ -270,41 +279,182 @@ public class JobProcessor implements AutoCloseable {
                 .setNanos(now.getNano())
                 .build();
 
-        var diagnosticsBuilder = SubmitJobResultsRequest.DiagnosticsResult.newBuilder()
+        // OS info
+        long uptimeMs = java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime();
+        var osBean = java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+        var osBuilder = SubmitJobResultsRequest.DiagnosticsResult.OperatingSystem.newBuilder()
+                .setName(System.getProperty("os.name", "unknown"))
+                .setVersion(System.getProperty("os.version", "unknown"))
+                .setArchitecture(System.getProperty("os.arch", "unknown"))
+                .setManufacturer(System.getProperty("os.name", "unknown"))
+                .setAvailableProcessors(rt.availableProcessors())
+                .setSystemUptime(uptimeMs)
+                .setSystemLoadAverage(osBean.getSystemLoadAverage());
+
+        // Java runtime info
+        var runtimeBean = java.lang.management.ManagementFactory.getRuntimeMXBean();
+        var javaBuilder = SubmitJobResultsRequest.DiagnosticsResult.JavaRuntime.newBuilder()
+                .setVersion(System.getProperty("java.version", "unknown"))
+                .setVendor(System.getProperty("java.vendor", "unknown"))
+                .setRuntimeName(System.getProperty("java.runtime.name", "unknown"))
+                .setVmName(System.getProperty("java.vm.name", "unknown"))
+                .setVmVersion(System.getProperty("java.vm.version", "unknown"))
+                .setVmVendor(System.getProperty("java.vm.vendor", "unknown"))
+                .setSpecificationName(System.getProperty("java.specification.name", "unknown"))
+                .setSpecificationVersion(System.getProperty("java.specification.version", "unknown"))
+                .setClassPath(System.getProperty("java.class.path", ""))
+                .setLibraryPath(System.getProperty("java.library.path", ""))
+                .setUptime(uptimeMs)
+                .setStartTime(runtimeBean.getStartTime())
+                .setManagementSpecVersion(System.getProperty("java.management.spec.version",
+                        runtimeBean.getManagementSpecVersion()));
+
+        // Memory info with pools
+        var memBean = java.lang.management.ManagementFactory.getMemoryMXBean();
+        var heap = memBean.getHeapMemoryUsage();
+        var nonHeap = memBean.getNonHeapMemoryUsage();
+        SubmitJobResultsRequest.DiagnosticsResult.Memory.Builder memBuilder =
+                SubmitJobResultsRequest.DiagnosticsResult.Memory.newBuilder()
+                .setHeapMemoryUsed(heap.getUsed())
+                .setHeapMemoryMax(heap.getMax())
+                .setHeapMemoryCommitted(heap.getCommitted())
+                .setNonHeapMemoryUsed(nonHeap.getUsed())
+                .setNonHeapMemoryMax(nonHeap.getMax())
+                .setNonHeapMemoryCommitted(nonHeap.getCommitted());
+        for (var pool : java.lang.management.ManagementFactory.getMemoryPoolMXBeans()) {
+            var usage = pool.getUsage();
+            if (usage != null) {
+                memBuilder.addMemoryPools(
+                        SubmitJobResultsRequest.DiagnosticsResult.MemoryPool.newBuilder()
+                                .setName(pool.getName())
+                                .setType(pool.getType().toString())
+                                .setUsed(usage.getUsed())
+                                .setMax(usage.getMax())
+                                .setCommitted(usage.getCommitted())
+                                .build());
+            }
+        }
+
+        // Hardware
+        var hwBuilder = SubmitJobResultsRequest.DiagnosticsResult.Hardware.newBuilder()
+                .setModel("Unknown").setManufacturer("Unknown")
+                .setSerialNumber("Unknown").setUuid("Unknown")
+                .setProcessor(SubmitJobResultsRequest.DiagnosticsResult.Processor.newBuilder()
+                        .setName("Unknown")
+                        .setIdentifier(System.getProperty("java.vm.name", "unknown"))
+                        .setArchitecture(System.getProperty("os.arch", "unknown"))
+                        .setPhysicalProcessorCount(rt.availableProcessors())
+                        .setLogicalProcessorCount(rt.availableProcessors())
+                        .setMaxFrequency(-1)
+                        .setCpu64Bit(System.getProperty("os.arch", "").contains("64") ||
+                                System.getProperty("os.arch", "").equals("aarch64"))
+                        .build());
+
+        // Storage
+        var rootFile = new java.io.File("/");
+        var storageBuilder = SubmitJobResultsRequest.DiagnosticsResult.Storage.newBuilder()
+                .setName("/").setType("disk").setModel("Unknown")
+                .setSerialNumber("Unknown").setSize(rootFile.getTotalSpace());
+
+        // Container detection
+        var containerBuilder = SubmitJobResultsRequest.DiagnosticsResult.Container.newBuilder();
+        boolean inDocker = new java.io.File("/.dockerenv").exists();
+        if (inDocker) {
+            containerBuilder.setIsContainer(true).setContainerType("docker");
+            containerBuilder.setContainerId(serverName).setContainerName(serverName);
+            containerBuilder.setImageName("unknown");
+        } else {
+            containerBuilder.setContainerType("unknown").setImageName("unknown");
+        }
+
+        // Environment variables
+        var envBuilder = SubmitJobResultsRequest.DiagnosticsResult.EnvironmentVariables.newBuilder();
+        var env = System.getenv();
+        if (env.containsKey("PATH")) envBuilder.setPath(env.get("PATH"));
+        if (env.containsKey("JAVA_HOME")) envBuilder.setJavaHome(env.get("JAVA_HOME"));
+        if (env.containsKey("LANG")) envBuilder.setLang(env.get("LANG"));
+        if (env.containsKey("HOME")) envBuilder.setHome(env.get("HOME"));
+        if (env.containsKey("HOSTNAME")) envBuilder.setHostname(env.get("HOSTNAME"));
+
+        // System properties
+        var propsBuilder = SubmitJobResultsRequest.DiagnosticsResult.SystemProperties.newBuilder()
+                .setJavaSpecificationVersion(System.getProperty("java.specification.version", ""))
+                .setJavaSpecificationVendor(System.getProperty("java.specification.vendor", ""))
+                .setJavaSpecificationName(System.getProperty("java.specification.name", ""))
+                .setJavaVersion(System.getProperty("java.version", ""))
+                .setJavaVersionDate(System.getProperty("java.version.date", ""))
+                .setJavaVendor(System.getProperty("java.vendor", ""))
+                .setJavaVendorVersion(System.getProperty("java.vendor.version", ""))
+                .setJavaVendorUrl(System.getProperty("java.vendor.url", ""))
+                .setJavaVendorUrlBug(System.getProperty("java.vendor.url.bug", ""))
+                .setJavaRuntimeName(System.getProperty("java.runtime.name", ""))
+                .setJavaRuntimeVersion(System.getProperty("java.runtime.version", ""))
+                .setJavaHome(System.getProperty("java.home", ""))
+                .setJavaClassPath(System.getProperty("java.class.path", ""))
+                .setJavaLibraryPath(System.getProperty("java.library.path", ""))
+                .setJavaClassVersion(System.getProperty("java.class.version", ""))
+                .setJavaVmName(System.getProperty("java.vm.name", ""))
+                .setJavaVmVersion(System.getProperty("java.vm.version", ""))
+                .setJavaVmVendor(System.getProperty("java.vm.vendor", ""))
+                .setJavaVmInfo(System.getProperty("java.vm.info", ""))
+                .setJavaVmSpecificationVersion(System.getProperty("java.vm.specification.version", ""))
+                .setJavaVmSpecificationVendor(System.getProperty("java.vm.specification.vendor", ""))
+                .setJavaVmSpecificationName(System.getProperty("java.vm.specification.name", ""))
+                .setOsName(System.getProperty("os.name", ""))
+                .setOsVersion(System.getProperty("os.version", ""))
+                .setOsArch(System.getProperty("os.arch", ""))
+                .setUserName(System.getProperty("user.name", ""))
+                .setUserHome(System.getProperty("user.home", ""))
+                .setUserDir(System.getProperty("user.dir", ""))
+                .setUserTimezone(System.getProperty("user.timezone", ""))
+                .setUserCountry(System.getProperty("user.country", ""))
+                .setUserLanguage(System.getProperty("user.language", ""))
+                .setFileSeparator(System.getProperty("file.separator", ""))
+                .setPathSeparator(System.getProperty("path.separator", ""))
+                .setLineSeparator(System.getProperty("line.separator", ""))
+                .setFileEncoding(System.getProperty("file.encoding", ""))
+                .setSunArchDataModel(System.getProperty("sun.arch.data.model", ""))
+                .setSunJavaLauncher(System.getProperty("sun.java.launcher", ""))
+                .setSunJavaCommand(System.getProperty("sun.java.command", ""))
+                .setSunCpuEndian(System.getProperty("sun.cpu.endian", ""))
+                .setJavaIoTmpdir(System.getProperty("java.io.tmpdir", ""));
+
+        // Config details from Gate
+        var configBuilder = SubmitJobResultsRequest.DiagnosticsResult.ConfigDetails.newBuilder();
+        try {
+            String apiEndpoint = "https://" + gateClient.getConfig().apiHostname();
+            configBuilder.setApiEndpoint(apiEndpoint);
+            String configName = gateClient.getConfigName();
+            if (configName != null) configBuilder.setCertificateName(configName);
+            String certExp = gateClient.getCertExpiration();
+            if (certExp != null) configBuilder.setCertificateDescription(certExp);
+        } catch (Exception e) {
+            log.debug("Could not populate config details: {}", e.getMessage());
+        }
+
+        // Event stream stats
+        var eventStats = SubmitJobResultsRequest.DiagnosticsResult.EventStreamStats.newBuilder()
+                .setStreamName("application")
+                .setStatus("running")
+                .setMaxJobs(executor.getMaximumPoolSize())
+                .setRunningJobs(executor.getActiveCount())
+                .setCompletedJobs(processedJobs.get())
+                .setQueuedJobs(jobQueue.size());
+
+        SubmitJobResultsRequest.DiagnosticsResult.Builder diagnosticsBuilder =
+                SubmitJobResultsRequest.DiagnosticsResult.newBuilder()
                 .setTimestamp(timestamp)
                 .setHostname(serverName)
-                .setOperatingSystem(
-                        SubmitJobResultsRequest.DiagnosticsResult.OperatingSystem.newBuilder()
-                                .setName(System.getProperty("os.name", "unknown"))
-                                .setVersion(System.getProperty("os.version", "unknown"))
-                                .setArchitecture(System.getProperty("os.arch", "unknown"))
-                                .setAvailableProcessors(rt.availableProcessors())
-                                .build())
-                .setJavaRuntime(
-                        SubmitJobResultsRequest.DiagnosticsResult.JavaRuntime.newBuilder()
-                                .setVersion(System.getProperty("java.version", "unknown"))
-                                .setVendor(System.getProperty("java.vendor", "unknown"))
-                                .build())
-                .setMemory(
-                        SubmitJobResultsRequest.DiagnosticsResult.Memory.newBuilder()
-                                .setHeapMemoryUsed(rt.totalMemory() - rt.freeMemory())
-                                .setHeapMemoryMax(rt.maxMemory())
-                                .setHeapMemoryCommitted(rt.totalMemory())
-                                .build())
-                // Ensure empty but valid lists/objects are sent for the remaining fields to satisfy Gate
-                .setHardware(SubmitJobResultsRequest.DiagnosticsResult.Hardware.newBuilder().build())
-                .setContainer(SubmitJobResultsRequest.DiagnosticsResult.Container.newBuilder().build())
-                .setEnvironmentVariables(SubmitJobResultsRequest.DiagnosticsResult.EnvironmentVariables.newBuilder().build())
-                .setSystemProperties(SubmitJobResultsRequest.DiagnosticsResult.SystemProperties.newBuilder().build())
-                .setConfigDetails(SubmitJobResultsRequest.DiagnosticsResult.ConfigDetails.newBuilder().build())
-                .setEventStreamStats(SubmitJobResultsRequest.DiagnosticsResult.EventStreamStats.newBuilder()
-                        .setStreamName("application")
-                        .setStatus("running")
-                        .setMaxJobs(executor.getMaximumPoolSize())
-                        .setRunningJobs(executor.getActiveCount())
-                        .setCompletedJobs(processedJobs.get())
-                        .setQueuedJobs(jobQueue.size())
-                        .build());
+                .setOperatingSystem(osBuilder.build())
+                .setJavaRuntime(javaBuilder.build())
+                .setMemory(memBuilder.build())
+                .setHardware(hwBuilder.build())
+                .addStorage(storageBuilder.build())
+                .setContainer(containerBuilder.build())
+                .setEnvironmentVariables(envBuilder.build())
+                .setSystemProperties(propsBuilder.build())
+                .setConfigDetails(configBuilder.build())
+                .setEventStreamStats(eventStats.build());
 
         var request = SubmitJobResultsRequest.newBuilder()
                 .setJobId(jobId)
@@ -352,7 +502,7 @@ public class JobProcessor implements AutoCloseable {
 
         var request = new PopAccountRequest(
                 pop.getRecordId(), pop.getPartnerAgentId(), pop.getCallSid(),
-                "inbound", callerId, phoneNumber);
+                pop.getCallType().name(), callerId, phoneNumber);
         backendClient.popAccount(request);
 
         submitResult(SubmitJobResultsRequest.newBuilder()
@@ -471,29 +621,98 @@ public class JobProcessor implements AutoCloseable {
 
     // ========== Tenant Log/Level Handlers ==========
 
-    private void handleListTenantLogs(String jobId) {
-        List<String> logs = MemoryLogAppender.getRecentLogs(200);
+    private void handleListTenantLogs(String jobId, StreamJobsResponse.ListTenantLogsRequest request) {
+        // Extract time range from request and filter logs accordingly
+        List<String> logs;
+        if (request.hasTimeRange()) {
+            long startTimeMs = request.getTimeRange().getStartTime().getSeconds() * 1000
+                    + request.getTimeRange().getStartTime().getNanos() / 1000000;
+            long endTimeMs = request.getTimeRange().getEndTime().getSeconds() * 1000
+                    + request.getTimeRange().getEndTime().getNanos() / 1000000;
+            log.debug("Filtering logs with time range: {} to {} (timestamps: {} to {})",
+                    request.getTimeRange().getStartTime(), request.getTimeRange().getEndTime(),
+                    startTimeMs, endTimeMs);
+            logs = MemoryLogAppender.getLogsInTimeRange(startTimeMs, endTimeMs);
+            log.debug("Retrieved {} logs within time range {} to {}", logs.size(), startTimeMs, endTimeMs);
+        } else {
+            logs = MemoryLogAppender.getRecentLogs(200);
+        }
 
-        long now = System.currentTimeMillis();
-        var timeRange = build.buf.gen.tcnapi.exile.gate.v2.TimeRange.newBuilder()
-                .setStartTime(com.google.protobuf.Timestamp.newBuilder().setSeconds(now / 1000).build())
-                .setEndTime(com.google.protobuf.Timestamp.newBuilder().setSeconds(now / 1000).build())
-                .build();
+        var resultBuilder = SubmitJobResultsRequest.ListTenantLogsResult.newBuilder();
 
-        var logGroup = SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.newBuilder()
-                .setName("logGroups/memory-logs")
-                .addAllLogs(logs)
-                .setTimeRange(timeRange)
-                .putLogLevels("memory", SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.LogLevel.INFO)
-                .build();
+        if (!logs.isEmpty()) {
+            var logGroupBuilder = SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.newBuilder()
+                    .setName("logGroups/memory-logs")
+                    .addAllLogs(logs);
+
+            // Echo back the request's time range, or fall back to current time
+            if (request.hasTimeRange()) {
+                logGroupBuilder.setTimeRange(request.getTimeRange());
+            } else {
+                long now = System.currentTimeMillis();
+                logGroupBuilder.setTimeRange(build.buf.gen.tcnapi.exile.gate.v2.TimeRange.newBuilder()
+                        .setStartTime(com.google.protobuf.Timestamp.newBuilder()
+                                .setSeconds(now / 1000).setNanos((int) ((now % 1000) * 1000000)).build())
+                        .setEndTime(com.google.protobuf.Timestamp.newBuilder()
+                                .setSeconds(now / 1000).setNanos((int) ((now % 1000) * 1000000)).build())
+                        .build());
+            }
+
+            // Detect actual log levels from logback
+            detectLogLevels().forEach(logGroupBuilder::putLogLevels);
+
+            resultBuilder.addLogGroups(logGroupBuilder.build());
+        }
 
         submitResult(SubmitJobResultsRequest.newBuilder()
                 .setJobId(jobId)
                 .setEndOfTransmission(true)
-                .setListTenantLogsResult(SubmitJobResultsRequest.ListTenantLogsResult.newBuilder()
-                        .addLogGroups(logGroup)
-                        .build())
+                .setListTenantLogsResult(resultBuilder.build())
                 .build());
+    }
+
+    private Map<String, SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.LogLevel> detectLogLevels() {
+        Map<String, SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.LogLevel> result = new HashMap<>();
+        try {
+            var loggerContext = (ch.qos.logback.classic.LoggerContext) LoggerFactory.getILoggerFactory();
+            for (var logger : loggerContext.getLoggerList()) {
+                var level = logger.getLevel();
+                if (level != null) {
+                    // Logger has an explicitly set level
+                    result.put(logger.getName(), toProtoLogLevel(level));
+                } else {
+                    // Logger inherits its level from parent — include with (inherited) suffix
+                    var effectiveLevel = logger.getEffectiveLevel();
+                    if (effectiveLevel != null) {
+                        result.put(logger.getName() + " (inherited)", toProtoLogLevel(effectiveLevel));
+                    }
+                }
+            }
+            var rootLogger = loggerContext.getLogger(ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME);
+            var rootLevel = rootLogger.getLevel();
+            if (rootLevel != null) {
+                result.put("ROOT", toProtoLogLevel(rootLevel));
+            }
+        } catch (Exception e) {
+            log.warn("Could not detect log levels: {}", e.getMessage());
+        }
+        if (result.isEmpty()) {
+            result.put("memory", SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.LogLevel.INFO);
+        }
+        return result;
+    }
+
+    private SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.LogLevel toProtoLogLevel(
+            ch.qos.logback.classic.Level level) {
+        return switch (level.toInt()) {
+            case ch.qos.logback.classic.Level.DEBUG_INT ->
+                    SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.LogLevel.DEBUG;
+            case ch.qos.logback.classic.Level.WARN_INT ->
+                    SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.LogLevel.WARNING;
+            case ch.qos.logback.classic.Level.ERROR_INT ->
+                    SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.LogLevel.ERROR;
+            default -> SubmitJobResultsRequest.ListTenantLogsResult.LogGroup.LogLevel.INFO;
+        };
     }
 
     private void handleSetLogLevel(String jobId, StreamJobsResponse.SetLogLevelRequest req) {
@@ -548,9 +767,14 @@ public class JobProcessor implements AutoCloseable {
 
     private void submitResult(SubmitJobResultsRequest request) {
         try {
-            GateServiceGrpc.newBlockingStub(gateClient.getChannel())
-                    .withDeadlineAfter(30, TimeUnit.SECONDS)
+            log.info("Submitting job result for job {} (resultCase: {}, size: {} bytes)",
+                    request.getJobId(), request.getResultCase(), request.getSerializedSize());
+            var response = GateServiceGrpc.newBlockingStub(gateClient.getChannel())
+                    .withDeadlineAfter(300, TimeUnit.SECONDS)
+                    .withWaitForReady()
                     .submitJobResults(request);
+            log.info("Successfully submitted job result for job {}. Response: {}",
+                    request.getJobId(), response);
         } catch (Exception e) {
             log.error("Failed to submit result for job {}: {}", request.getJobId(), e.getMessage(), e);
         }

@@ -30,8 +30,9 @@ public interface TenantBackendClient extends AutoCloseable {
 
     /**
      * Handle a telephony result event from Exile.
+     * @return RPC value from stored procedure result, or null if none
      */
-    void handleTelephonyResult(TelephonyResult result);
+    String handleTelephonyResult(TelephonyResult result);
 
     /**
      * Handle a task event from Exile.
@@ -40,8 +41,9 @@ public interface TenantBackendClient extends AutoCloseable {
 
     /**
      * Handle an agent call event from Exile.
+     * @return RPC value from stored procedure result, or null if none
      */
-    void handleAgentCall(AgentCall call);
+    String handleAgentCall(AgentCall call);
 
     /**
      * Handle an agent response event from Exile.
@@ -143,88 +145,125 @@ public interface TenantBackendClient extends AutoCloseable {
 
     public static class TelephonyResult {
         public String callSid;
+        public String callType;
         public String status;
         public String result;
-        public Map<String, String> metadata;
+        public String callerId;
+        public String phoneNumber;
+        public String recordId;
+        public String poolId;
+        public long deliveryLength;
+        public long linkbackLength;
+        public long clientSid;
+        public String orgId;
+        public String internalKey;
+        public String createTime;
+        public String updateTime;
+        public String startTime;
+        public String endTime;
+        public String taskWaitingUntil;
+        public long oldCallSid;
+        public String oldCallType;
 
         public TelephonyResult() {}
-        public TelephonyResult(String callSid, String status, String result, Map<String, String> metadata) {
-            this.callSid = callSid;
-            this.status = status;
-            this.result = result;
-            this.metadata = metadata;
-        }
     }
 
     public static class ExileTask {
         public String taskSid;
+        public String taskGroupSid;
         public String poolId;
         public String recordId;
         public String status;
+        public long attempts;
+        public long clientSid;
+        public String orgId;
+        public String createTime;
+        public String updateTime;
 
         public ExileTask() {}
-        public ExileTask(String taskSid, String poolId, String recordId, String status) {
-            this.taskSid = taskSid;
-            this.poolId = poolId;
-            this.recordId = recordId;
-            this.status = status;
-        }
     }
 
     public static class AgentCall {
         public String agentCallSid;
         public String callSid;
+        public String callType;
         public String userId;
-        public Map<String, Object> durations;
+        public String partnerAgentId;
+        public String orgId;
+        public String internalKey;
+        public long talkDuration;
+        public long callWaitDuration;
+        public long wrapUpDuration;
+        public long pauseDuration;
+        public long transferDuration;
+        public long manualDuration;
+        public long previewDuration;
+        public long holdDuration;
+        public long agentWaitDuration;
+        public long suspendedDuration;
+        public long externalTransferDuration;
+        public String createTime;
+        public String updateTime;
 
         public AgentCall() {}
-        public AgentCall(String agentCallSid, String callSid, String userId, Map<String, Object> durations) {
-            this.agentCallSid = agentCallSid;
-            this.callSid = callSid;
-            this.userId = userId;
-            this.durations = durations;
-        }
     }
 
     public static class AgentResponse {
         public String agentCallResponseSid;
         public String callSid;
+        public String callType;
         public String responseKey;
         public String responseValue;
+        public long clientSid;
+        public String userId;
+        public String agentSid;
+        public String partnerAgentId;
+        public String orgId;
+        public String internalKey;
+        public String createTime;
+        public String updateTime;
 
         public AgentResponse() {}
-        public AgentResponse(String agentCallResponseSid, String callSid, String responseKey, String responseValue) {
-            this.agentCallResponseSid = agentCallResponseSid;
-            this.callSid = callSid;
-            this.responseKey = responseKey;
-            this.responseValue = responseValue;
-        }
     }
 
     public static class TransferInstance {
-        public String transferInstanceSid;
-        public String callSid;
-        public String status;
+        public long clientSid;
+        public String transferInstanceId;
+        public String orgId;
+        public String transferResult;
+        public String transferType;
+        // Source
+        public String sourceCallSid;
+        public String sourceCallType;
+        public String sourceUserId;
+        public String sourcePartnerAgentId;
+        // Durations
+        public long durationMicroseconds;
+        public long externalDurationMicroseconds;
+        public long pendingDurationMicroseconds;
+        public boolean startAsPending;
+        public boolean startedAsConference;
+        // Timestamps
+        public String createTime;
+        public String updateTime;
+        public String transferPendingStartTime;
+        public String transferStartTime;
+        public String transferEndTime;
+        public String transferExternalEndTime;
 
         public TransferInstance() {}
-        public TransferInstance(String transferInstanceSid, String callSid, String status) {
-            this.transferInstanceSid = transferInstanceSid;
-            this.callSid = callSid;
-            this.status = status;
-        }
     }
 
     public static class CallRecording {
-        public String recordingSid;
+        public String recordingId;
         public String callSid;
-        public String status;
+        public String callType;
+        public String recordingType;
+        public String orgId;
+        public long durationSeconds;
+        public String startTime;
 
         public CallRecording() {}
-        public CallRecording(String recordingSid, String callSid, String status) {
-            this.recordingSid = recordingSid;
-            this.callSid = callSid;
-            this.status = status;
-        }
     }
 
     // Job request/result DTOs

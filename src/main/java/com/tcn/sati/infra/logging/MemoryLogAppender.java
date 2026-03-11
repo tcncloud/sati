@@ -1,21 +1,19 @@
 package com.tcn.sati.infra.logging;
 
+import ch.qos.logback.classic.PatternLayout;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
 
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
- * Logback appender that captures log messages in memory for dashboard display.
+ * Logback appender that captures log messages in memory for ListTenantLogs.
  * 
- * Automatically captures all log.info(), log.warn(), log.error(), etc. calls
- * when configured in logback.xml.
+ * Uses the same pattern as the old MemoryAppender so the admin UI can parse
+ * the log lines correctly: "HH:mm:ss.SSS LEVEL abbreviated.class - msg\n"
  * 
  * Configure in logback.xml:
  * <pre>
@@ -28,21 +26,33 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 public class MemoryLogAppender extends AppenderBase<ILoggingEvent> {
     
     private static final int MAX_EVENTS = 500;
-    private static final DateTimeFormatter TIME_FMT = 
-        DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(ZoneId.systemDefault());
+    private static final String PATTERN = "%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n";
     
-    private static final ConcurrentLinkedDeque<String> events = new ConcurrentLinkedDeque<>();
+    private static final ConcurrentLinkedDeque<LogEntry> events = new ConcurrentLinkedDeque<>();
+    
+    private PatternLayout layout;
+    
+    @Override
+    public void start() {
+        layout = new PatternLayout();
+        layout.setContext(getContext());
+        layout.setPattern(PATTERN);
+        layout.start();
+        super.start();
+    }
+    
+    @Override
+    public void stop() {
+        super.stop();
+        if (layout != null) {
+            layout.stop();
+        }
+    }
     
     @Override
     protected void append(ILoggingEvent event) {
-        String formatted = String.format("[%s] %-5s %s - %s",
-            TIME_FMT.format(Instant.ofEpochMilli(event.getTimeStamp())),
-            event.getLevel().toString(),
-            shortenLogger(event.getLoggerName()),
-            event.getFormattedMessage()
-        );
-        
-        events.addLast(formatted);
+        String formatted = layout.doLayout(event);
+        events.addLast(new LogEntry(formatted, event.getTimeStamp()));
         
         // Trim oldest entries if over limit
         while (events.size() > MAX_EVENTS) {
@@ -50,18 +60,16 @@ public class MemoryLogAppender extends AppenderBase<ILoggingEvent> {
         }
     }
     
-    private static String shortenLogger(String name) {
-        if (name == null) return "";
-        int lastDot = name.lastIndexOf('.');
-        return lastDot > 0 ? name.substring(lastDot + 1) : name;
-    }
-    
     /**
      * Get recent log messages (newest first).
      */
     public static List<String> getRecentLogs() {
-        List<String> result = new ArrayList<>(events);
-        Collections.reverse(result);
+        List<LogEntry> snapshot = new ArrayList<>(events);
+        Collections.reverse(snapshot);
+        List<String> result = new ArrayList<>(snapshot.size());
+        for (LogEntry entry : snapshot) {
+            result.add(entry.message);
+        }
         return result;
     }
     
@@ -71,6 +79,24 @@ public class MemoryLogAppender extends AppenderBase<ILoggingEvent> {
     public static List<String> getRecentLogs(int limit) {
         List<String> all = getRecentLogs();
         return all.subList(0, Math.min(limit, all.size()));
+    }
+    
+    /**
+     * Get log messages within a time range (newest first).
+     * 
+     * @param startTimeMs start time in epoch millis (inclusive)
+     * @param endTimeMs end time in epoch millis (inclusive)
+     */
+    public static List<String> getLogsInTimeRange(long startTimeMs, long endTimeMs) {
+        List<String> result = new ArrayList<>();
+        List<LogEntry> snapshot = new ArrayList<>(events);
+        for (LogEntry entry : snapshot) {
+            if (entry.timestampMs >= startTimeMs && entry.timestampMs <= endTimeMs) {
+                result.add(entry.message);
+            }
+        }
+        Collections.reverse(result); // newest first
+        return result;
     }
     
     /**
@@ -85,5 +111,16 @@ public class MemoryLogAppender extends AppenderBase<ILoggingEvent> {
      */
     public static void clear() {
         events.clear();
+    }
+    
+    /** A log entry with its formatted string and raw timestamp. */
+    private static class LogEntry {
+        final String message;
+        final long timestampMs;
+        
+        LogEntry(String message, long timestampMs) {
+            this.message = message;
+            this.timestampMs = timestampMs;
+        }
     }
 }

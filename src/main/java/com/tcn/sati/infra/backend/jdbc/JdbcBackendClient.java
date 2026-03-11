@@ -374,7 +374,13 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
     // ========== Event Handlers ==========
 
     @Override
-    public void handleTelephonyResult(TelephonyResult result) {
+    public String handleTelephonyResult(TelephonyResult result) {
+        // Skip calls still in progress — SP may not handle RUNNING status
+        if ("RUNNING".equals(result.status)) {
+            log.info("Call {} still running, skipping stored procedure execution", result.callSid);
+            return null;
+        }
+
         log.info("Handling telephony result for callSid: {}", result.callSid);
 
         try (Connection con = getConnection();
@@ -382,17 +388,34 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("call_sid", result.callSid);
+            payload.put("call_type", result.callType);
             payload.put("status", result.status);
             payload.put("result", result.result);
-            payload.putAll(result.metadata);
+            payload.put("caller_id", result.callerId);
+            payload.put("phone_number", result.phoneNumber);
+            payload.put("record_id", result.recordId);
+            payload.put("pool_id", result.poolId);
+            payload.put("delivery_length", result.deliveryLength);
+            payload.put("linkback_length", result.linkbackLength);
+            payload.put("client_sid", result.clientSid);
+            payload.put("org_id", result.orgId);
+            payload.put("internal_key", result.internalKey);
+            if (result.createTime != null) payload.put("create_time", result.createTime);
+            if (result.updateTime != null) payload.put("update_time", result.updateTime);
+            if (result.startTime != null) payload.put("start_time", result.startTime);
+            if (result.endTime != null) payload.put("end_time", result.endTime);
+            if (result.taskWaitingUntil != null) payload.put("task_waiting_until", result.taskWaitingUntil);
+            if (result.oldCallSid != 0) payload.put("old_call_sid", result.oldCallSid);
+            if (result.oldCallType != null && !result.oldCallType.isEmpty()) payload.put("old_call_type", result.oldCallType);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
 
-            // Process result sets from stored procedure
-            processStoredProcedureResults(stmt);
+            // Process result sets — returns RPC value if SP returned one
+            String rpc = processStoredProcedureResults(stmt);
 
             log.info("Telephony result processed for callSid: {}", result.callSid);
+            return rpc;
 
         } catch (Exception e) {
             log.error("Failed to handle telephony result for callSid: {}", result.callSid, e);
@@ -409,9 +432,15 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
             Map<String, Object> payload = new HashMap<>();
             payload.put("task_sid", task.taskSid);
+            payload.put("task_group_sid", task.taskGroupSid);
             payload.put("pool_id", task.poolId);
             payload.put("record_id", task.recordId);
             payload.put("status", task.status);
+            payload.put("attempts", task.attempts);
+            payload.put("client_sid", task.clientSid);
+            payload.put("org_id", task.orgId);
+            if (task.createTime != null) payload.put("create_time", task.createTime);
+            if (task.updateTime != null) payload.put("update_time", task.updateTime);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
@@ -425,7 +454,7 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
     }
 
     @Override
-    public void handleAgentCall(AgentCall call) {
+    public String handleAgentCall(AgentCall call) {
         log.info("Handling agent call: {} for callSid: {}", call.agentCallSid, call.callSid);
 
         try (Connection con = getConnection();
@@ -434,13 +463,33 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
             Map<String, Object> payload = new HashMap<>();
             payload.put("agent_call_sid", call.agentCallSid);
             payload.put("call_sid", call.callSid);
+            payload.put("call_type", call.callType);
             payload.put("user_id", call.userId);
-            payload.putAll(call.durations);
+            payload.put("partner_agent_id", call.partnerAgentId);
+            payload.put("org_id", call.orgId);
+            payload.put("internal_key", call.internalKey);
+            payload.put("talk_duration", call.talkDuration);
+            payload.put("call_wait_duration", call.callWaitDuration);
+            payload.put("wrap_up_duration", call.wrapUpDuration);
+            payload.put("pause_duration", call.pauseDuration);
+            payload.put("transfer_duration", call.transferDuration);
+            payload.put("manual_duration", call.manualDuration);
+            payload.put("preview_duration", call.previewDuration);
+            payload.put("hold_duration", call.holdDuration);
+            payload.put("agent_wait_duration", call.agentWaitDuration);
+            payload.put("suspended_duration", call.suspendedDuration);
+            payload.put("external_transfer_duration", call.externalTransferDuration);
+            if (call.createTime != null) payload.put("create_time", call.createTime);
+            if (call.updateTime != null) payload.put("update_time", call.updateTime);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
 
+            // Process result sets — returns RPC value if SP returned one
+            String rpc = processStoredProcedureResults(stmt);
+
             log.info("Agent call processed: {}", call.agentCallSid);
+            return rpc;
 
         } catch (Exception e) {
             log.error("Failed to handle agent call: {}", call.agentCallSid, e);
@@ -458,8 +507,17 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
             Map<String, Object> payload = new HashMap<>();
             payload.put("agent_call_response_sid", response.agentCallResponseSid);
             payload.put("call_sid", response.callSid);
+            payload.put("call_type", response.callType);
             payload.put("response_key", response.responseKey);
             payload.put("response_value", response.responseValue);
+            payload.put("user_id", response.userId);
+            payload.put("agent_sid", response.agentSid);
+            payload.put("partner_agent_id", response.partnerAgentId);
+            payload.put("client_sid", response.clientSid);
+            payload.put("org_id", response.orgId);
+            payload.put("internal_key", response.internalKey);
+            if (response.createTime != null) payload.put("create_time", response.createTime);
+            if (response.updateTime != null) payload.put("update_time", response.updateTime);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
@@ -474,67 +532,100 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
     @Override
     public void handleTransferInstance(TransferInstance transfer) {
-        log.info("Handling transfer instance: {}", transfer.transferInstanceSid);
+        log.info("Handling transfer instance: {}", transfer.transferInstanceId);
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getTransferInstanceSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("transfer_instance_sid", transfer.transferInstanceSid);
-            payload.put("call_sid", transfer.callSid);
-            payload.put("status", transfer.status);
+            payload.put("transfer_instance_id", transfer.transferInstanceId);
+            payload.put("client_sid", transfer.clientSid);
+            payload.put("org_id", transfer.orgId);
+            payload.put("transfer_result", transfer.transferResult);
+            payload.put("transfer_type", transfer.transferType);
+            payload.put("source_call_sid", transfer.sourceCallSid);
+            payload.put("source_call_type", transfer.sourceCallType);
+            payload.put("source_user_id", transfer.sourceUserId);
+            payload.put("source_partner_agent_id", transfer.sourcePartnerAgentId);
+            payload.put("duration_microseconds", transfer.durationMicroseconds);
+            payload.put("external_duration_microseconds", transfer.externalDurationMicroseconds);
+            payload.put("pending_duration_microseconds", transfer.pendingDurationMicroseconds);
+            payload.put("start_as_pending", transfer.startAsPending);
+            payload.put("started_as_conference", transfer.startedAsConference);
+            if (transfer.createTime != null) payload.put("create_time", transfer.createTime);
+            if (transfer.updateTime != null) payload.put("update_time", transfer.updateTime);
+            if (transfer.transferPendingStartTime != null) payload.put("transfer_pending_start_time", transfer.transferPendingStartTime);
+            if (transfer.transferStartTime != null) payload.put("transfer_start_time", transfer.transferStartTime);
+            if (transfer.transferEndTime != null) payload.put("transfer_end_time", transfer.transferEndTime);
+            if (transfer.transferExternalEndTime != null) payload.put("transfer_external_end_time", transfer.transferExternalEndTime);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
 
-            log.info("Transfer instance processed: {}", transfer.transferInstanceSid);
+            log.info("Transfer instance processed: {}", transfer.transferInstanceId);
 
         } catch (Exception e) {
-            log.error("Failed to handle transfer instance: {}", transfer.transferInstanceSid, e);
+            log.error("Failed to handle transfer instance: {}", transfer.transferInstanceId, e);
             throw new RuntimeException("Stored procedure error", e);
         }
     }
 
     @Override
     public void handleCallRecording(CallRecording recording) {
-        log.info("Handling call recording: {} for callSid: {}", recording.recordingSid, recording.callSid);
+        log.info("Handling call recording: {} for callSid: {}", recording.recordingId, recording.callSid);
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getCallRecordingSql())) {
 
             Map<String, Object> payload = new HashMap<>();
-            payload.put("recording_sid", recording.recordingSid);
+            payload.put("recording_id", recording.recordingId);
             payload.put("call_sid", recording.callSid);
-            payload.put("status", recording.status);
+            payload.put("call_type", recording.callType);
+            payload.put("recording_type", recording.recordingType);
+            payload.put("org_id", recording.orgId);
+            payload.put("duration_seconds", recording.durationSeconds);
+            if (recording.startTime != null) payload.put("start_time", recording.startTime);
 
             stmt.setString(1, objectMapper.writeValueAsString(payload));
             stmt.execute();
 
-            log.info("Call recording processed: {}", recording.recordingSid);
+            log.info("Call recording processed: {}", recording.recordingId);
 
         } catch (Exception e) {
-            log.error("Failed to handle call recording: {}", recording.recordingSid, e);
+            log.error("Failed to handle call recording: {}", recording.recordingId, e);
             throw new RuntimeException("Stored procedure error", e);
         }
     }
 
     /**
      * Process any result sets returned by a stored procedure.
+     * Searches for an RPC key in the results (matching legacy finvi behavior).
      * Override in subclasses if custom handling is needed.
+     *
+     * @return RPC value if found in result set, null otherwise
      */
-    protected void processStoredProcedureResults(java.sql.PreparedStatement stmt) throws SQLException {
+    protected String processStoredProcedureResults(java.sql.PreparedStatement stmt) throws SQLException {
+        String rpcValue = null;
         do {
             try (var rs = stmt.getResultSet()) {
                 if (rs != null) {
+                    var rsmd = rs.getMetaData();
                     while (rs.next()) {
-                        var rsmd = rs.getMetaData();
                         for (int i = 1; i <= rsmd.getColumnCount(); i++) {
-                            log.debug("SP Result: {} = {}", rsmd.getColumnName(i), rs.getString(i));
+                            String colName = rsmd.getColumnName(i);
+                            String colValue = rs.getString(i);
+                            log.debug("SP Result: {} = {}", colName, colValue);
+
+                            // Check for RPC key (case-insensitive, matching legacy finvi)
+                            if ("RPC".equalsIgnoreCase(colName) && colValue != null && !colValue.isBlank()) {
+                                rpcValue = colValue;
+                            }
                         }
                     }
                 }
             }
         } while (stmt.getMoreResults() || stmt.getUpdateCount() != -1);
+        return rpcValue;
     }
 
     // ========== Job Handlers ==========

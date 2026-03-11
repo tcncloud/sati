@@ -36,7 +36,8 @@ class TenantContextTest {
         }
 
         @Override
-        public void handleTelephonyResult(TelephonyResult result) {
+        public String handleTelephonyResult(TelephonyResult result) {
+            return null;
         }
 
         @Override
@@ -44,7 +45,8 @@ class TenantContextTest {
         }
 
         @Override
-        public void handleAgentCall(AgentCall call) {
+        public String handleAgentCall(AgentCall call) {
+            return null;
         }
 
         @Override

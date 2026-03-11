@@ -351,6 +351,22 @@ public class GateClient implements AutoCloseable {
         return channel != null && !channel.isShutdown() && !channel.isTerminated();
     }
 
+    /**
+     * Reset gRPC's internal connect backoff on the channel.
+     * Forces immediate DNS re-resolution instead of waiting for gRPC's
+     * own exponential backoff timer. Call before each stream attempt.
+     */
+    public void resetConnectBackoff() {
+        ManagedChannel channel = channelRef.get();
+        if (channel != null && !channel.isShutdown() && !channel.isTerminated()) {
+            channel.resetConnectBackoff();
+        }
+    }
+
+    public SatiConfig getConfig() {
+        return config;
+    }
+
     public String getOrgName() {
         return orgName;
     }

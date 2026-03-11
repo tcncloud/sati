@@ -46,6 +46,7 @@ public class TenantContext implements AutoCloseable {
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Instant createdAt = Instant.now();
+    private final TenantCircuitBreaker circuitBreaker;
     private volatile Instant lastHealthCheck;
 
     /**
@@ -74,6 +75,7 @@ public class TenantContext implements AutoCloseable {
         this.customBackendClient = customBackendClient;
         this.appName = appName;
         this.appVersion = appVersion;
+        this.circuitBreaker = new TenantCircuitBreaker(tenantKey);
     }
 
     /**
@@ -158,12 +160,31 @@ public class TenantContext implements AutoCloseable {
 
         if (!running.get())
             return false;
-        if (gateClient != null && !gateClient.isChannelActive())
-            return false;
-        if (backendClient != null && !backendClient.isConnected())
-            return false;
 
-        return true;
+        boolean healthy = true;
+        if (gateClient != null && !gateClient.isChannelActive())
+            healthy = false;
+        if (backendClient != null && !backendClient.isConnected())
+            healthy = false;
+
+        if (healthy) {
+            circuitBreaker.recordSuccess();
+        } else {
+            circuitBreaker.recordFailure(new RuntimeException("Health check failed"));
+        }
+
+        return healthy && circuitBreaker.canExecute();
+    }
+
+    /**
+     * Check if circuit breaker allows work to be routed to this tenant.
+     */
+    public boolean canAcceptWork() {
+        return running.get() && circuitBreaker.canExecute();
+    }
+
+    public TenantCircuitBreaker getCircuitBreaker() {
+        return circuitBreaker;
     }
 
     // ========== Getters ==========

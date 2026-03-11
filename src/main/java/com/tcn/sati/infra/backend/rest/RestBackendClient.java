@@ -167,20 +167,12 @@ public class RestBackendClient implements TenantBackendClient {
     }
 
     @Override
-    public void handleTelephonyResult(TelephonyResult result) {
+    public String handleTelephonyResult(TelephonyResult result) {
         try {
             log.info("Handling telephony result for callSid: {}", result.callSid);
 
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("callSid", result.callSid);
-            payload.put("status", result.status);
-            payload.put("result", result.result);
-            if (result.metadata != null) {
-                payload.putAll(result.metadata);
-            }
-
             var request = requestBuilder("/api/v1/telephony-results")
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(result)))
                     .build();
 
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -193,6 +185,7 @@ public class RestBackendClient implements TenantBackendClient {
             log.error("Failed to handle telephony result", e);
             throw new RuntimeException("API error", e);
         }
+        return null; // REST backends don't use SP RPCs
     }
 
     @Override
@@ -200,14 +193,8 @@ public class RestBackendClient implements TenantBackendClient {
         try {
             log.info("Handling task: {} for pool: {}", task.taskSid, task.poolId);
 
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("taskSid", task.taskSid);
-            payload.put("poolId", task.poolId);
-            payload.put("recordId", task.recordId);
-            payload.put("status", task.status);
-
             var request = requestBuilder("/api/v1/tasks")
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(task)))
                     .build();
 
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -223,20 +210,12 @@ public class RestBackendClient implements TenantBackendClient {
     }
 
     @Override
-    public void handleAgentCall(AgentCall call) {
+    public String handleAgentCall(AgentCall call) {
         try {
             log.info("Handling agent call: {} for callSid: {}", call.agentCallSid, call.callSid);
 
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("agentCallSid", call.agentCallSid);
-            payload.put("callSid", call.callSid);
-            payload.put("userId", call.userId);
-            if (call.durations != null) {
-                payload.putAll(call.durations);
-            }
-
             var request = requestBuilder("/api/v1/agent-calls")
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(call)))
                     .build();
 
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -249,6 +228,7 @@ public class RestBackendClient implements TenantBackendClient {
             log.error("Failed to handle agent call", e);
             throw new RuntimeException("API error", e);
         }
+        return null; // REST backends don't use SP RPCs
     }
 
     @Override
@@ -256,14 +236,8 @@ public class RestBackendClient implements TenantBackendClient {
         try {
             log.info("Handling agent response: {} key: {}", response.agentCallResponseSid, response.responseKey);
 
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("agentCallResponseSid", response.agentCallResponseSid);
-            payload.put("callSid", response.callSid);
-            payload.put("responseKey", response.responseKey);
-            payload.put("responseValue", response.responseValue);
-
             var request = requestBuilder("/api/v1/agent-responses")
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(response)))
                     .build();
 
             var httpResponse = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -281,15 +255,10 @@ public class RestBackendClient implements TenantBackendClient {
     @Override
     public void handleTransferInstance(TransferInstance transfer) {
         try {
-            log.info("Handling transfer instance: {}", transfer.transferInstanceSid);
-
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("transferInstanceSid", transfer.transferInstanceSid);
-            payload.put("callSid", transfer.callSid);
-            payload.put("status", transfer.status);
+            log.info("Handling transfer instance: {}", transfer.transferInstanceId);
 
             var request = requestBuilder("/api/v1/transfer-instances")
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(transfer)))
                     .build();
 
             var httpResponse = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
@@ -307,15 +276,10 @@ public class RestBackendClient implements TenantBackendClient {
     @Override
     public void handleCallRecording(CallRecording recording) {
         try {
-            log.info("Handling call recording: {} for callSid: {}", recording.recordingSid, recording.callSid);
-
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("recordingSid", recording.recordingSid);
-            payload.put("callSid", recording.callSid);
-            payload.put("status", recording.status);
+            log.info("Handling call recording: {} for callSid: {}", recording.recordingId, recording.callSid);
 
             var request = requestBuilder("/api/v1/call-recordings")
-                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+                    .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(recording)))
                     .build();
 
             var httpResponse = httpClient.send(request, HttpResponse.BodyHandlers.ofString());

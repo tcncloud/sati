@@ -91,6 +91,9 @@ public class Main {
                     .appVersion(version)
                     .start(8080);
 
+            // Register custom routes (shows up in Swagger automatically)
+            // CustomRoutes.register(satiApp.getApp());
+
             // Wire Gate Config Listener (DB credential rotation)
             // When Gate sends new backend credentials, the backend client
             // automatically recreates the HikariCP pool.
