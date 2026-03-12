@@ -95,6 +95,17 @@ public class GateClientJobQueue extends GateClientAbstract {
               log.debug(
                   LogCategory.GRPC, "Keepalive", "Received keepalive, sending ACK to register");
               sendAck(KEEPALIVE_JOB_ID);
+              if (job.hasInfo()) {
+                try {
+                  plugin.info(KEEPALIVE_JOB_ID, job.getInfo());
+                } catch (Exception e) {
+                  log.warn(
+                      LogCategory.GRPC,
+                      "KeepaliveInfo",
+                      "Failed to dispatch info on keepalive: %s",
+                      e.getMessage());
+                }
+              }
               return;
             }
 
