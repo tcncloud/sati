@@ -29,4 +29,7 @@ public record Agent(
     @Nullable String lastName,
     @Nullable Long currentSessionId,
     @Nullable AgentState agentState,
-    @Nullable Boolean isLoggedIn) {}
+    @Nullable Boolean isLoggedIn,
+    @Nullable String callSid,
+    @Nullable String callType,
+    @Nullable Boolean isRecording) {}

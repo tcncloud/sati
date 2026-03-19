@@ -104,7 +104,10 @@ public class AgentsController {
                       != build.buf.gen.tcnapi.exile.gate.v2.AgentState.AGENT_STATE_UNAVAILABLE
                   ? AgentState.values()[agent.getAgentState().getNumber()]
                   : null,
-              agent.getIsLoggedIn()));
+              agent.getIsLoggedIn(),
+              !agent.getCallSid().isEmpty() ? agent.getCallSid() : null,
+              !agent.getCallSid().isEmpty() ? agent.getCallType().name().replace("CALL_TYPE_", "").toLowerCase() : null,
+              agent.getIsRecording()));
     }
 
     return HttpResponse.ok(agents);
@@ -184,7 +187,10 @@ public class AgentsController {
                   != build.buf.gen.tcnapi.exile.gate.v2.AgentState.AGENT_STATE_UNAVAILABLE
               ? AgentState.values()[ret.getAgent().getAgentState().getNumber()]
               : null,
-          ret.getAgent().getIsLoggedIn());
+          ret.getAgent().getIsLoggedIn(),
+          !ret.getAgent().getCallSid().isEmpty() ? ret.getAgent().getCallSid() : null,
+          !ret.getAgent().getCallSid().isEmpty() ? ret.getAgent().getCallType().name().replace("CALL_TYPE_", "").toLowerCase() : null,
+          ret.getAgent().getIsRecording());
     }
     throw new RuntimeException("Failed to create agent");
   }
