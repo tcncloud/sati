@@ -104,7 +104,8 @@ public class AgentsController {
                       != build.buf.gen.tcnapi.exile.gate.v2.AgentState.AGENT_STATE_UNAVAILABLE
                   ? AgentState.values()[agent.getAgentState().getNumber()]
                   : null,
-              agent.getIsLoggedIn()));
+              agent.getIsLoggedIn(),
+              agent.getIsRecording()));
     }
 
     return HttpResponse.ok(agents);
@@ -184,7 +185,8 @@ public class AgentsController {
                   != build.buf.gen.tcnapi.exile.gate.v2.AgentState.AGENT_STATE_UNAVAILABLE
               ? AgentState.values()[ret.getAgent().getAgentState().getNumber()]
               : null,
-          ret.getAgent().getIsLoggedIn());
+          ret.getAgent().getIsLoggedIn(),
+          null);
     }
     throw new RuntimeException("Failed to create agent");
   }
@@ -283,14 +285,16 @@ public class AgentsController {
               res.getConnectedParty().getCallSid(),
               CallType.values()[res.getConnectedParty().getCallType().getNumber()],
               res.getConnectedParty().getIsInbound()),
-          res.getAgentIsMuted());
+          res.getAgentIsMuted(),
+          res.getIsRecording());
     } else {
       return new AgentStatus(
           res.getPartnerAgentId(),
           AgentState.values()[res.getAgentState().getNumber()],
           res.getCurrentSessionId(),
           null,
-          res.getAgentIsMuted());
+          res.getAgentIsMuted(),
+          res.getIsRecording());
     }
   }
 
