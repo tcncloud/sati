@@ -55,7 +55,9 @@ public class AgentsController {
   @Tag(name = "agents")
   public HttpResponse<?> listAgents(
       @QueryValue(value = "logged_in", defaultValue = "") Optional<Boolean> loggedIn,
-      @QueryValue(value = "state", defaultValue = "") Optional<String> stateParam)
+      @QueryValue(value = "state", defaultValue = "") Optional<String> stateParam,
+      @QueryValue(value = "fetch_recording_status", defaultValue = "false")
+          boolean fetchRecordingStatus)
       throws UnconfiguredException {
     log.debug("listAgents with logged_in={}, state={}", loggedIn, stateParam);
 
@@ -84,6 +86,8 @@ public class AgentsController {
       requestBuilder.setState(stateFilter);
     }
 
+    requestBuilder.setFetchRecordingStatus(fetchRecordingStatus);
+
     // Call gRPC service
     var ret = configChangeWatcher.getGateClient().listAgents(requestBuilder.build());
 
@@ -92,6 +96,14 @@ public class AgentsController {
     while (ret.hasNext()) {
       var agentResponse = ret.next();
       var agent = agentResponse.getAgent();
+      ConnectedParty cp = null;
+      if (agent.hasConnectedParty()) {
+        cp =
+            new ConnectedParty(
+                agent.getConnectedParty().getCallSid(),
+                CallType.values()[agent.getConnectedParty().getCallType().getNumber()],
+                agent.getConnectedParty().getIsInbound());
+      }
       agents.add(
           new Agent(
               agent.getUserId(),
@@ -105,7 +117,9 @@ public class AgentsController {
                   ? AgentState.values()[agent.getAgentState().getNumber()]
                   : null,
               agent.getIsLoggedIn(),
-              agent.getIsRecording()));
+              fetchRecordingStatus ? agent.getIsRecording() : null,
+              agent.getAgentIsMuted(),
+              cp));
     }
 
     return HttpResponse.ok(agents);
@@ -186,6 +200,8 @@ public class AgentsController {
               ? AgentState.values()[ret.getAgent().getAgentState().getNumber()]
               : null,
           ret.getAgent().getIsLoggedIn(),
+          null,
+          null,
           null);
     }
     throw new RuntimeException("Failed to create agent");

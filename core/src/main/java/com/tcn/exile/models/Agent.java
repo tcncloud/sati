@@ -30,4 +30,6 @@ public record Agent(
     @Nullable Long currentSessionId,
     @Nullable AgentState agentState,
     @Nullable Boolean isLoggedIn,
-    @Nullable Boolean isRecording) {}
+    @Nullable Boolean isRecording,
+    @Nullable Boolean agentIsMuted,
+    @Nullable ConnectedParty connectedParty) {}
