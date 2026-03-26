@@ -61,7 +61,7 @@ public class OrgRoutes {
         app.post(P + "/agents", OrgRoutes::upsertAgent);
         app.get(P + "/agents/{partnerAgentId}/state", OrgRoutes::getAgentState);
         app.put(P + "/agents/{partnerAgentId}/state/{state}", OrgRoutes::updateAgentState);
-        app.post(P + "/agents/{partnerAgentId}/dial", OrgRoutes::dial);
+        app.put(P + "/agents/{partnerAgentId}/dial", OrgRoutes::dial);
         app.get(P + "/agents/{partnerAgentId}/recording", OrgRoutes::getRecording);
         app.put(P + "/agents/{partnerAgentId}/recording/{status}", OrgRoutes::setRecording);
         app.get(P + "/agents/{partnerAgentId}/pausecodes", OrgRoutes::getPauseCodes);
@@ -230,16 +230,26 @@ public class OrgRoutes {
             + "/agents/{partnerAgentId}/state/{state}", methods = HttpMethod.PUT, summary = "Update Agent State", tags = {
                     "Agents" }, pathParams = { @OpenApiParam(name = "tenantKey", required = true),
                             @OpenApiParam(name = "partnerAgentId", required = true),
-                            @OpenApiParam(name = "state", required = true, description = "Target state (e.g. READY, PAUSED)") }, queryParams = @OpenApiParam(name = "reason", description = "Pause reason code"), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SuccessResult.class)))
+                            @OpenApiParam(name = "state", required = true, description = "Target state (e.g. READY, PAUSED)") }, requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = AgentDto.PauseCodeReason.class)), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SuccessResult.class)))
     private static void updateAgentState(Context ctx) {
         TenantContext t = tenant(ctx);
         if (t == null || t.getGateClient() == null)
             return;
+        String reason = null;
+        String body = ctx.body();
+        if (body != null && !body.isBlank()) {
+            try {
+                var parsed = ctx.bodyAsClass(AgentDto.PauseCodeReason.class);
+                reason = parsed.reason;
+            } catch (Exception e) {
+                // Body wasn't valid JSON or didn't have reason — that's fine
+            }
+        }
         ctx.json(agentSvc(ctx).updateAgentState(
-                ctx.pathParam("partnerAgentId"), ctx.pathParam("state"), ctx.queryParam("reason")));
+                ctx.pathParam("partnerAgentId"), ctx.pathParam("state"), reason));
     }
 
-    @OpenApi(path = P + "/agents/{partnerAgentId}/dial", methods = HttpMethod.POST, summary = "Dial", tags = {
+    @OpenApi(path = P + "/agents/{partnerAgentId}/dial", methods = HttpMethod.PUT, summary = "Dial", tags = {
             "Agents" }, pathParams = { @OpenApiParam(name = "tenantKey", required = true),
                     @OpenApiParam(name = "partnerAgentId", required = true) }, requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = AgentDto.DialRequest.class)), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = AgentDto.DialResult.class)))
     private static void dial(Context ctx) {
@@ -247,8 +257,7 @@ public class OrgRoutes {
         if (t == null || t.getGateClient() == null)
             return;
         var body = ctx.bodyAsClass(AgentDto.DialRequest.class);
-        body.partnerAgentId = ctx.pathParam("partnerAgentId");
-        ctx.json(agentSvc(ctx).dial(body));
+        ctx.json(agentSvc(ctx).dial(ctx.pathParam("partnerAgentId"), body));
     }
 
     @OpenApi(path = P
@@ -272,12 +281,12 @@ public class OrgRoutes {
         if (t == null || t.getGateClient() == null)
             return;
         String status = ctx.pathParam("status").toLowerCase();
-        if ("start".equals(status))
-            ctx.json(agentSvc(ctx).startRecording(ctx.pathParam("partnerAgentId")));
-        else if ("stop".equals(status))
-            ctx.json(agentSvc(ctx).stopRecording(ctx.pathParam("partnerAgentId")));
-        else
-            ctx.status(400).json(Map.of("error", "Invalid status: " + status));
+        String agentId = ctx.pathParam("partnerAgentId");
+        switch (status) {
+            case "start", "on", "resume", "true" -> ctx.json(agentSvc(ctx).startRecording(agentId));
+            case "stop", "off", "pause", "paused", "false" -> ctx.json(agentSvc(ctx).stopRecording(agentId));
+            default -> ctx.status(400).json(Map.of("error", "Invalid status: " + status));
+        }
     }
 
     @OpenApi(path = P
@@ -342,8 +351,7 @@ public class OrgRoutes {
         if (t == null || t.getGateClient() == null)
             return;
         var body = ctx.bodyAsClass(AgentDto.CallResponseRequest.class);
-        body.partnerAgentId = ctx.pathParam("partnerAgentId");
-        ctx.json(agentSvc(ctx).addCallResponse(body));
+        ctx.json(agentSvc(ctx).addCallResponse(ctx.pathParam("partnerAgentId"), body));
     }
 
     // ========== Transfer ==========
@@ -424,8 +432,7 @@ public class OrgRoutes {
         if (t == null || t.getGateClient() == null)
             return;
         var body = ctx.bodyAsClass(ScrubListDto.UpsertScrubEntryRequest.class);
-        body.scrubListId = ctx.pathParam("scrubListId");
-        ctx.json(new ScrubListService(t.getGateClient()).upsertEntry(body));
+        ctx.json(new ScrubListService(t.getGateClient()).upsertEntry(ctx.pathParam("scrubListId"), body));
     }
 
     @OpenApi(path = P
@@ -472,8 +479,7 @@ public class OrgRoutes {
         if (t == null || t.getGateClient() == null)
             return;
         var body = ctx.bodyAsClass(SkillDto.AssignSkillRequest.class);
-        body.partnerAgentId = ctx.pathParam("partnerAgentId");
-        ctx.json(new SkillsService(t.getGateClient()).assignSkill(body));
+        ctx.json(new SkillsService(t.getGateClient()).assignSkill(ctx.pathParam("partnerAgentId"), body));
     }
 
     @OpenApi(path = P
@@ -485,8 +491,7 @@ public class OrgRoutes {
         if (t == null || t.getGateClient() == null)
             return;
         var body = ctx.bodyAsClass(SkillDto.UnassignSkillRequest.class);
-        body.partnerAgentId = ctx.pathParam("partnerAgentId");
-        ctx.json(new SkillsService(t.getGateClient()).unassignSkill(body));
+        ctx.json(new SkillsService(t.getGateClient()).unassignSkill(ctx.pathParam("partnerAgentId"), body));
     }
 
     // ========== NCL Rulesets ==========
@@ -564,7 +569,7 @@ public class OrgRoutes {
 
     @OpenApi(path = P
             + "/journey-buffer/add-record", methods = HttpMethod.POST, summary = "Add Record to Journey Buffer", tags = {
-                    "Journey Buffer" }, pathParams = @OpenApiParam(name = "tenantKey", required = true), requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = JourneyBufferDto.AddRecordRequest.class)), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SuccessResult.class)))
+                    "Journey Buffer" }, pathParams = @OpenApiParam(name = "tenantKey", required = true), requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = JourneyBufferDto.AddRecordRequest.class)), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = JourneyBufferDto.AddRecordResponse.class)))
     private static void addJourneyRecord(Context ctx) {
         TenantContext t = tenant(ctx);
         if (t == null || t.getGateClient() == null)

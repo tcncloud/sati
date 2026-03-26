@@ -10,9 +10,9 @@ public class ScrubListDto {
     /** Scrub list entry — returned by list. */
     @OpenApiByFields
     public static class ScrubListEntry {
-        public String scrubListId;
-        public boolean readOnly;
-        public String contentType;
+        public String scrub_list_id;
+        public boolean read_only;
+        public String content_type;
     }
 
     // ========== Request DTOs ==========
@@ -20,10 +20,9 @@ public class ScrubListDto {
     /** Request for upserting a scrub list entry. */
     @OpenApiByFields
     public static class UpsertScrubEntryRequest {
-        public String scrubListId;
         public String content;
-        public String expirationDate;
+        public String expiration_date;
         public String notes;
-        public String countryCode;
+        public String country_code;
     }
 }

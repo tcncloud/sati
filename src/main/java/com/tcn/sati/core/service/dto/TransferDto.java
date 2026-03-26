@@ -12,14 +12,28 @@ public class TransferDto {
     /** Request for executing a call transfer. */
     @OpenApiByFields
     public static class TransferRequest {
-        public String partnerAgentId;
-        public String kind; // COLD or WARM
-        public String action; // START, CANCEL, COMPLETE
-        public String receivingPartnerAgentId;
-        public String outboundDestination;
-        public String outboundCallerId;
-        public Boolean outboundCallerHold;
-        public boolean queue;
+        public String partner_agent_id;
+        public Agent receiving_partner_agent_id;
+        public Outbound outbound;
+        public Queue queue;
+        public String kind; // COLD, WARM, CONFERENCE
+        public String action; // START, APPROVE, CANCEL
+    }
+
+    @OpenApiByFields
+    public static class Agent {
+        public String partner_agent_id;
+    }
+
+    @OpenApiByFields
+    public static class Outbound {
+        public String caller_id;
+        public String destination;
+        public Boolean caller_hold;
+    }
+
+    @OpenApiByFields
+    public static class Queue {
     }
 
     // ========== Response DTOs ==========
@@ -27,15 +41,5 @@ public class TransferDto {
     /** Response from a transfer operation. */
     @OpenApiByFields
     public static class TransferResponse {
-        public boolean success;
-        public String message;
-
-        public TransferResponse() {
-        }
-
-        public TransferResponse(boolean success, String message) {
-            this.success = success;
-            this.message = message;
-        }
     }
 }

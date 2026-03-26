@@ -233,7 +233,7 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
                     ? backendConfig.maxConnections
                     : 10;
             hc.setMaximumPoolSize(maxConnections);
-            hc.setMinimumIdle(2);
+            hc.setMinimumIdle(maxConnections);
 
             // Connection timeouts
             hc.setConnectionTimeout(10_000);
@@ -599,7 +599,8 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
     /**
      * Process any result sets returned by a stored procedure.
-     * Searches for an RPC key in the results (matching legacy finvi behavior).
+     * Searches for an RPC key in the results.
+     * Checks both column names AND JSON column values recursively.
      * Override in subclasses if custom handling is needed.
      *
      * @return RPC value if found in result set, null otherwise
@@ -616,9 +617,23 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
                             String colValue = rs.getString(i);
                             log.debug("SP Result: {} = {}", colName, colValue);
 
-                            // Check for RPC key (case-insensitive, matching legacy finvi)
+                            // Direct column name match
                             if ("RPC".equalsIgnoreCase(colName) && colValue != null && !colValue.isBlank()) {
                                 rpcValue = colValue;
+                            }
+
+                            // Also search within JSON values (MapFlattener behavior)
+                            if (rpcValue == null && colValue != null && !colValue.isBlank()) {
+                                try {
+                                    @SuppressWarnings("unchecked")
+                                    var parsed = objectMapper.readValue(colValue, Map.class);
+                                    String found = searchForRpc(parsed);
+                                    if (found != null) {
+                                        rpcValue = found;
+                                    }
+                                } catch (Exception e) {
+                                    // Not valid JSON — skip
+                                }
                             }
                         }
                     }
@@ -626,6 +641,25 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
             }
         } while (stmt.getMoreResults() || stmt.getUpdateCount() != -1);
         return rpcValue;
+    }
+
+    /**
+     * Recursively search a map for an "RPC" key (case-insensitive).
+     * Matches legacy MapFlattener.search() behavior.
+     */
+    @SuppressWarnings("unchecked")
+    private String searchForRpc(Map<String, Object> map) {
+        for (var entry : map.entrySet()) {
+            if ("RPC".equalsIgnoreCase(entry.getKey()) && entry.getValue() != null) {
+                String val = entry.getValue().toString();
+                if (!val.isBlank()) return val;
+            }
+            if (entry.getValue() instanceof Map) {
+                String found = searchForRpc((Map<String, Object>) entry.getValue());
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     // ========== Job Handlers ==========

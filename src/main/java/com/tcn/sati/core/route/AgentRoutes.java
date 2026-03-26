@@ -22,7 +22,7 @@ public class AgentRoutes {
                 app.get("/api/agents/{partnerAgentId}/state", AgentRoutes::getAgentState);
                 app.put("/api/agents/{partnerAgentId}/state/{state}", AgentRoutes::updateAgentState);
 
-                app.post("/api/agents/{partnerAgentId}/dial", AgentRoutes::dial);
+                app.put("/api/agents/{partnerAgentId}/dial", AgentRoutes::dial);
 
                 app.get("/api/agents/{partnerAgentId}/recording", AgentRoutes::getRecording);
                 app.put("/api/agents/{partnerAgentId}/recording/{status}", AgentRoutes::setRecording);
@@ -42,7 +42,8 @@ public class AgentRoutes {
         @OpenApi(path = "/api/agents", methods = HttpMethod.GET, summary = "List Agents", tags = {
                         "Agents" }, queryParams = {
                                         @OpenApiParam(name = "loggedIn", type = Boolean.class, description = "Filter by login status"),
-                                        @OpenApiParam(name = "state", description = "Filter by agent state")
+                                        @OpenApiParam(name = "state", description = "Filter by agent state"),
+                                        @OpenApiParam(name = "fetch_recording_status", type = Boolean.class, description = "If true, fetch recording status for each agent (may be expensive)")
                         }, responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = AgentDto.AgentInfo[].class)))
         private static void listAgents(Context ctx) {
                 var request = new AgentDto.ListAgentsRequest();
@@ -50,6 +51,7 @@ public class AgentRoutes {
                                 ? Boolean.parseBoolean(ctx.queryParam("loggedIn"))
                                 : null;
                 request.state = ctx.queryParam("state");
+                request.fetchRecordingStatus = "true".equalsIgnoreCase(ctx.queryParam("fetch_recording_status"));
                 ctx.json(service.listAgents(request));
         }
 
@@ -70,18 +72,26 @@ public class AgentRoutes {
                         "Agents" }, pathParams = {
                                         @OpenApiParam(name = "partnerAgentId", required = true),
                                         @OpenApiParam(name = "state", required = true, description = "Target state (e.g. READY, PAUSED)")
-                        }, queryParams = @OpenApiParam(name = "reason", description = "Pause reason code"), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SuccessResult.class)))
+                        }, requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = AgentDto.PauseCodeReason.class)), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SuccessResult.class)))
         private static void updateAgentState(Context ctx) {
-                String reason = ctx.queryParam("reason");
+                String reason = null;
+                String body = ctx.body();
+                if (body != null && !body.isBlank()) {
+                        try {
+                                var parsed = ctx.bodyAsClass(AgentDto.PauseCodeReason.class);
+                                reason = parsed.reason;
+                        } catch (Exception e) {
+                                // Body wasn't valid JSON or didn't have reason — that's fine
+                        }
+                }
                 ctx.json(service.updateAgentState(ctx.pathParam("partnerAgentId"), ctx.pathParam("state"), reason));
         }
 
-        @OpenApi(path = "/api/agents/{partnerAgentId}/dial", methods = HttpMethod.POST, summary = "Dial", tags = {
+        @OpenApi(path = "/api/agents/{partnerAgentId}/dial", methods = HttpMethod.PUT, summary = "Dial", tags = {
                         "Agents" }, pathParams = @OpenApiParam(name = "partnerAgentId", required = true), requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = AgentDto.DialRequest.class)), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = AgentDto.DialResult.class)))
         private static void dial(Context ctx) {
                 var body = ctx.bodyAsClass(AgentDto.DialRequest.class);
-                body.partnerAgentId = ctx.pathParam("partnerAgentId");
-                ctx.json(service.dial(body));
+                ctx.json(service.dial(ctx.pathParam("partnerAgentId"), body));
         }
 
         @OpenApi(path = "/api/agents/{partnerAgentId}/recording", methods = HttpMethod.GET, summary = "Get Recording Status", tags = {
@@ -97,12 +107,11 @@ public class AgentRoutes {
                         }, responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = AgentDto.RecordingStatus.class)))
         private static void setRecording(Context ctx) {
                 String status = ctx.pathParam("status").toLowerCase();
-                if ("start".equals(status)) {
-                        ctx.json(service.startRecording(ctx.pathParam("partnerAgentId")));
-                } else if ("stop".equals(status)) {
-                        ctx.json(service.stopRecording(ctx.pathParam("partnerAgentId")));
-                } else {
-                        ctx.status(400).json(java.util.Map.of("error", "Invalid status: " + status));
+                String agentId = ctx.pathParam("partnerAgentId");
+                switch (status) {
+                        case "start", "on", "resume", "true" -> ctx.json(service.startRecording(agentId));
+                        case "stop", "off", "pause", "paused", "false" -> ctx.json(service.stopRecording(agentId));
+                        default -> ctx.status(400).json(java.util.Map.of("error", "Invalid status: " + status));
                 }
         }
 
@@ -140,7 +149,6 @@ public class AgentRoutes {
                         "Agents" }, pathParams = @OpenApiParam(name = "partnerAgentId", required = true), requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = AgentDto.CallResponseRequest.class)), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SuccessResult.class)))
         private static void callResponse(Context ctx) {
                 var body = ctx.bodyAsClass(AgentDto.CallResponseRequest.class);
-                body.partnerAgentId = ctx.pathParam("partnerAgentId");
-                ctx.json(service.addCallResponse(body));
+                ctx.json(service.addCallResponse(ctx.pathParam("partnerAgentId"), body));
         }
 }

@@ -2,7 +2,6 @@ package com.tcn.sati.core.route;
 
 import com.tcn.sati.core.service.JourneyBufferService;
 import com.tcn.sati.core.service.dto.JourneyBufferDto;
-import com.tcn.sati.core.service.dto.SuccessResult;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.openapi.*;
@@ -20,7 +19,7 @@ public class JourneyBufferRoutes {
     }
 
     @OpenApi(path = "/api/journey-buffer/add-record", methods = HttpMethod.POST, summary = "Add Record to Journey Buffer", tags = {
-            "Journey Buffer" }, requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = JourneyBufferDto.AddRecordRequest.class)), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SuccessResult.class)))
+            "Journey Buffer" }, requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = JourneyBufferDto.AddRecordRequest.class)), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = JourneyBufferDto.AddRecordResponse.class)))
     private static void addRecord(Context ctx) {
         var body = ctx.bodyAsClass(JourneyBufferDto.AddRecordRequest.class);
         ctx.json(service.addRecord(body));

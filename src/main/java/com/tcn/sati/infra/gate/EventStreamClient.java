@@ -9,9 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ThreadLocalRandom;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -32,6 +30,7 @@ public class EventStreamClient implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(EventStreamClient.class);
 
     private static final int DEFAULT_BATCH_SIZE = 100;
+    private static final int DEFAULT_MAX_CONCURRENT_EVENTS = 20;
     private static final long RECONNECT_BASE_MS = 5_000;
     private static final long RECONNECT_MAX_MS = 60_000;
     private static final double BACKOFF_JITTER = 0.2;
@@ -47,6 +46,8 @@ public class EventStreamClient implements AutoCloseable {
     private final TenantBackendClient backendClient;
     private final int batchSize;
     private final Thread streamThread;
+    private final ExecutorService eventExecutor;
+    private final Semaphore concurrencyLimit;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final AtomicBoolean connected = new AtomicBoolean(false);
@@ -66,8 +67,9 @@ public class EventStreamClient implements AutoCloseable {
         this.gateClient = gateClient;
         this.backendClient = backendClient;
         this.batchSize = batchSize;
-        this.streamThread = new Thread(this::streamLoop, "event-stream");
-        this.streamThread.setDaemon(true);
+        this.streamThread = Thread.ofVirtual().name("event-stream").unstarted(this::streamLoop);
+        this.eventExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        this.concurrencyLimit = new Semaphore(DEFAULT_MAX_CONCURRENT_EVENTS);
     }
 
     public void start() {
@@ -247,19 +249,48 @@ public class EventStreamClient implements AutoCloseable {
     // ========== Event Processing ==========
 
     /**
-     * Process a batch of events, adding successful ACK IDs to the pending buffer.
+     * Process a batch of events in parallel using virtual threads.
+     * Each event is submitted to the executor, bounded by the concurrency semaphore.
+     * ACK IDs are collected after all events in the batch complete.
      */
     private void processBatch(List<Event> events) {
+        List<Future<String>> futures = new ArrayList<>();
+
         for (Event event : events) {
             String eventId = getEventId(event);
-            if (processEvent(event)) {
-                synchronized (pendingAcks) {
-                    pendingAcks.add(eventId);
+            futures.add(eventExecutor.submit(() -> {
+                try {
+                    concurrencyLimit.acquire();
+                    try {
+                        if (processEvent(event)) {
+                            eventsProcessed.incrementAndGet();
+                            return eventId; // Success — should ACK
+                        } else {
+                            eventsFailed.incrementAndGet();
+                            log.warn("Event {} NOT acknowledged - will be redelivered", eventId);
+                            return null;
+                        }
+                    } finally {
+                        concurrencyLimit.release();
+                    }
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return null;
                 }
-                eventsProcessed.incrementAndGet();
-            } else {
-                eventsFailed.incrementAndGet();
-                log.warn("Event {} NOT acknowledged - will be redelivered", eventId);
+            }));
+        }
+
+        // Collect successful ACKs
+        for (Future<String> future : futures) {
+            try {
+                String ackId = future.get();
+                if (ackId != null) {
+                    synchronized (pendingAcks) {
+                        pendingAcks.add(ackId);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Event processing future failed: {}", e.getMessage());
             }
         }
     }
@@ -279,14 +310,14 @@ public class EventStreamClient implements AutoCloseable {
                     var ac = convertAgentCall(event.getAgentCall());
                     String acRpc = backendClient.handleAgentCall(ac);
                     if (acRpc != null && !acRpc.isBlank()) {
-                        sendRpcResponse(ac.callSid, acRpc);
+                        sendRpcResponse(String.valueOf(ac.callSid), ac.callType, acRpc);
                     }
                     break;
                 case TELEPHONY_RESULT:
                     var tr = convertTelephonyResult(event.getTelephonyResult());
                     String rpc = backendClient.handleTelephonyResult(tr);
                     if (rpc != null && !rpc.isBlank()) {
-                        sendRpcResponse(tr.callSid, rpc);
+                        sendRpcResponse(String.valueOf(tr.callSid), tr.callType, rpc);
                     }
                     break;
                 case AGENT_RESPONSE:
@@ -353,27 +384,58 @@ public class EventStreamClient implements AutoCloseable {
 
     /**
      * Send an AddAgentCallResponse back to Gate when a stored procedure returns an RPC value.
-     * This matches legacy finvi behavior where TelephonyResult SPs could trigger Gate callbacks.
+     * This matches legacy behavior where TelephonyResult SPs could trigger Gate callbacks.
      */
-    private void sendRpcResponse(String callSid, String rpcValue) {
+    private void sendRpcResponse(String callSid, String callType, String rpcValue) {
         try {
             log.info("Sending RPC response for callSid: {} key=RPC value={}", callSid, rpcValue);
-            var request = build.buf.gen.tcnapi.exile.gate.v2.AddAgentCallResponseRequest.newBuilder()
+            var builder = build.buf.gen.tcnapi.exile.gate.v2.AddAgentCallResponseRequest.newBuilder()
+                    .setCallSid(callSid)
                     .setKey("RPC")
                     .setValue(rpcValue)
-                    .build();
-            gateClient.addAgentCallResponse(request);
+                    .setCallType(toProtoCallType(callType));
+            gateClient.addAgentCallResponse(builder.build());
         } catch (Exception e) {
             log.error("Failed to send RPC response for callSid: {}", callSid, e);
         }
+    }
+
+    /**
+     * Convert a display call_type string ("inbound", "outbound", etc.) to the proto CallType enum.
+     */
+    private static build.buf.gen.tcnapi.exile.gate.v2.CallType toProtoCallType(String callType) {
+        if (callType == null) return build.buf.gen.tcnapi.exile.gate.v2.CallType.CALL_TYPE_INBOUND;
+        return switch (callType.toLowerCase().trim()) {
+            case "outbound" -> build.buf.gen.tcnapi.exile.gate.v2.CallType.CALL_TYPE_OUTBOUND;
+            case "preview" -> build.buf.gen.tcnapi.exile.gate.v2.CallType.CALL_TYPE_PREVIEW;
+            case "manual" -> build.buf.gen.tcnapi.exile.gate.v2.CallType.CALL_TYPE_MANUAL;
+            case "mac" -> build.buf.gen.tcnapi.exile.gate.v2.CallType.CALL_TYPE_MAC;
+            default -> build.buf.gen.tcnapi.exile.gate.v2.CallType.CALL_TYPE_INBOUND;
+        };
+    }
+
+    // ========== call_type normalization ==========
+
+    /**
+     * Normalize call_type to lowercase display string.
+     * "CALL_TYPE_INBOUND" -> "inbound", "inbound" -> "inbound".
+     * Matches legacy CallTypeUtils.toDisplayString() behavior.
+     */
+    private static String normalizeCallType(String callType) {
+        if (callType == null || callType.isBlank()) return "unknown";
+        String upper = callType.trim().toUpperCase();
+        if (upper.startsWith("CALL_TYPE_")) {
+            upper = upper.substring("CALL_TYPE_".length());
+        }
+        return upper.toLowerCase();
     }
 
     // ========== Convert proto to DTOs ==========
 
     private TenantBackendClient.AgentCall convertAgentCall(ExileAgentCall proto) {
         var dto = new TenantBackendClient.AgentCall();
-        dto.agentCallSid = String.valueOf(proto.getAgentCallSid());
-        dto.callSid = String.valueOf(proto.getCallSid());
+        dto.agentCallSid = proto.getAgentCallSid();
+        dto.callSid = proto.getCallSid();
         dto.callType = proto.getCallType();
         dto.userId = proto.getUserId();
         dto.partnerAgentId = proto.getPartnerAgentId();
@@ -397,8 +459,8 @@ public class EventStreamClient implements AutoCloseable {
 
     private TenantBackendClient.TelephonyResult convertTelephonyResult(ExileTelephonyResult proto) {
         var dto = new TenantBackendClient.TelephonyResult();
-        dto.callSid = String.valueOf(proto.getCallSid());
-        dto.callType = proto.getCallType();
+        dto.callSid = proto.getCallSid();
+        dto.callType = normalizeCallType(proto.getCallType());
         dto.status = proto.getStatus().name();
         dto.result = proto.getResult().name();
         dto.callerId = proto.getCallerId();
@@ -444,13 +506,13 @@ public class EventStreamClient implements AutoCloseable {
 
     private TenantBackendClient.AgentResponse convertAgentResponse(ExileAgentResponse proto) {
         var dto = new TenantBackendClient.AgentResponse();
-        dto.agentCallResponseSid = String.valueOf(proto.getAgentCallResponseSid());
-        dto.callSid = String.valueOf(proto.getCallSid());
+        dto.agentCallResponseSid = proto.getAgentCallResponseSid();
+        dto.callSid = proto.getCallSid();
         dto.callType = proto.getCallType();
         dto.responseKey = proto.getResponseKey();
         dto.responseValue = proto.getResponseValue();
         dto.userId = proto.getUserId();
-        dto.agentSid = String.valueOf(proto.getAgentSid());
+        dto.agentSid = proto.getAgentSid();
         dto.partnerAgentId = proto.getPartnerAgentId();
         dto.orgId = proto.getOrgId();
         dto.clientSid = proto.getClientSid();
@@ -506,7 +568,7 @@ public class EventStreamClient implements AutoCloseable {
     private TenantBackendClient.CallRecording convertCallRecording(ExileCallRecording proto) {
         var dto = new TenantBackendClient.CallRecording();
         dto.recordingId = proto.getRecordingId();
-        dto.callSid = String.valueOf(proto.getCallSid());
+        dto.callSid = proto.getCallSid();
         dto.callType = proto.getCallType();
         dto.recordingType = proto.getRecordingType().name();
         dto.orgId = proto.getOrgId();

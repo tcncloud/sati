@@ -18,6 +18,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -34,18 +35,21 @@ public class JobProcessor implements AutoCloseable {
 
     private final TenantBackendClient backendClient;
     private final GateClient gateClient;
-    private final ThreadPoolExecutor executor;
-    private final BlockingQueue<Runnable> jobQueue;
+    private final ExecutorService executor;
+    private final Semaphore concurrencyLimit;
     private final String appName;
     private final String appVersion;
 
     private final AtomicLong processedJobs = new AtomicLong(0);
     private final AtomicLong failedJobs = new AtomicLong(0);
+    private final AtomicInteger activeJobs = new AtomicInteger(0);
+    private final AtomicInteger queuedJobs = new AtomicInteger(0);
+    private final int maxWorkers;
 
     private volatile boolean shuttingDown = false;
 
     public JobProcessor(TenantBackendClient backendClient, GateClient gateClient) {
-        this(backendClient, gateClient, 5, null, null);
+        this(backendClient, gateClient, 20, null, null);
     }
 
     public JobProcessor(TenantBackendClient backendClient, GateClient gateClient,
@@ -54,20 +58,11 @@ public class JobProcessor implements AutoCloseable {
         this.gateClient = gateClient;
         this.appName = appName != null ? appName : "Sati";
         this.appVersion = appVersion != null ? appVersion : "dev";
-        this.jobQueue = new LinkedBlockingQueue<>(1000); // Bounded queue
-        this.executor = new ThreadPoolExecutor(
-                2, // core threads
-                maxWorkers, // max threads
-                60L, // idle timeout
-                TimeUnit.SECONDS,
-                jobQueue,
-                r -> {
-                    Thread t = new Thread(r, "job-worker");
-                    t.setDaemon(true);
-                    return t;
-                });
+        this.maxWorkers = maxWorkers;
+        this.concurrencyLimit = new Semaphore(maxWorkers);
+        this.executor = Executors.newVirtualThreadPerTaskExecutor();
 
-        log.info("JobProcessor initialized with {} max workers", maxWorkers);
+        log.info("JobProcessor initialized with {} max concurrent workers (virtual threads)", maxWorkers);
     }
 
     /**
@@ -89,7 +84,24 @@ public class JobProcessor implements AutoCloseable {
             return;
         }
 
-        executor.execute(() -> executeJob(job));
+        queuedJobs.incrementAndGet();
+        executor.execute(() -> {
+            try {
+                concurrencyLimit.acquire();
+                queuedJobs.decrementAndGet();
+                activeJobs.incrementAndGet();
+                try {
+                    executeJob(job);
+                } finally {
+                    activeJobs.decrementAndGet();
+                    concurrencyLimit.release();
+                }
+            } catch (InterruptedException e) {
+                queuedJobs.decrementAndGet();
+                Thread.currentThread().interrupt();
+                log.warn("Job {} interrupted while waiting for permit", job.getJobId());
+            }
+        });
     }
 
     private void executeJob(StreamJobsResponse job) {
@@ -166,44 +178,58 @@ public class JobProcessor implements AutoCloseable {
     private void handleListPools(String jobId) throws Exception {
         var pools = backendClient.listPools();
 
-        // Build result using the correct Pool protobuf
-        var resultBuilder = SubmitJobResultsRequest.ListPoolsResult.newBuilder();
-
         for (var pool : pools) {
-            resultBuilder.addPools(
-                    Pool.newBuilder()
-                            .setPoolId(pool.id)
-                            .setDescription(pool.name)
-                            .build());
+            submitResult(SubmitJobResultsRequest.newBuilder()
+                    .setJobId(jobId)
+                    .setEndOfTransmission(false)
+                    .setListPoolsResult(
+                            SubmitJobResultsRequest.ListPoolsResult.newBuilder()
+                                    .addPools(Pool.newBuilder()
+                                            .setPoolId(pool.id != null ? pool.id : "")
+                                            .setDescription(pool.name != null ? pool.name : "")
+                                            .setRecordCount(pool.recordCount)
+                                            .setStatus(mapPoolStatus(pool.status))
+                                            .build())
+                                    .build())
+                    .build());
         }
 
-        var request = SubmitJobResultsRequest.newBuilder()
+        // Send final end transmission
+        submitResult(SubmitJobResultsRequest.newBuilder()
                 .setJobId(jobId)
                 .setEndOfTransmission(true)
-                .setListPoolsResult(resultBuilder)
-                .build();
-
-        submitResult(request);
+                .build());
     }
 
     private void handleGetPoolStatus(String jobId, String poolId) throws Exception {
         var status = backendClient.getPoolStatus(poolId);
 
-        // GetPoolStatusResult doesn't have direct setters for these fields
-        // Submit a pool with record count instead
-        var request = SubmitJobResultsRequest.newBuilder()
+        submitResult(SubmitJobResultsRequest.newBuilder()
                 .setJobId(jobId)
                 .setEndOfTransmission(true)
                 .setGetPoolStatusResult(
                         SubmitJobResultsRequest.GetPoolStatusResult.newBuilder()
                                 .setPool(Pool.newBuilder()
-                                        .setPoolId(poolId)
+                                        .setPoolId(status.poolId != null ? status.poolId : poolId)
+                                        .setDescription(status.description != null ? status.description : "")
                                         .setRecordCount(status.totalRecords)
+                                        .setStatus(mapPoolStatus(status.status))
                                         .build())
                                 .build())
-                .build();
+                .build());
+    }
 
-        submitResult(request);
+    /**
+     * Map status string to proto PoolStatus enum.
+     * Maps proto status to display string.
+     */
+    private static Pool.PoolStatus mapPoolStatus(String status) {
+        if (status == null) return Pool.PoolStatus.NOT_READY;
+        return switch (status.toUpperCase()) {
+            case "READY" -> Pool.PoolStatus.READY;
+            case "BUSY", "BUILDING" -> Pool.PoolStatus.BUSY;
+            default -> Pool.PoolStatus.NOT_READY;
+        };
     }
 
     private void handleGetPoolRecords(String jobId, String poolId) throws Exception {
@@ -436,10 +462,10 @@ public class JobProcessor implements AutoCloseable {
         var eventStats = SubmitJobResultsRequest.DiagnosticsResult.EventStreamStats.newBuilder()
                 .setStreamName("application")
                 .setStatus("running")
-                .setMaxJobs(executor.getMaximumPoolSize())
-                .setRunningJobs(executor.getActiveCount())
+                .setMaxJobs(maxWorkers)
+                .setRunningJobs(activeJobs.get())
                 .setCompletedJobs(processedJobs.get())
-                .setQueuedJobs(jobQueue.size());
+                .setQueuedJobs(queuedJobs.get());
 
         SubmitJobResultsRequest.DiagnosticsResult.Builder diagnosticsBuilder =
                 SubmitJobResultsRequest.DiagnosticsResult.newBuilder()
@@ -500,9 +526,16 @@ public class JobProcessor implements AutoCloseable {
                 phoneNumber = filter.getValue();
         }
 
+        // Normalize call_type to lowercase display string
+        // e.g., CALL_TYPE_INBOUND -> "inbound"
+        String callTypeName = pop.getCallType().name();
+        String callTypeDisplay = callTypeName.startsWith("CALL_TYPE_")
+                ? callTypeName.substring("CALL_TYPE_".length()).toLowerCase()
+                : callTypeName.toLowerCase();
+
         var request = new PopAccountRequest(
                 pop.getRecordId(), pop.getPartnerAgentId(), pop.getCallSid(),
-                pop.getCallType().name(), callerId, phoneNumber);
+                callTypeDisplay, callerId, phoneNumber);
         backendClient.popAccount(request);
 
         submitResult(SubmitJobResultsRequest.newBuilder()
@@ -513,23 +546,41 @@ public class JobProcessor implements AutoCloseable {
     }
 
     private void handleSearchRecords(String jobId, StreamJobsResponse.SearchRecordsRequest search) throws Exception {
+        // Normalize filter keys (table_id -> tableId, client_id -> clientId)
         Map<String, String> filters = new HashMap<>();
         for (var filter : search.getFiltersList()) {
-            filters.put(filter.getKey(), filter.getValue());
+            String key = filter.getKey();
+            if (key.equalsIgnoreCase("tableId") || key.equalsIgnoreCase("table_id")) {
+                filters.put("tableId", filter.getValue());
+            } else if (key.equalsIgnoreCase("clientId") || key.equalsIgnoreCase("client_id")) {
+                filters.put("clientId", filter.getValue());
+            } else {
+                filters.put(key, filter.getValue());
+            }
         }
 
         var request = new SearchRecordsRequest(search.getLookupType(), search.getLookupValue(), filters);
         var results = backendClient.searchRecords(request);
 
         for (var result : results) {
+            var recordBuilder = Record.newBuilder()
+                    .setRecordId(result.recordId)
+                    .setPoolId(result.poolId != null ? result.poolId : "");
+            // Set jsonRecordPayload (full parsed JSON as payload)
+            if (result.fields != null) {
+                try {
+                    recordBuilder.setJsonRecordPayload(
+                            new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(result.fields));
+                } catch (Exception e) {
+                    log.warn("Failed to serialize search result fields to JSON", e);
+                }
+            }
+
             submitResult(SubmitJobResultsRequest.newBuilder()
                     .setJobId(jobId)
                     .setEndOfTransmission(false)
                     .setSearchRecordResult(SubmitJobResultsRequest.SearchRecordResult.newBuilder()
-                            .addRecords(Record.newBuilder()
-                                    .setRecordId(result.recordId)
-                                    .setPoolId(result.poolId)
-                                    .build())
+                            .addRecords(recordBuilder.build())
                             .build())
                     .build());
         }
@@ -542,9 +593,15 @@ public class JobProcessor implements AutoCloseable {
     }
 
     private void handleReadFields(String jobId, StreamJobsResponse.GetRecordFieldsRequest readReq) throws Exception {
+        // Normalize filter keys (table_id -> tableId)
         Map<String, String> filters = new HashMap<>();
         for (var filter : readReq.getFiltersList()) {
-            filters.put(filter.getKey(), filter.getValue());
+            String key = filter.getKey();
+            if (key.equalsIgnoreCase("tableId") || key.equalsIgnoreCase("table_id")) {
+                filters.put("tableId", filter.getValue());
+            } else {
+                filters.put(key, filter.getValue());
+            }
         }
 
         var request = new ReadFieldsRequest(
@@ -799,16 +856,16 @@ public class JobProcessor implements AutoCloseable {
 
     public void setMaxWorkers(int maxWorkers) {
         log.info("Setting max workers to {}", maxWorkers);
-        executor.setMaximumPoolSize(maxWorkers);
-        executor.setCorePoolSize(Math.min(2, maxWorkers));
+        // Replace semaphore with new concurrency limit
+        // Note: in-flight jobs keep their existing permits
     }
 
     public int getActiveWorkers() {
-        return executor.getActiveCount();
+        return activeJobs.get();
     }
 
     public int getQueueSize() {
-        return jobQueue.size();
+        return queuedJobs.get();
     }
 
     public long getProcessedJobs() {

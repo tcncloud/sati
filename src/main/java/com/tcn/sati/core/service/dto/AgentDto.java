@@ -1,5 +1,6 @@
 package com.tcn.sati.core.service.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.javalin.openapi.OpenApiByFields;
 
 import java.util.List;
@@ -8,8 +9,23 @@ import java.util.List;
  * DTOs for AgentService requests and responses.
  * All classes are plain Java with public fields — extensible by subclassing.
  * Jackson serializes them to JSON automatically.
+ *
+ * JSON keys use @JsonProperty for backward compatibility with legacy clients.
  */
 public class AgentDto {
+
+    /** Shared connected party info (snake_case JSON keys). */
+    @OpenApiByFields
+    public static class ConnectedParty {
+        @JsonProperty("call_sid")
+        public String callSid;
+
+        @JsonProperty("call_type")
+        public String callType;
+
+        @JsonProperty("inbound")
+        public boolean inbound;
+    }
 
     /** Agent listing info — returned by listAgents and upsertAgent. */
     @OpenApiByFields
@@ -20,40 +36,65 @@ public class AgentDto {
         public String username;
         public String firstName;
         public String lastName;
-        public long currentSessionId;
-        public String agentState;
-        public boolean isLoggedIn;
+        public Long currentSessionId;
+        public String agentState; // full enum e.g. "AGENT_STATE_READY"
+        public Boolean isLoggedIn;
+        public Boolean isRecording;
+        public Boolean agentIsMuted;
+        public ConnectedParty connectedParty;
     }
 
     /** Agent state with optional connected party — returned by getAgentState. */
     @OpenApiByFields
     public static class AgentStateInfo {
-        public String partnerAgentId;
-        public String agentState;
-        public long currentSessionId;
-        public boolean agentIsMuted;
+        @JsonProperty("user_id")
+        public String userId;
+
+        @JsonProperty("state")
+        public String agentState; // full enum e.g. "AGENT_STATE_READY"
+
+        @JsonProperty("current_session_id")
+        public Long currentSessionId; // nullable Long
+
+        @JsonProperty("connected_party")
         public ConnectedParty connectedParty;
 
-        @OpenApiByFields
-        public static class ConnectedParty {
-            public String callSid;
-            public String callType;
-            public boolean isInbound;
-        }
+        @JsonProperty("agent_is_muted")
+        public boolean agentIsMuted;
+
+        @JsonProperty("is_recording")
+        public boolean isRecording;
     }
 
     /** Dial response — returned by dial. */
     @OpenApiByFields
     public static class DialResult {
+        @JsonProperty("phone_number")
         public String phoneNumber;
+
+        @JsonProperty("caller_id")
         public String callerId;
-        public String callSid;
+
+        @JsonProperty("call_sid")
+        public Long callSid;
+
+        @JsonProperty("call_type")
         public String callType;
+
+        @JsonProperty("org_id")
         public String orgId;
+
+        @JsonProperty("partner_agent_id")
         public String partnerAgentId;
-        public boolean attempted;
+
+        @JsonProperty("attempted")
+        public Boolean attempted;
+
+        @JsonProperty("status")
         public String status;
-        public String callerSid;
+
+        @JsonProperty("caller_sid")
+        public Long callerSid;
     }
 
     /**
@@ -62,13 +103,14 @@ public class AgentDto {
      */
     @OpenApiByFields
     public static class RecordingStatus {
-        public boolean isRecording;
+        @JsonProperty("recording")
+        public boolean recording;
 
         public RecordingStatus() {
         }
 
-        public RecordingStatus(boolean isRecording) {
-            this.isRecording = isRecording;
+        public RecordingStatus(boolean recording) {
+            this.recording = recording;
         }
     }
 
@@ -79,6 +121,7 @@ public class AgentDto {
     public static class ListAgentsRequest {
         public Boolean loggedIn;
         public String state;
+        public boolean fetchRecordingStatus;
     }
 
     /** Request for creating/updating an agent. */
@@ -94,7 +137,6 @@ public class AgentDto {
     /** Request for dialing. */
     @OpenApiByFields
     public static class DialRequest {
-        public String partnerAgentId;
         public String phoneNumber;
         public String callerId;
         public String poolId;
@@ -107,10 +149,16 @@ public class AgentDto {
     /** Request for adding a call response. */
     @OpenApiByFields
     public static class CallResponseRequest {
-        public String partnerAgentId;
         public String callSid;
+        public String callType;
         public Long currentSessionId;
         public String key;
         public String value;
+    }
+
+    /** Request body for setState when pausing. */
+    @OpenApiByFields
+    public static class PauseCodeReason {
+        public String reason;
     }
 }

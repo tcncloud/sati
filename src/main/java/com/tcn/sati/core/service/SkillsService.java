@@ -36,20 +36,20 @@ public class SkillsService {
                                 .collect(Collectors.toList());
         }
 
-        public SuccessResult assignSkill(AssignSkillRequest request) {
+        public SuccessResult assignSkill(String agentId, AssignSkillRequest request) {
                 gate.assignAgentSkill(
                                 build.buf.gen.tcnapi.exile.gate.v2.AssignAgentSkillRequest.newBuilder()
-                                                .setPartnerAgentId(request.partnerAgentId)
+                                                .setPartnerAgentId(agentId)
                                                 .setSkillId(request.skillId)
                                                 .setProficiency(request.proficiency)
                                                 .build());
                 return new SuccessResult();
         }
 
-        public SuccessResult unassignSkill(UnassignSkillRequest request) {
+        public SuccessResult unassignSkill(String agentId, UnassignSkillRequest request) {
                 gate.unassignAgentSkill(
                                 build.buf.gen.tcnapi.exile.gate.v2.UnassignAgentSkillRequest.newBuilder()
-                                                .setPartnerAgentId(request.partnerAgentId)
+                                                .setPartnerAgentId(agentId)
                                                 .setSkillId(request.skillId)
                                                 .build());
                 return new SuccessResult();

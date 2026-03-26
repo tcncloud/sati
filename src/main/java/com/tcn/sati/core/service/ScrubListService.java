@@ -25,27 +25,27 @@ public class ScrubListService {
         List<ScrubListEntry> result = new ArrayList<>();
         for (var s : resp.getScrubListsList()) {
             var entry = new ScrubListEntry();
-            entry.scrubListId = s.getScrubListId();
-            entry.readOnly = s.getReadOnly();
-            entry.contentType = s.getContentType().name();
+            entry.scrub_list_id = s.getScrubListId();
+            entry.read_only = s.getReadOnly();
+            entry.content_type = s.getContentType().name();
             result.add(entry);
         }
         return result;
     }
 
-    public SuccessResult upsertEntry(UpsertScrubEntryRequest request) {
+    public SuccessResult upsertEntry(String scrubListId, UpsertScrubEntryRequest request) {
         var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.UpdateScrubListEntryRequest.newBuilder()
-                .setScrubListId(request.scrubListId)
+                .setScrubListId(scrubListId)
                 .setContent(request.content);
-        if (request.expirationDate != null) {
-            Instant exp = Instant.parse(request.expirationDate);
+        if (request.expiration_date != null) {
+            Instant exp = Instant.parse(request.expiration_date);
             reqBuilder.setExpiration(com.google.protobuf.Timestamp.newBuilder()
                     .setSeconds(exp.getEpochSecond()).setNanos(exp.getNano()));
         }
         if (request.notes != null)
             reqBuilder.setNotes(com.google.protobuf.StringValue.of(request.notes));
-        if (request.countryCode != null)
-            reqBuilder.setCountryCode(com.google.protobuf.StringValue.of(request.countryCode));
+        if (request.country_code != null)
+            reqBuilder.setCountryCode(com.google.protobuf.StringValue.of(request.country_code));
 
         gate.updateScrubListEntry(reqBuilder.build());
         return new SuccessResult();

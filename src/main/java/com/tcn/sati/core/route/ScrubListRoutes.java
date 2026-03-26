@@ -31,8 +31,7 @@ public class ScrubListRoutes {
             "Scrub Lists" }, pathParams = @OpenApiParam(name = "scrubListId", required = true), requestBody = @OpenApiRequestBody(content = @OpenApiContent(from = ScrubListDto.UpsertScrubEntryRequest.class)), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SuccessResult.class)))
     private static void upsertEntry(Context ctx) {
         var body = ctx.bodyAsClass(ScrubListDto.UpsertScrubEntryRequest.class);
-        body.scrubListId = ctx.pathParam("scrubListId");
-        ctx.json(service.upsertEntry(body));
+        ctx.json(service.upsertEntry(ctx.pathParam("scrubListId"), body));
     }
 
     @OpenApi(path = "/api/scrublists/{scrubListId}/delete/{content}", methods = HttpMethod.DELETE, summary = "Delete Scrub List Entry", tags = {

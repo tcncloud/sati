@@ -121,7 +121,7 @@ public class TenantContext implements AutoCloseable {
 
             // 5. Initialize Job and Event Processing (new APIs with ACK support)
             if (gateClient != null) {
-                this.jobProcessor = new JobProcessor(backendClient, gateClient, 5, appName, appVersion);
+                this.jobProcessor = new JobProcessor(backendClient, gateClient, 20, appName, appVersion);
 
                 // Job queue - bidirectional stream with acknowledgment
                 this.jobQueueClient = new JobQueueClient(gateClient, job -> {

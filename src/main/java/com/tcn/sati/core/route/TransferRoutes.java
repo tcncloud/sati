@@ -34,16 +34,16 @@ public class TransferRoutes {
         private static void transfer(Context ctx) {
                 var body = ctx.bodyAsClass(TransferDto.TransferRequest.class);
 
-                if (body.partnerAgentId == null || body.partnerAgentId.isBlank()) {
-                        ctx.status(400).json(Map.of("error", "partnerAgentId is required"));
+                if (body.partner_agent_id == null || body.partner_agent_id.isBlank()) {
+                        ctx.status(400).json(Map.of("error", "partner_agent_id is required"));
                         return;
                 }
 
-                if (body.receivingPartnerAgentId == null
-                                && body.outboundDestination == null
-                                && !body.queue) {
+                if (body.receiving_partner_agent_id == null
+                                && body.outbound == null
+                                && body.queue == null) {
                         ctx.status(400).json(Map.of("error",
-                                        "One destination required: receivingPartnerAgentId, outbound, or queue"));
+                                        "One destination required: receiving_partner_agent_id, outbound, or queue"));
                         return;
                 }
 

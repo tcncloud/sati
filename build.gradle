@@ -59,9 +59,9 @@ dependencies {
     compileOnly 'ch.qos.logback:logback-classic:1.5.6' // For MemoryLogAppender compilation
 
     // gRPC — must match the version pulled by buf-generated protos
-    api 'io.grpc:grpc-protobuf:1.79.0'
-    api 'io.grpc:grpc-stub:1.79.0'
-    api 'io.grpc:grpc-netty-shaded:1.79.0'
+    api 'io.grpc:grpc-protobuf:1.80.0'
+    api 'io.grpc:grpc-stub:1.80.0'
+    api 'io.grpc:grpc-netty-shaded:1.80.0'
     compileOnly 'org.apache.tomcat:annotations-api:6.0.53'
 
     // Database (connection pooling only - JDBC drivers provided by consuming apps)
@@ -75,6 +75,12 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
     testImplementation 'ch.qos.logback:logback-classic:1.5.6'
     testImplementation 'com.h2database:h2:2.2.224'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
 }
 
 test {

@@ -1,5 +1,6 @@
 package com.tcn.sati.core.service;
 
+import com.tcn.sati.core.service.dto.AgentDto;
 import com.tcn.sati.core.service.dto.AgentDto.AgentInfo;
 import com.tcn.sati.core.service.dto.AgentDto.AgentStateInfo;
 import com.tcn.sati.core.service.dto.AgentDto.CallResponseRequest;
@@ -41,13 +42,14 @@ public class AgentService {
             }
             reqBuilder.setState(build.buf.gen.tcnapi.exile.gate.v2.AgentState.valueOf(normalized));
         }
+        reqBuilder.setFetchRecordingStatus(request.fetchRecordingStatus);
 
         var results = gate.listAgents(reqBuilder.build());
         List<AgentInfo> agents = new ArrayList<>();
         while (results.hasNext()) {
             var resp = results.next();
             var a = resp.getAgent();
-            agents.add(toAgentInfo(a));
+            agents.add(toAgentInfo(a, request.fetchRecordingStatus));
         }
         return agents;
     }
@@ -65,7 +67,7 @@ public class AgentService {
             reqBuilder.setPassword(request.password);
 
         var resp = gate.upsertAgent(reqBuilder.build());
-        return toAgentInfo(resp.getAgent());
+        return toAgentInfo(resp.getAgent(), false);
     }
 
     public AgentStateInfo getAgentState(String agentId) {
@@ -74,16 +76,17 @@ public class AgentService {
                         .setPartnerAgentId(agentId).build());
 
         var result = new AgentStateInfo();
-        result.partnerAgentId = resp.getPartnerAgentId();
-        result.agentState = resp.getAgentState().name().replace("AGENT_STATE_", "");
-        result.currentSessionId = resp.getCurrentSessionId();
+        result.userId = resp.getPartnerAgentId();
+        result.agentState = resp.getAgentState().name();
+        result.currentSessionId = resp.getCurrentSessionId() != 0 ? resp.getCurrentSessionId() : null;
         result.agentIsMuted = resp.getAgentIsMuted();
+        result.isRecording = resp.getIsRecording();
         if (resp.hasConnectedParty()) {
             var cp = resp.getConnectedParty();
-            var cpDto = new AgentStateInfo.ConnectedParty();
+            var cpDto = new AgentDto.ConnectedParty();
             cpDto.callSid = cp.getCallSid();
             cpDto.callType = cp.getCallType().name().replace("CALL_TYPE_", "").toLowerCase();
-            cpDto.isInbound = cp.getIsInbound();
+            cpDto.inbound = cp.getIsInbound();
             result.connectedParty = cpDto;
         }
         return result;
@@ -103,9 +106,9 @@ public class AgentService {
         return new SuccessResult();
     }
 
-    public DialResult dial(DialRequest request) {
+    public DialResult dial(String agentId, DialRequest request) {
         var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.DialRequest.newBuilder()
-                .setPartnerAgentId(request.partnerAgentId)
+                .setPartnerAgentId(agentId)
                 .setPhoneNumber(request.phoneNumber);
         if (request.callerId != null)
             reqBuilder.setCallerId(com.google.protobuf.StringValue.of(request.callerId));
@@ -124,13 +127,13 @@ public class AgentService {
         var result = new DialResult();
         result.phoneNumber = resp.getPhoneNumber();
         result.callerId = resp.getCallerId();
-        result.callSid = resp.getCallSid();
+        result.callSid = Long.parseLong(resp.getCallSid());
         result.callType = resp.getCallType().name().replace("CALL_TYPE_", "").toLowerCase();
         result.orgId = resp.getOrgId();
         result.partnerAgentId = resp.getPartnerAgentId();
         result.attempted = resp.getAttempted();
         result.status = resp.getStatus();
-        result.callerSid = resp.getCallerSid();
+        result.callerSid = Long.parseLong(resp.getCallerSid());
         return result;
     }
 
@@ -190,9 +193,9 @@ public class AgentService {
         return new SuccessResult();
     }
 
-    public SuccessResult addCallResponse(CallResponseRequest request) {
+    public SuccessResult addCallResponse(String agentId, CallResponseRequest request) {
         var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.AddAgentCallResponseRequest.newBuilder()
-                .setPartnerAgentId(request.partnerAgentId)
+                .setPartnerAgentId(agentId)
                 .setCallSid(request.callSid)
                 .setKey(request.key)
                 .setValue(request.value);
@@ -205,7 +208,7 @@ public class AgentService {
 
     // ========== Helpers ==========
 
-    protected AgentInfo toAgentInfo(build.buf.gen.tcnapi.exile.gate.v2.Agent a) {
+    protected AgentInfo toAgentInfo(build.buf.gen.tcnapi.exile.gate.v2.Agent a, boolean fetchRecordingStatus) {
         var info = new AgentInfo();
         info.userId = a.getUserId();
         info.orgId = a.getOrgId();
@@ -213,9 +216,18 @@ public class AgentService {
         info.username = a.getUsername();
         info.firstName = a.getFirstName();
         info.lastName = a.getLastName();
-        info.currentSessionId = a.getCurrentSessionId();
-        info.agentState = a.getAgentState().name().replace("AGENT_STATE_", "");
+        info.currentSessionId = a.getCurrentSessionId() != 0 ? a.getCurrentSessionId() : null;
+        info.agentState = a.getAgentState().name();
         info.isLoggedIn = a.getIsLoggedIn();
+        info.isRecording = fetchRecordingStatus ? a.getIsRecording() : null;
+        info.agentIsMuted = a.getAgentIsMuted();
+        if (a.hasConnectedParty()) {
+            var cp = new AgentDto.ConnectedParty();
+            cp.callSid = a.getConnectedParty().getCallSid();
+            cp.callType = a.getConnectedParty().getCallType().name().replace("CALL_TYPE_", "").toLowerCase();
+            cp.inbound = a.getConnectedParty().getIsInbound();
+            info.connectedParty = cp;
+        }
         return info;
     }
 }

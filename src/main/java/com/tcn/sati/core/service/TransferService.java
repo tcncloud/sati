@@ -26,28 +26,28 @@ public class TransferService {
         var action = req.action != null ? req.action.toUpperCase() : "START";
 
         var protoBuilder = build.buf.gen.tcnapi.exile.gate.v2.TransferRequest.newBuilder()
-                .setPartnerAgentId(req.partnerAgentId)
+                .setPartnerAgentId(req.partner_agent_id)
                 .setKind(build.buf.gen.tcnapi.exile.gate.v2.TransferRequest.Kind.valueOf("KIND_" + kind))
                 .setAction(build.buf.gen.tcnapi.exile.gate.v2.TransferRequest.Action.valueOf("ACTION_" + action));
 
-        if (req.receivingPartnerAgentId != null) {
+        if (req.receiving_partner_agent_id != null) {
             protoBuilder.setReceivingPartnerAgentId(
                     build.buf.gen.tcnapi.exile.gate.v2.TransferRequest.Agent.newBuilder()
-                            .setPartnerAgentId(req.receivingPartnerAgentId).build());
-        } else if (req.outboundDestination != null) {
+                            .setPartnerAgentId(req.receiving_partner_agent_id.partner_agent_id).build());
+        } else if (req.outbound != null) {
             var ob = build.buf.gen.tcnapi.exile.gate.v2.TransferRequest.Outbound.newBuilder()
-                    .setDestination(req.outboundDestination);
-            if (req.outboundCallerId != null)
-                ob.setCallerId(req.outboundCallerId);
-            if (req.outboundCallerHold != null)
-                ob.setCallerHold(req.outboundCallerHold);
+                    .setDestination(req.outbound.destination);
+            if (req.outbound.caller_id != null)
+                ob.setCallerId(req.outbound.caller_id);
+            if (req.outbound.caller_hold != null)
+                ob.setCallerHold(req.outbound.caller_hold);
             protoBuilder.setOutbound(ob.build());
-        } else if (req.queue) {
+        } else if (req.queue != null) {
             protoBuilder.setQueue(build.buf.gen.tcnapi.exile.gate.v2.TransferRequest.Queue.newBuilder().build());
         }
 
         gate.transfer(protoBuilder.build());
-        return new TransferResponse(true, "Transfer initiated");
+        return new TransferResponse();
     }
 
     public SuccessResult holdCaller(String agentId) {

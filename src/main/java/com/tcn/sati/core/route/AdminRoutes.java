@@ -126,10 +126,9 @@ public class AdminRoutes {
     // ========== Logs ==========
 
     @OpenApi(path = "/api/admin/logs", methods = HttpMethod.GET, summary = "Get recent log messages", tags = {
-            "Admin" }, queryParams = @OpenApiParam(name = "limit", type = Integer.class, description = "Max logs to return"), responses = @OpenApiResponse(status = "200"))
+            "Admin" }, responses = @OpenApiResponse(status = "200"))
     private static void getLogs(Context ctx) {
-        int limit = ctx.queryParamAsClass("limit", Integer.class).getOrDefault(100);
-        List<String> logs = MemoryLogAppender.getRecentLogs(limit);
+        List<String> logs = MemoryLogAppender.getRecentLogs();
         ctx.json(logs);
     }
 

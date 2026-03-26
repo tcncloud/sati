@@ -55,8 +55,7 @@ public class JobQueueClient implements AutoCloseable {
     public JobQueueClient(GateClient gateClient, Function<StreamJobsResponse, Boolean> jobHandler) {
         this.gateClient = gateClient;
         this.jobHandler = jobHandler;
-        this.streamThread = new Thread(this::streamLoop, "job-queue");
-        this.streamThread.setDaemon(true);
+        this.streamThread = Thread.ofVirtual().name("job-queue").unstarted(this::streamLoop);
     }
 
     public void start() {
@@ -132,10 +131,20 @@ public class JobQueueClient implements AutoCloseable {
                 String jobId = job.getJobId();
                 log.debug("Received job: {} (type: {})", jobId, getJobType(job));
 
-                // Handle keepalive — just ACK to register with presence store
+                // Handle keepalive — ACK to register with presence store,
+                // then dispatch info job so Gate receives version data
                 if (KEEPALIVE_JOB_ID.equals(jobId)) {
                     log.debug("Received keepalive, sending ACK to register");
                     sendAck(requestObserver.get(), KEEPALIVE_JOB_ID);
+                    // Dispatch info job so plugin submits version via SubmitJobResults,
+                    // which Gate uses to track the per-tenant plugin version.
+                    if (job.hasInfo()) {
+                        try {
+                            jobHandler.apply(job);
+                        } catch (Exception e) {
+                            log.warn("Failed to dispatch info on keepalive: {}", e.getMessage());
+                        }
+                    }
                     return;
                 }
 

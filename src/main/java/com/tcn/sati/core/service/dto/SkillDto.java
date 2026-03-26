@@ -4,6 +4,7 @@ import io.javalin.openapi.OpenApiByFields;
 
 /**
  * DTOs for SkillsService responses.
+
  */
 public class SkillDto {
 
@@ -13,7 +14,7 @@ public class SkillDto {
         public String skillId;
         public String name;
         public String description;
-        public long proficiency;
+        public Long proficiency;
     }
 
     // ========== Request DTOs ==========
@@ -21,15 +22,13 @@ public class SkillDto {
     /** Request for assigning a skill to an agent. */
     @OpenApiByFields
     public static class AssignSkillRequest {
-        public String partnerAgentId;
         public String skillId;
-        public int proficiency;
+        public Long proficiency;
     }
 
     /** Request for unassigning a skill from an agent. */
     @OpenApiByFields
     public static class UnassignSkillRequest {
-        public String partnerAgentId;
         public String skillId;
     }
 }

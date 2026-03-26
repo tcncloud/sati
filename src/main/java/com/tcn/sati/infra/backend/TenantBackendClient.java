@@ -106,6 +106,7 @@ public interface TenantBackendClient extends AutoCloseable {
         public String id;
         public String name;
         public String status;
+        public int recordCount;
 
         public PoolInfo() {}
         public PoolInfo(String id, String name, String status) {
@@ -117,6 +118,7 @@ public interface TenantBackendClient extends AutoCloseable {
 
     public static class PoolStatus {
         public String poolId;
+        public String description;
         public int totalRecords;
         public int availableRecords;
         public String status;
@@ -144,7 +146,7 @@ public interface TenantBackendClient extends AutoCloseable {
     }
 
     public static class TelephonyResult {
-        public String callSid;
+        public long callSid;
         public String callType;
         public String status;
         public String result;
@@ -184,8 +186,8 @@ public interface TenantBackendClient extends AutoCloseable {
     }
 
     public static class AgentCall {
-        public String agentCallSid;
-        public String callSid;
+        public long agentCallSid;
+        public long callSid;
         public String callType;
         public String userId;
         public String partnerAgentId;
@@ -209,14 +211,14 @@ public interface TenantBackendClient extends AutoCloseable {
     }
 
     public static class AgentResponse {
-        public String agentCallResponseSid;
-        public String callSid;
+        public long agentCallResponseSid;
+        public long callSid;
         public String callType;
         public String responseKey;
         public String responseValue;
         public long clientSid;
         public String userId;
-        public String agentSid;
+        public long agentSid;
         public String partnerAgentId;
         public String orgId;
         public String internalKey;
@@ -256,7 +258,7 @@ public interface TenantBackendClient extends AutoCloseable {
 
     public static class CallRecording {
         public String recordingId;
-        public String callSid;
+        public long callSid;
         public String callType;
         public String recordingType;
         public String orgId;
