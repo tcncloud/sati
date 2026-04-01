@@ -29,7 +29,7 @@ import java.util.concurrent.TimeUnit;
 
 public class GateClient extends GateClientAbstract {
   private static final StructuredLogger log = new StructuredLogger(GateClient.class);
-  private static final int DEFAULT_TIMEOUT_SECONDS = 300;
+  private static final int DEFAULT_TIMEOUT_SECONDS = 10;
 
   public GateClient(String tenant, Config currentConfig) {
     super(tenant, currentConfig);
@@ -42,8 +42,7 @@ public class GateClient extends GateClientAbstract {
 
   protected GateServiceGrpc.GateServiceBlockingStub getStub(ManagedChannel channel) {
     return GateServiceGrpc.newBlockingStub(channel)
-        .withDeadlineAfter(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .withWaitForReady();
+        .withDeadlineAfter(DEFAULT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
   }
 
   public <T> T executeRequest(String operationName, GrpcOperation<T> grpcOperation) {
