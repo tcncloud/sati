@@ -1,5 +1,6 @@
 package com.tcn.exile;
 
+import build.buf.gen.tcnapi.exile.v3.WorkType;
 import com.tcn.exile.handler.EventHandler;
 import com.tcn.exile.handler.JobHandler;
 import com.tcn.exile.internal.ChannelFactory;
@@ -11,7 +12,6 @@ import java.util.List;
 import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tcnapi.exile.worker.v3.WorkType;
 
 /**
  * Main entry point for the Exile client library.

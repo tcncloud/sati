@@ -1,33 +1,17 @@
 plugins {
 	id("java-library")
-	id("build.buf")
 	id("com.github.johnrengelman.shadow")
 	id("maven-publish")
 	id("jacoco")
 }
 
-// Generate Java + gRPC stubs from exileapi protos via buf.
-buf {
-	configFileLocation = file("buf.yaml")
-	generate {
-		templateFileLocation = file("buf.gen.yaml")
-		includeImports = true
-	}
-}
 
-// Wire buf generation into the compile lifecycle.
-tasks.named("compileJava").configure { dependsOn("bufGenerate") }
-
-// Add generated sources to the main source set.
-sourceSets {
-	main {
-		java {
-			srcDir("${buildDir}/bufbuild/generated/java")
-		}
-	}
-}
 
 dependencies {
+	// exileapi v3 pre-built stubs from buf.build BSR
+	api("build.buf.gen:tcn_exileapi_grpc_java:${exileapiGrpcVersion}")
+	api("build.buf.gen:tcn_exileapi_protocolbuffers_java:${exileapiProtobufVersion}")
+
 	// gRPC — client only
 	api("io.grpc:grpc-api:${grpcVersion}")
 	api("io.grpc:grpc-protobuf:${grpcVersion}")
@@ -40,7 +24,7 @@ dependencies {
 	// javax.annotation for @Generated in gRPC stubs
 	compileOnly("org.apache.tomcat:annotations-api:6.0.53")
 
-	// test: in-process gRPC server for service client tests
+	// test
 	testImplementation("io.grpc:grpc-testing:${grpcVersion}")
 	testImplementation("io.grpc:grpc-inprocess:${grpcVersion}")
 }

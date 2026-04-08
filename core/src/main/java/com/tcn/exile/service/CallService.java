@@ -3,15 +3,14 @@ package com.tcn.exile.service;
 import com.tcn.exile.model.CallType;
 import io.grpc.ManagedChannel;
 import java.util.Map;
-import tcnapi.exile.call.v3.*;
 
 /** Call control operations. No proto types in the public API. */
 public final class CallService {
 
-  private final CallServiceGrpc.CallServiceBlockingStub stub;
+  private final build.buf.gen.tcnapi.exile.v3.CallServiceGrpc.CallServiceBlockingStub stub;
 
   CallService(ManagedChannel channel) {
-    this.stub = CallServiceGrpc.newBlockingStub(channel);
+    this.stub = build.buf.gen.tcnapi.exile.v3.CallServiceGrpc.newBlockingStub(channel);
   }
 
   public record DialResult(
@@ -34,7 +33,9 @@ public final class CallService {
       Boolean skipCompliance,
       Boolean recordCall) {
     var req =
-        DialRequest.newBuilder().setPartnerAgentId(partnerAgentId).setPhoneNumber(phoneNumber);
+        build.buf.gen.tcnapi.exile.v3.DialRequest.newBuilder()
+            .setPartnerAgentId(partnerAgentId)
+            .setPhoneNumber(phoneNumber);
     if (callerId != null) req.setCallerId(callerId);
     if (poolId != null) req.setPoolId(poolId);
     if (recordId != null) req.setRecordId(recordId);
@@ -60,15 +61,27 @@ public final class CallService {
       String destAgentId,
       String destPhone,
       Map<String, Long> destSkills) {
-    var req = TransferRequest.newBuilder().setPartnerAgentId(partnerAgentId);
-    req.setKind(TransferRequest.TransferKind.valueOf("TRANSFER_KIND_" + kind));
-    req.setAction(TransferRequest.TransferAction.valueOf("TRANSFER_ACTION_" + action));
+    var req =
+        build.buf.gen.tcnapi.exile.v3.TransferRequest.newBuilder()
+            .setPartnerAgentId(partnerAgentId);
+    req.setKind(
+        build.buf.gen.tcnapi.exile.v3.TransferRequest.TransferKind.valueOf(
+            "TRANSFER_KIND_" + kind));
+    req.setAction(
+        build.buf.gen.tcnapi.exile.v3.TransferRequest.TransferAction.valueOf(
+            "TRANSFER_ACTION_" + action));
     if (destAgentId != null) {
-      req.setAgent(TransferRequest.AgentDestination.newBuilder().setPartnerAgentId(destAgentId));
+      req.setAgent(
+          build.buf.gen.tcnapi.exile.v3.TransferRequest.AgentDestination.newBuilder()
+              .setPartnerAgentId(destAgentId));
     } else if (destPhone != null) {
-      req.setOutbound(TransferRequest.OutboundDestination.newBuilder().setPhoneNumber(destPhone));
+      req.setOutbound(
+          build.buf.gen.tcnapi.exile.v3.TransferRequest.OutboundDestination.newBuilder()
+              .setPhoneNumber(destPhone));
     } else if (destSkills != null) {
-      req.setQueue(TransferRequest.QueueDestination.newBuilder().putAllRequiredSkills(destSkills));
+      req.setQueue(
+          build.buf.gen.tcnapi.exile.v3.TransferRequest.QueueDestination.newBuilder()
+              .putAllRequiredSkills(destSkills));
     }
     stub.transfer(req.build());
   }
@@ -86,31 +99,42 @@ public final class CallService {
 
   public void setHoldState(String partnerAgentId, HoldTarget target, HoldAction action) {
     stub.setHoldState(
-        SetHoldStateRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.v3.SetHoldStateRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
-            .setTarget(SetHoldStateRequest.HoldTarget.valueOf("HOLD_TARGET_" + target.name()))
-            .setAction(SetHoldStateRequest.HoldAction.valueOf("HOLD_ACTION_" + action.name()))
+            .setTarget(
+                build.buf.gen.tcnapi.exile.v3.SetHoldStateRequest.HoldTarget.valueOf(
+                    "HOLD_TARGET_" + target.name()))
+            .setAction(
+                build.buf.gen.tcnapi.exile.v3.SetHoldStateRequest.HoldAction.valueOf(
+                    "HOLD_ACTION_" + action.name()))
             .build());
   }
 
   public void startCallRecording(String partnerAgentId) {
     stub.startCallRecording(
-        StartCallRecordingRequest.newBuilder().setPartnerAgentId(partnerAgentId).build());
+        build.buf.gen.tcnapi.exile.v3.StartCallRecordingRequest.newBuilder()
+            .setPartnerAgentId(partnerAgentId)
+            .build());
   }
 
   public void stopCallRecording(String partnerAgentId) {
     stub.stopCallRecording(
-        StopCallRecordingRequest.newBuilder().setPartnerAgentId(partnerAgentId).build());
+        build.buf.gen.tcnapi.exile.v3.StopCallRecordingRequest.newBuilder()
+            .setPartnerAgentId(partnerAgentId)
+            .build());
   }
 
   public boolean getRecordingStatus(String partnerAgentId) {
     return stub.getRecordingStatus(
-            GetRecordingStatusRequest.newBuilder().setPartnerAgentId(partnerAgentId).build())
+            build.buf.gen.tcnapi.exile.v3.GetRecordingStatusRequest.newBuilder()
+                .setPartnerAgentId(partnerAgentId)
+                .build())
         .getIsRecording();
   }
 
   public java.util.List<String> listComplianceRulesets() {
-    return stub.listComplianceRulesets(ListComplianceRulesetsRequest.getDefaultInstance())
+    return stub.listComplianceRulesets(
+            build.buf.gen.tcnapi.exile.v3.ListComplianceRulesetsRequest.getDefaultInstance())
         .getRulesetNamesList();
   }
 }

@@ -2,6 +2,7 @@ package com.tcn.exile.internal;
 
 import static com.tcn.exile.internal.ProtoConverter.*;
 
+import build.buf.gen.tcnapi.exile.v3.*;
 import com.tcn.exile.ExileConfig;
 import com.tcn.exile.StreamStatus;
 import com.tcn.exile.StreamStatus.Phase;
@@ -21,7 +22,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tcnapi.exile.worker.v3.*;
 
 /**
  * Implements the v3 WorkStream protocol over a single bidirectional gRPC stream.
@@ -284,7 +284,8 @@ public final class WorkStreamClient implements AutoCloseable {
             GetPoolRecordsResult.newBuilder()
                 .addAllRecords(
                     page.items().stream()
-                        .<tcnapi.exile.types.v3.Record>map(r -> ProtoConverter.fromRecord(r))
+                        .<build.buf.gen.tcnapi.exile.v3.Record>map(
+                            r -> ProtoConverter.fromRecord(r))
                         .toList())
                 .setNextPageToken(page.nextPageToken() != null ? page.nextPageToken() : ""));
       }
@@ -296,7 +297,8 @@ public final class WorkStreamClient implements AutoCloseable {
             SearchRecordsResult.newBuilder()
                 .addAllRecords(
                     page.items().stream()
-                        .<tcnapi.exile.types.v3.Record>map(r -> ProtoConverter.fromRecord(r))
+                        .<build.buf.gen.tcnapi.exile.v3.Record>map(
+                            r -> ProtoConverter.fromRecord(r))
                         .toList())
                 .setNextPageToken(page.nextPageToken() != null ? page.nextPageToken() : ""));
       }

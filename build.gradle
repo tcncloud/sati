@@ -1,6 +1,5 @@
 plugins {
 	id("com.github.johnrengelman.shadow") version "8.1.1" apply(false)
-	id("build.buf") version "0.11.0" apply(false)
 	id("maven-publish")
 	id("com.diffplug.spotless") version "7.0.3"
 }
@@ -16,6 +15,10 @@ allprojects {
 
 	repositories {
 		mavenCentral()
+		maven {
+			name = 'buf'
+			url 'https://buf.build/gen/maven'
+		}
 	}
 
 	java {

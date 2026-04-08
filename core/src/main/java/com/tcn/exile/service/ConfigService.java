@@ -4,15 +4,14 @@ import com.tcn.exile.internal.ProtoConverter;
 import com.tcn.exile.model.DataRecord;
 import io.grpc.ManagedChannel;
 import java.util.Map;
-import tcnapi.exile.config.v3.*;
 
 /** Configuration and lifecycle operations. No proto types in the public API. */
 public final class ConfigService {
 
-  private final ConfigServiceGrpc.ConfigServiceBlockingStub stub;
+  private final build.buf.gen.tcnapi.exile.v3.ConfigServiceGrpc.ConfigServiceBlockingStub stub;
 
   ConfigService(ManagedChannel channel) {
-    this.stub = ConfigServiceGrpc.newBlockingStub(channel);
+    this.stub = build.buf.gen.tcnapi.exile.v3.ConfigServiceGrpc.newBlockingStub(channel);
   }
 
   public record ClientConfiguration(
@@ -21,7 +20,9 @@ public final class ConfigService {
   public record OrgInfo(String orgId, String orgName) {}
 
   public ClientConfiguration getClientConfiguration() {
-    var resp = stub.getClientConfiguration(GetClientConfigurationRequest.getDefaultInstance());
+    var resp =
+        stub.getClientConfiguration(
+            build.buf.gen.tcnapi.exile.v3.GetClientConfigurationRequest.getDefaultInstance());
     return new ClientConfiguration(
         resp.getOrgId(),
         resp.getOrgName(),
@@ -30,19 +31,23 @@ public final class ConfigService {
   }
 
   public OrgInfo getOrganizationInfo() {
-    var resp = stub.getOrganizationInfo(GetOrganizationInfoRequest.getDefaultInstance());
+    var resp =
+        stub.getOrganizationInfo(
+            build.buf.gen.tcnapi.exile.v3.GetOrganizationInfoRequest.getDefaultInstance());
     return new OrgInfo(resp.getOrgId(), resp.getOrgName());
   }
 
   public String rotateCertificate(String certificateHash) {
     var resp =
         stub.rotateCertificate(
-            RotateCertificateRequest.newBuilder().setCertificateHash(certificateHash).build());
+            build.buf.gen.tcnapi.exile.v3.RotateCertificateRequest.newBuilder()
+                .setCertificateHash(certificateHash)
+                .build());
     return resp.getEncodedCertificate();
   }
 
   public void log(String payload) {
-    stub.log(LogRequest.newBuilder().setPayload(payload).build());
+    stub.log(build.buf.gen.tcnapi.exile.v3.LogRequest.newBuilder().setPayload(payload).build());
   }
 
   public enum JourneyBufferStatus {
@@ -56,7 +61,7 @@ public final class ConfigService {
   public JourneyBufferStatus addRecordToJourneyBuffer(DataRecord record) {
     var resp =
         stub.addRecordToJourneyBuffer(
-            AddRecordToJourneyBufferRequest.newBuilder()
+            build.buf.gen.tcnapi.exile.v3.AddRecordToJourneyBufferRequest.newBuilder()
                 .setRecord(ProtoConverter.fromRecord(record))
                 .build());
     return switch (resp.getStatus()) {
