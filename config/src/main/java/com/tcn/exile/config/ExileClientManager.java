@@ -3,8 +3,7 @@ package com.tcn.exile.config;
 import com.tcn.exile.ExileClient;
 import com.tcn.exile.ExileConfig;
 import com.tcn.exile.StreamStatus;
-import com.tcn.exile.handler.EventHandler;
-import com.tcn.exile.handler.JobHandler;
+import com.tcn.exile.handler.Plugin;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -12,23 +11,11 @@ import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Manages the lifecycle of a single-tenant {@link ExileClient} driven by a config file.
- *
- * <p>Replaces the 400-500 line ConfigChangeWatcher that was copy-pasted across finvi, capone,
- * latitude, and debtnet. Handles:
- *
- * <ul>
- *   <li>Config file watching and parsing
- *   <li>ExileClient creation and destruction on config changes
- *   <li>Org change detection (destroys old client, creates new one)
- *   <li>Periodic certificate rotation
- *   <li>Graceful shutdown
- * </ul>
  *
  * <p>Usage:
  *
@@ -37,21 +24,10 @@ import org.slf4j.LoggerFactory;
  *     .clientName("sati-finvi")
  *     .clientVersion("3.0.0")
  *     .maxConcurrency(5)
- *     .jobHandler(new FinviJobHandler(dataSource))
- *     .eventHandler(new FinviEventHandler(dataSource))
- *     .onConfigChange(config -> reinitializeDataSource(config))
+ *     .plugin(new FinviPlugin(dataSource))
  *     .build();
  *
  * manager.start();
- *
- * // Access the active client.
- * var agents = manager.client().agents().listAgents(...);
- *
- * // Check health.
- * var status = manager.client().streamStatus();
- *
- * // Shut down.
- * manager.stop();
  * }</pre>
  */
 public final class ExileClientManager implements AutoCloseable {
@@ -61,9 +37,7 @@ public final class ExileClientManager implements AutoCloseable {
   private final String clientName;
   private final String clientVersion;
   private final int maxConcurrency;
-  private final JobHandler jobHandler;
-  private final EventHandler eventHandler;
-  private final Consumer<ExileConfig> onConfigChange;
+  private final Plugin plugin;
   private final List<Path> watchDirs;
   private final int certRotationHours;
 
@@ -77,9 +51,7 @@ public final class ExileClientManager implements AutoCloseable {
     this.clientName = builder.clientName;
     this.clientVersion = builder.clientVersion;
     this.maxConcurrency = builder.maxConcurrency;
-    this.jobHandler = builder.jobHandler;
-    this.eventHandler = builder.eventHandler;
-    this.onConfigChange = builder.onConfigChange;
+    this.plugin = builder.plugin;
     this.watchDirs = builder.watchDirs;
     this.certRotationHours = builder.certRotationHours;
   }
@@ -92,7 +64,6 @@ public final class ExileClientManager implements AutoCloseable {
             : ConfigFileWatcher.create(new WatcherListener());
     watcher.start();
 
-    // Schedule certificate rotation.
     scheduler =
         Executors.newSingleThreadScheduledExecutor(
             r -> {
@@ -113,7 +84,8 @@ public final class ExileClientManager implements AutoCloseable {
         certRotationHours,
         TimeUnit.HOURS);
 
-    log.info("ExileClientManager started (clientName={})", clientName);
+    log.info(
+        "ExileClientManager started (clientName={}, plugin={})", clientName, plugin.pluginName());
   }
 
   /** Returns the currently active client, or null if no config is loaded. */
@@ -127,12 +99,10 @@ public final class ExileClientManager implements AutoCloseable {
     return c != null ? c.streamStatus() : null;
   }
 
-  /** Returns the config file watcher (for writing rotated certs). */
   ConfigFileWatcher configWatcher() {
     return watcher;
   }
 
-  /** Stop the manager, close the client, and stop watching. */
   public void stop() {
     log.info("Stopping ExileClientManager");
     destroyClient();
@@ -147,27 +117,17 @@ public final class ExileClientManager implements AutoCloseable {
 
   private void createClient(ExileConfig config) {
     log.info(
-        "Creating ExileClient (endpoint={}:{}, org={})",
+        "Creating ExileClient (endpoint={}:{}, org={}, plugin={})",
         config.apiHostname(),
         config.apiPort(),
-        config.org());
+        config.org(),
+        plugin.pluginName());
     var newOrg = config.org();
     if (activeOrg != null && !activeOrg.equals(newOrg)) {
       log.info("Org changed from {} to {}, destroying old client", activeOrg, newOrg);
       destroyClient();
     }
 
-    // Notify integration of config change (e.g., reinit datasource).
-    if (onConfigChange != null) {
-      try {
-        onConfigChange.accept(config);
-      } catch (Exception e) {
-        log.error("onConfigChange callback failed: {}", e.getMessage(), e);
-        return;
-      }
-    }
-
-    // Destroy existing client if any (handles reconnect with new certs).
     destroyClient();
 
     try {
@@ -177,8 +137,7 @@ public final class ExileClientManager implements AutoCloseable {
               .clientName(clientName)
               .clientVersion(clientVersion)
               .maxConcurrency(maxConcurrency)
-              .jobHandler(jobHandler)
-              .eventHandler(eventHandler)
+              .plugin(plugin)
               .build();
       activeClient.start();
       activeConfig = config;
@@ -226,15 +185,12 @@ public final class ExileClientManager implements AutoCloseable {
     private String clientName = "sati";
     private String clientVersion = "unknown";
     private int maxConcurrency = 5;
-    private JobHandler jobHandler = new JobHandler() {};
-    private EventHandler eventHandler = new EventHandler() {};
-    private Consumer<ExileConfig> onConfigChange;
+    private Plugin plugin;
     private List<Path> watchDirs;
     private int certRotationHours = 1;
 
     private Builder() {}
 
-    /** Human-readable client name for diagnostics. */
     public Builder clientName(String clientName) {
       this.clientName = Objects.requireNonNull(clientName);
       return this;
@@ -250,44 +206,24 @@ public final class ExileClientManager implements AutoCloseable {
       return this;
     }
 
-    public Builder jobHandler(JobHandler jobHandler) {
-      this.jobHandler = Objects.requireNonNull(jobHandler);
+    /** The plugin that handles jobs, events, and config validation. */
+    public Builder plugin(Plugin plugin) {
+      this.plugin = Objects.requireNonNull(plugin);
       return this;
     }
 
-    public Builder eventHandler(EventHandler eventHandler) {
-      this.eventHandler = Objects.requireNonNull(eventHandler);
-      return this;
-    }
-
-    /**
-     * Callback invoked when config changes, before the ExileClient is (re)created. Use this to
-     * reinitialize integration-specific resources like database connections.
-     *
-     * <p>The callback receives the new {@link ExileConfig}. If it throws, the client will not be
-     * created.
-     */
-    public Builder onConfigChange(Consumer<ExileConfig> onConfigChange) {
-      this.onConfigChange = onConfigChange;
-      return this;
-    }
-
-    /**
-     * Override the default config directory paths. Defaults to {@code /workdir/config} and {@code
-     * workdir/config}.
-     */
     public Builder watchDirs(List<Path> watchDirs) {
       this.watchDirs = watchDirs;
       return this;
     }
 
-    /** How often to check certificate expiration (hours). Default: 1. */
     public Builder certRotationHours(int hours) {
       this.certRotationHours = hours;
       return this;
     }
 
     public ExileClientManager build() {
+      Objects.requireNonNull(plugin, "plugin is required");
       return new ExileClientManager(this);
     }
   }

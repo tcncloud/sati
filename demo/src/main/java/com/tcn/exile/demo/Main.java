@@ -55,14 +55,7 @@ public class Main {
             .clientName("sati-demo")
             .clientVersion(VERSION)
             .maxConcurrency(5)
-            .jobHandler(new DemoJobHandler())
-            .eventHandler(new DemoEventHandler())
-            .onConfigChange(
-                config -> {
-                  log.info("Config loaded for org={}", config.org());
-                  // In a real integration, you would initialize your database
-                  // connection pool or HTTP client here.
-                });
+            .plugin(new DemoPlugin());
 
     if (!configDir.isEmpty()) {
       builder.watchDirs(List.of(Path.of(configDir)));

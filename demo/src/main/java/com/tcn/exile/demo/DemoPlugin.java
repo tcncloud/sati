@@ -1,7 +1,9 @@
 package com.tcn.exile.demo;
 
-import com.tcn.exile.handler.JobHandler;
+import com.tcn.exile.handler.Plugin;
 import com.tcn.exile.model.*;
+import com.tcn.exile.model.event.*;
+import com.tcn.exile.service.ConfigService;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -9,12 +11,35 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Stub job handler that returns fake data for demonstration and testing. Each method logs the
- * request and returns plausible dummy responses.
+ * Demo plugin that validates config, returns stub job data, and logs events. In a real integration,
+ * this would initialize a database connection on config and execute stored procedures for jobs.
  */
-public class DemoJobHandler implements JobHandler {
+public class DemoPlugin implements Plugin {
 
-  private static final Logger log = LoggerFactory.getLogger(DemoJobHandler.class);
+  private static final Logger log = LoggerFactory.getLogger(DemoPlugin.class);
+  private volatile boolean configured = false;
+
+  // --- Config ---
+
+  @Override
+  public boolean onConfig(ConfigService.ClientConfiguration config) {
+    log.info(
+        "Plugin received config (org={}, configName={}, payloadKeys={})",
+        config.orgId(),
+        config.configName(),
+        config.configPayload() != null ? config.configPayload().keySet() : "null");
+    // In a real plugin, you would parse config.configPayload() for DB credentials,
+    // initialize the connection pool, and return false if it fails.
+    configured = true;
+    return true;
+  }
+
+  @Override
+  public String pluginName() {
+    return "demo";
+  }
+
+  // --- Jobs ---
 
   @Override
   public List<Pool> listPools() {
@@ -33,20 +58,20 @@ public class DemoJobHandler implements JobHandler {
   @Override
   public Page<DataRecord> getPoolRecords(String poolId, String pageToken, int pageSize) {
     log.info("getPoolRecords called for pool={} page={} size={}", poolId, pageToken, pageSize);
-    var records =
+    return new Page<>(
         List.of(
             new DataRecord(poolId, "rec-1", Map.of("name", "John Doe", "phone", "+15551234567")),
-            new DataRecord(poolId, "rec-2", Map.of("name", "Jane Smith", "phone", "+15559876543")));
-    return new Page<>(records, "");
+            new DataRecord(poolId, "rec-2", Map.of("name", "Jane Smith", "phone", "+15559876543"))),
+        "");
   }
 
   @Override
   public Page<DataRecord> searchRecords(List<Filter> filters, String pageToken, int pageSize) {
     log.info("searchRecords called with {} filters", filters.size());
-    var records =
+    return new Page<>(
         List.of(
-            new DataRecord("pool-1", "rec-1", Map.of("name", "Search Result", "matched", true)));
-    return new Page<>(records, "");
+            new DataRecord("pool-1", "rec-1", Map.of("name", "Search Result", "matched", true))),
+        "");
   }
 
   @Override
@@ -92,13 +117,14 @@ public class DemoJobHandler implements JobHandler {
         "runtime",
         System.getProperty("java.version"),
         "os",
-        System.getProperty("os.name"));
+        System.getProperty("os.name"),
+        "configured",
+        configured);
   }
 
   @Override
   public void shutdown(String reason) {
     log.warn("Shutdown requested: {}", reason);
-    // In a real integration, this would trigger graceful shutdown.
   }
 
   @Override
@@ -118,7 +144,7 @@ public class DemoJobHandler implements JobHandler {
             "java.version", System.getProperty("java.version"),
             "heap.max", runtime.maxMemory(),
             "heap.used", runtime.totalMemory() - runtime.freeMemory()),
-        Map.of("type", "demo", "connected", false),
+        Map.of("type", "demo", "connected", configured),
         Map.of("demo", true));
   }
 
@@ -133,5 +159,66 @@ public class DemoJobHandler implements JobHandler {
   @Override
   public void setLogLevel(String loggerName, String level) {
     log.info("setLogLevel called: {}={}", loggerName, level);
+  }
+
+  // --- Events ---
+
+  @Override
+  public void onAgentCall(AgentCallEvent event) {
+    log.info(
+        "AgentCall: callSid={} type={} agent={} talk={}s",
+        event.callSid(),
+        event.callType(),
+        event.partnerAgentId(),
+        event.talkDuration().toSeconds());
+  }
+
+  @Override
+  public void onTelephonyResult(TelephonyResultEvent event) {
+    log.info(
+        "TelephonyResult: callSid={} type={} status={} outcome={} phone={}",
+        event.callSid(),
+        event.callType(),
+        event.status(),
+        event.outcomeCategory(),
+        event.phoneNumber());
+  }
+
+  @Override
+  public void onAgentResponse(AgentResponseEvent event) {
+    log.info(
+        "AgentResponse: callSid={} agent={} key={} value={}",
+        event.callSid(),
+        event.partnerAgentId(),
+        event.responseKey(),
+        event.responseValue());
+  }
+
+  @Override
+  public void onTransferInstance(TransferInstanceEvent event) {
+    log.info(
+        "TransferInstance: id={} type={} result={}",
+        event.transferInstanceId(),
+        event.transferType(),
+        event.transferResult());
+  }
+
+  @Override
+  public void onCallRecording(CallRecordingEvent event) {
+    log.info(
+        "CallRecording: id={} callSid={} duration={}s",
+        event.recordingId(),
+        event.callSid(),
+        event.duration().toSeconds());
+  }
+
+  @Override
+  public void onTask(TaskEvent event) {
+    log.info(
+        "Task: sid={} pool={} record={} status={}",
+        event.taskSid(),
+        event.poolId(),
+        event.recordId(),
+        event.status());
   }
 }

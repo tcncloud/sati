@@ -1,7 +1,6 @@
 package com.tcn.exile;
 
-import com.tcn.exile.handler.EventHandler;
-import com.tcn.exile.handler.JobHandler;
+import com.tcn.exile.handler.Plugin;
 import com.tcn.exile.internal.ChannelFactory;
 import com.tcn.exile.internal.WorkStreamClient;
 import com.tcn.exile.service.*;
@@ -14,27 +13,28 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  * Main entry point for the Exile client library.
  *
- * <p>On {@link #start()}, only the config poller begins. The WorkStream does not open until the
- * first successful config poll from the gate and the {@code onConfigPolled} callback completes
- * without error. This ensures the integration's resources (database, HTTP client) are initialized
- * before any work items arrive.
+ * <p>On {@link #start()}, only the config poller begins. The WorkStream does not open until:
+ *
+ * <ol>
+ *   <li>The first successful config poll from the gate
+ *   <li>The {@link Plugin#onConfig} returns {@code true}
+ * </ol>
  */
 public final class ExileClient implements AutoCloseable {
 
   private static final Logger log = LoggerFactory.getLogger(ExileClient.class);
 
   private final ExileConfig config;
+  private final Plugin plugin;
   private final WorkStreamClient workStream;
   private final ManagedChannel serviceChannel;
   private final ScheduledExecutorService configPoller;
-  private final Consumer<ConfigService.ClientConfiguration> onConfigPolled;
   private final Duration configPollInterval;
 
   private final AgentService agentService;
@@ -49,14 +49,14 @@ public final class ExileClient implements AutoCloseable {
 
   private ExileClient(Builder builder) {
     this.config = builder.config;
-    this.onConfigPolled = builder.onConfigPolled;
+    this.plugin = builder.plugin;
     this.configPollInterval = builder.configPollInterval;
 
     this.workStream =
         new WorkStreamClient(
             config,
-            builder.jobHandler,
-            builder.eventHandler,
+            plugin,
+            plugin,
             builder.clientName,
             builder.clientVersion,
             builder.maxConcurrency,
@@ -82,18 +82,16 @@ public final class ExileClient implements AutoCloseable {
 
   /**
    * Start the client. Only the config poller begins immediately. The WorkStream opens after the
-   * first successful config poll and onConfigPolled callback.
+   * plugin accepts the first config via {@link Plugin#onConfig}.
    */
   public void start() {
     log.info(
-        "Starting ExileClient for org={} (waiting for gate config before opening stream)",
-        config.org());
+        "Starting ExileClient for org={} (plugin={}, waiting for config)",
+        config.org(),
+        plugin.pluginName());
 
     configPoller.scheduleAtFixedRate(
-        this::pollConfig,
-        0, // poll immediately on start
-        configPollInterval.toSeconds(),
-        TimeUnit.SECONDS);
+        this::pollConfig, 0, configPollInterval.toSeconds(), TimeUnit.SECONDS);
   }
 
   private void pollConfig() {
@@ -104,17 +102,28 @@ public final class ExileClient implements AutoCloseable {
       boolean changed = lastConfig == null || !newConfig.equals(lastConfig);
       lastConfig = newConfig;
 
-      if (changed && onConfigPolled != null) {
+      if (changed) {
         log.info(
-            "Config polled from gate (org={}, configName={}, changed=true)",
+            "Config received from gate (org={}, configName={})",
             newConfig.orgId(),
             newConfig.configName());
-        onConfigPolled.accept(newConfig);
+
+        boolean ready;
+        try {
+          ready = plugin.onConfig(newConfig);
+        } catch (Exception e) {
+          log.warn("Plugin {} rejected config: {}", plugin.pluginName(), e.getMessage());
+          return;
+        }
+
+        if (!ready) {
+          log.warn("Plugin {} not ready — WorkStream will not start yet", plugin.pluginName());
+          return;
+        }
       }
 
-      // Start WorkStream on first successful config poll.
       if (workStreamStarted.compareAndSet(false, true)) {
-        log.info("Gate config received, starting WorkStream");
+        log.info("Plugin {} ready, starting WorkStream", plugin.pluginName());
         workStream.start();
       }
     } catch (Exception e) {
@@ -133,6 +142,10 @@ public final class ExileClient implements AutoCloseable {
 
   public ExileConfig config() {
     return config;
+  }
+
+  public Plugin plugin() {
+    return plugin;
   }
 
   public AgentService agents() {
@@ -173,13 +186,11 @@ public final class ExileClient implements AutoCloseable {
 
   public static final class Builder {
     private ExileConfig config;
-    private JobHandler jobHandler = new JobHandler() {};
-    private EventHandler eventHandler = new EventHandler() {};
+    private Plugin plugin;
     private String clientName = "sati";
     private String clientVersion = "unknown";
     private int maxConcurrency = 5;
     private List<build.buf.gen.tcnapi.exile.gate.v3.WorkType> capabilities = new ArrayList<>();
-    private Consumer<ConfigService.ClientConfiguration> onConfigPolled;
     private Duration configPollInterval = Duration.ofSeconds(10);
 
     private Builder() {}
@@ -189,13 +200,9 @@ public final class ExileClient implements AutoCloseable {
       return this;
     }
 
-    public Builder jobHandler(JobHandler jobHandler) {
-      this.jobHandler = Objects.requireNonNull(jobHandler);
-      return this;
-    }
-
-    public Builder eventHandler(EventHandler eventHandler) {
-      this.eventHandler = Objects.requireNonNull(eventHandler);
+    /** The plugin that handles jobs, events, and config validation. */
+    public Builder plugin(Plugin plugin) {
+      this.plugin = Objects.requireNonNull(plugin);
       return this;
     }
 
@@ -215,25 +222,15 @@ public final class ExileClient implements AutoCloseable {
       return this;
     }
 
-    /**
-     * Callback invoked when the gate returns a new or changed client configuration. On the first
-     * successful poll, this fires before the WorkStream opens — use it to initialize database
-     * connections, HTTP clients, or other resources that job/event handlers depend on.
-     */
-    public Builder onConfigPolled(Consumer<ConfigService.ClientConfiguration> onConfigPolled) {
-      this.onConfigPolled = onConfigPolled;
-      return this;
-    }
-
     /** How often to poll the gate for config updates. Default: 10 seconds. */
     public Builder configPollInterval(Duration interval) {
       this.configPollInterval = Objects.requireNonNull(interval);
       return this;
     }
 
-    @SuppressWarnings("unchecked")
     public ExileClient build() {
       Objects.requireNonNull(config, "config is required");
+      Objects.requireNonNull(plugin, "plugin is required");
       return new ExileClient(this);
     }
   }
