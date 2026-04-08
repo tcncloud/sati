@@ -95,6 +95,9 @@ public final class WorkStreamClient implements AutoCloseable {
     if (!running.compareAndSet(false, true)) {
       throw new IllegalStateException("Already started");
     }
+    log.debug("Creating gRPC channel to {}:{}", config.apiHostname(), config.apiPort());
+    channel = ChannelFactory.create(config);
+    log.debug("Channel created");
     streamThread =
         Thread.ofPlatform().name("exile-work-stream").daemon(true).start(this::reconnectLoop);
   }
@@ -132,9 +135,7 @@ public final class WorkStreamClient implements AutoCloseable {
 
   private void runStream() throws InterruptedException {
     phase = Phase.CONNECTING;
-    log.debug("Creating gRPC channel to {}:{}", config.apiHostname(), config.apiPort());
-    channel = ChannelFactory.create(config);
-    log.debug("Channel created, opening WorkStream");
+    log.debug("Opening WorkStream on existing channel");
     try {
       var stub = WorkerServiceGrpc.newStub(channel);
       var latch = new CountDownLatch(1);
@@ -190,8 +191,7 @@ public final class WorkStreamClient implements AutoCloseable {
     } finally {
       requestObserver.set(null);
       inflight.set(0);
-      ChannelFactory.shutdown(channel);
-      channel = null;
+      // Channel is reused across reconnects — only shut down on close().
     }
   }
 
