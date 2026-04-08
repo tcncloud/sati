@@ -1,0 +1,17 @@
+plugins {
+	id("java")
+	id("application")
+	id("com.github.johnrengelman.shadow")
+}
+
+application {
+	mainClass = 'com.tcn.exile.demo.Main'
+}
+
+dependencies {
+	implementation(project(':core'))
+	implementation(project(':config'))
+
+	// Logging runtime
+	runtimeOnly('ch.qos.logback:logback-classic:1.5.17')
+}
