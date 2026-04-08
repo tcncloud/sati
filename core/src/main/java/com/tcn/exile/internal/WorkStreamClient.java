@@ -2,7 +2,7 @@ package com.tcn.exile.internal;
 
 import static com.tcn.exile.internal.ProtoConverter.*;
 
-import build.buf.gen.tcnapi.exile.v3.*;
+import build.buf.gen.tcnapi.exile.gate.v3.*;
 import com.tcn.exile.ExileConfig;
 import com.tcn.exile.StreamStatus;
 import com.tcn.exile.StreamStatus.Phase;
@@ -284,7 +284,7 @@ public final class WorkStreamClient implements AutoCloseable {
             GetPoolRecordsResult.newBuilder()
                 .addAllRecords(
                     page.items().stream()
-                        .<build.buf.gen.tcnapi.exile.v3.Record>map(
+                        .<build.buf.gen.tcnapi.exile.gate.v3.Record>map(
                             r -> ProtoConverter.fromRecord(r))
                         .toList())
                 .setNextPageToken(page.nextPageToken() != null ? page.nextPageToken() : ""));
@@ -297,7 +297,7 @@ public final class WorkStreamClient implements AutoCloseable {
             SearchRecordsResult.newBuilder()
                 .addAllRecords(
                     page.items().stream()
-                        .<build.buf.gen.tcnapi.exile.v3.Record>map(
+                        .<build.buf.gen.tcnapi.exile.gate.v3.Record>map(
                             r -> ProtoConverter.fromRecord(r))
                         .toList())
                 .setNextPageToken(page.nextPageToken() != null ? page.nextPageToken() : ""));

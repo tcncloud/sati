@@ -8,10 +8,10 @@ import java.util.Map;
 /** Configuration and lifecycle operations. No proto types in the public API. */
 public final class ConfigService {
 
-  private final build.buf.gen.tcnapi.exile.v3.ConfigServiceGrpc.ConfigServiceBlockingStub stub;
+  private final build.buf.gen.tcnapi.exile.gate.v3.ConfigServiceGrpc.ConfigServiceBlockingStub stub;
 
   ConfigService(ManagedChannel channel) {
-    this.stub = build.buf.gen.tcnapi.exile.v3.ConfigServiceGrpc.newBlockingStub(channel);
+    this.stub = build.buf.gen.tcnapi.exile.gate.v3.ConfigServiceGrpc.newBlockingStub(channel);
   }
 
   public record ClientConfiguration(
@@ -22,7 +22,7 @@ public final class ConfigService {
   public ClientConfiguration getClientConfiguration() {
     var resp =
         stub.getClientConfiguration(
-            build.buf.gen.tcnapi.exile.v3.GetClientConfigurationRequest.getDefaultInstance());
+            build.buf.gen.tcnapi.exile.gate.v3.GetClientConfigurationRequest.getDefaultInstance());
     return new ClientConfiguration(
         resp.getOrgId(),
         resp.getOrgName(),
@@ -33,21 +33,22 @@ public final class ConfigService {
   public OrgInfo getOrganizationInfo() {
     var resp =
         stub.getOrganizationInfo(
-            build.buf.gen.tcnapi.exile.v3.GetOrganizationInfoRequest.getDefaultInstance());
+            build.buf.gen.tcnapi.exile.gate.v3.GetOrganizationInfoRequest.getDefaultInstance());
     return new OrgInfo(resp.getOrgId(), resp.getOrgName());
   }
 
   public String rotateCertificate(String certificateHash) {
     var resp =
         stub.rotateCertificate(
-            build.buf.gen.tcnapi.exile.v3.RotateCertificateRequest.newBuilder()
+            build.buf.gen.tcnapi.exile.gate.v3.RotateCertificateRequest.newBuilder()
                 .setCertificateHash(certificateHash)
                 .build());
     return resp.getEncodedCertificate();
   }
 
   public void log(String payload) {
-    stub.log(build.buf.gen.tcnapi.exile.v3.LogRequest.newBuilder().setPayload(payload).build());
+    stub.log(
+        build.buf.gen.tcnapi.exile.gate.v3.LogRequest.newBuilder().setPayload(payload).build());
   }
 
   public enum JourneyBufferStatus {
@@ -61,7 +62,7 @@ public final class ConfigService {
   public JourneyBufferStatus addRecordToJourneyBuffer(DataRecord record) {
     var resp =
         stub.addRecordToJourneyBuffer(
-            build.buf.gen.tcnapi.exile.v3.AddRecordToJourneyBufferRequest.newBuilder()
+            build.buf.gen.tcnapi.exile.gate.v3.AddRecordToJourneyBufferRequest.newBuilder()
                 .setRecord(ProtoConverter.fromRecord(record))
                 .build());
     return switch (resp.getStatus()) {

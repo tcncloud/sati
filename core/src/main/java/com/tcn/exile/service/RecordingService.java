@@ -10,11 +10,11 @@ import java.util.stream.Collectors;
 /** Voice recording search and retrieval. No proto types in the public API. */
 public final class RecordingService {
 
-  private final build.buf.gen.tcnapi.exile.v3.RecordingServiceGrpc.RecordingServiceBlockingStub
+  private final build.buf.gen.tcnapi.exile.gate.v3.RecordingServiceGrpc.RecordingServiceBlockingStub
       stub;
 
   RecordingService(ManagedChannel channel) {
-    this.stub = build.buf.gen.tcnapi.exile.v3.RecordingServiceGrpc.newBlockingStub(channel);
+    this.stub = build.buf.gen.tcnapi.exile.gate.v3.RecordingServiceGrpc.newBlockingStub(channel);
   }
 
   public record VoiceRecording(
@@ -37,7 +37,7 @@ public final class RecordingService {
   public Page<VoiceRecording> searchVoiceRecordings(
       List<Filter> filters, String pageToken, int pageSize) {
     var req =
-        build.buf.gen.tcnapi.exile.v3.SearchVoiceRecordingsRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.SearchVoiceRecordingsRequest.newBuilder()
             .setPageSize(pageSize);
     if (pageToken != null) req.setPageToken(pageToken);
     for (var f : filters) req.addFilters(ProtoConverter.fromFilter(f));
@@ -67,7 +67,7 @@ public final class RecordingService {
   public DownloadLinks getDownloadLink(
       String recordingId, Duration startOffset, Duration endOffset) {
     var req =
-        build.buf.gen.tcnapi.exile.v3.GetDownloadLinkRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.GetDownloadLinkRequest.newBuilder()
             .setRecordingId(recordingId);
     if (startOffset != null) req.setStartOffset(ProtoConverter.fromDuration(startOffset));
     if (endOffset != null) req.setEndOffset(ProtoConverter.fromDuration(endOffset));
@@ -77,16 +77,16 @@ public final class RecordingService {
 
   public List<String> listSearchableFields() {
     return stub.listSearchableFields(
-            build.buf.gen.tcnapi.exile.v3.ListSearchableFieldsRequest.getDefaultInstance())
+            build.buf.gen.tcnapi.exile.gate.v3.ListSearchableFieldsRequest.getDefaultInstance())
         .getFieldsList();
   }
 
   public void createLabel(long callSid, CallType callType, String key, String value) {
     stub.createLabel(
-        build.buf.gen.tcnapi.exile.v3.CreateLabelRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.CreateLabelRequest.newBuilder()
             .setCallSid(callSid)
             .setCallType(
-                build.buf.gen.tcnapi.exile.v3.CallType.valueOf("CALL_TYPE_" + callType.name()))
+                build.buf.gen.tcnapi.exile.gate.v3.CallType.valueOf("CALL_TYPE_" + callType.name()))
             .setKey(key)
             .setValue(value)
             .build());

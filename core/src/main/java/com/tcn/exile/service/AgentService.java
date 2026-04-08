@@ -11,16 +11,16 @@ import java.util.stream.Collectors;
 /** Agent management operations. No proto types in the public API. */
 public final class AgentService {
 
-  private final build.buf.gen.tcnapi.exile.v3.AgentServiceGrpc.AgentServiceBlockingStub stub;
+  private final build.buf.gen.tcnapi.exile.gate.v3.AgentServiceGrpc.AgentServiceBlockingStub stub;
 
   AgentService(ManagedChannel channel) {
-    this.stub = build.buf.gen.tcnapi.exile.v3.AgentServiceGrpc.newBlockingStub(channel);
+    this.stub = build.buf.gen.tcnapi.exile.gate.v3.AgentServiceGrpc.newBlockingStub(channel);
   }
 
   public Agent getAgentByPartnerId(String partnerAgentId) {
     var resp =
         stub.getAgent(
-            build.buf.gen.tcnapi.exile.v3.GetAgentRequest.newBuilder()
+            build.buf.gen.tcnapi.exile.gate.v3.GetAgentRequest.newBuilder()
                 .setPartnerAgentId(partnerAgentId)
                 .build());
     return toAgent(resp.getAgent());
@@ -29,7 +29,9 @@ public final class AgentService {
   public Agent getAgentByUserId(String userId) {
     var resp =
         stub.getAgent(
-            build.buf.gen.tcnapi.exile.v3.GetAgentRequest.newBuilder().setUserId(userId).build());
+            build.buf.gen.tcnapi.exile.gate.v3.GetAgentRequest.newBuilder()
+                .setUserId(userId)
+                .build());
     return toAgent(resp.getAgent());
   }
 
@@ -40,7 +42,7 @@ public final class AgentService {
       String pageToken,
       int pageSize) {
     var req =
-        build.buf.gen.tcnapi.exile.v3.ListAgentsRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.ListAgentsRequest.newBuilder()
             .setIncludeRecordingStatus(includeRecordingStatus)
             .setPageSize(pageSize);
     if (loggedIn != null) req.setLoggedIn(loggedIn);
@@ -56,7 +58,7 @@ public final class AgentService {
       String partnerAgentId, String username, String firstName, String lastName) {
     var resp =
         stub.upsertAgent(
-            build.buf.gen.tcnapi.exile.v3.UpsertAgentRequest.newBuilder()
+            build.buf.gen.tcnapi.exile.gate.v3.UpsertAgentRequest.newBuilder()
                 .setPartnerAgentId(partnerAgentId)
                 .setUsername(username)
                 .setFirstName(firstName)
@@ -67,7 +69,7 @@ public final class AgentService {
 
   public void setAgentCredentials(String partnerAgentId, String password) {
     stub.setAgentCredentials(
-        build.buf.gen.tcnapi.exile.v3.SetAgentCredentialsRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.SetAgentCredentialsRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
             .setPassword(password)
             .build());
@@ -75,7 +77,7 @@ public final class AgentService {
 
   public void updateAgentStatus(String partnerAgentId, AgentState newState, String reason) {
     stub.updateAgentStatus(
-        build.buf.gen.tcnapi.exile.v3.UpdateAgentStatusRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.UpdateAgentStatusRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
             .setNewState(fromAgentState(newState))
             .setReason(reason != null ? reason : "")
@@ -84,14 +86,14 @@ public final class AgentService {
 
   public void muteAgent(String partnerAgentId) {
     stub.muteAgent(
-        build.buf.gen.tcnapi.exile.v3.MuteAgentRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.MuteAgentRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
             .build());
   }
 
   public void unmuteAgent(String partnerAgentId) {
     stub.unmuteAgent(
-        build.buf.gen.tcnapi.exile.v3.UnmuteAgentRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.UnmuteAgentRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
             .build());
   }
@@ -104,11 +106,11 @@ public final class AgentService {
       String key,
       String value) {
     stub.addAgentCallResponse(
-        build.buf.gen.tcnapi.exile.v3.AddAgentCallResponseRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.AddAgentCallResponseRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
             .setCallSid(callSid)
             .setCallType(
-                build.buf.gen.tcnapi.exile.v3.CallType.valueOf("CALL_TYPE_" + callType.name()))
+                build.buf.gen.tcnapi.exile.gate.v3.CallType.valueOf("CALL_TYPE_" + callType.name()))
             .setCurrentSessionId(sessionId)
             .setKey(key)
             .setValue(value)
@@ -117,14 +119,14 @@ public final class AgentService {
 
   public List<Skill> listSkills() {
     var resp =
-        stub.listSkills(build.buf.gen.tcnapi.exile.v3.ListSkillsRequest.getDefaultInstance());
+        stub.listSkills(build.buf.gen.tcnapi.exile.gate.v3.ListSkillsRequest.getDefaultInstance());
     return resp.getSkillsList().stream().map(ProtoConverter::toSkill).collect(Collectors.toList());
   }
 
   public List<Skill> listAgentSkills(String partnerAgentId) {
     var resp =
         stub.listAgentSkills(
-            build.buf.gen.tcnapi.exile.v3.ListAgentSkillsRequest.newBuilder()
+            build.buf.gen.tcnapi.exile.gate.v3.ListAgentSkillsRequest.newBuilder()
                 .setPartnerAgentId(partnerAgentId)
                 .build());
     return resp.getSkillsList().stream().map(ProtoConverter::toSkill).collect(Collectors.toList());
@@ -132,7 +134,7 @@ public final class AgentService {
 
   public void assignAgentSkill(String partnerAgentId, String skillId, long proficiency) {
     stub.assignAgentSkill(
-        build.buf.gen.tcnapi.exile.v3.AssignAgentSkillRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.AssignAgentSkillRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
             .setSkillId(skillId)
             .setProficiency(proficiency)
@@ -141,7 +143,7 @@ public final class AgentService {
 
   public void unassignAgentSkill(String partnerAgentId, String skillId) {
     stub.unassignAgentSkill(
-        build.buf.gen.tcnapi.exile.v3.UnassignAgentSkillRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.UnassignAgentSkillRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
             .setSkillId(skillId)
             .build());

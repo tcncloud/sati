@@ -60,29 +60,30 @@ class ProtoConverterTest {
   void callTypeMapping() {
     assertEquals(
         CallType.INBOUND,
-        ProtoConverter.toCallType(build.buf.gen.tcnapi.exile.v3.CallType.CALL_TYPE_INBOUND));
+        ProtoConverter.toCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType.CALL_TYPE_INBOUND));
     assertEquals(
         CallType.OUTBOUND,
-        ProtoConverter.toCallType(build.buf.gen.tcnapi.exile.v3.CallType.CALL_TYPE_OUTBOUND));
+        ProtoConverter.toCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType.CALL_TYPE_OUTBOUND));
     assertEquals(
         CallType.PREVIEW,
-        ProtoConverter.toCallType(build.buf.gen.tcnapi.exile.v3.CallType.CALL_TYPE_PREVIEW));
+        ProtoConverter.toCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType.CALL_TYPE_PREVIEW));
     assertEquals(
         CallType.MANUAL,
-        ProtoConverter.toCallType(build.buf.gen.tcnapi.exile.v3.CallType.CALL_TYPE_MANUAL));
+        ProtoConverter.toCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType.CALL_TYPE_MANUAL));
     assertEquals(
         CallType.MAC,
-        ProtoConverter.toCallType(build.buf.gen.tcnapi.exile.v3.CallType.CALL_TYPE_MAC));
+        ProtoConverter.toCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType.CALL_TYPE_MAC));
     assertEquals(
         CallType.UNSPECIFIED,
-        ProtoConverter.toCallType(build.buf.gen.tcnapi.exile.v3.CallType.CALL_TYPE_UNSPECIFIED));
+        ProtoConverter.toCallType(
+            build.buf.gen.tcnapi.exile.gate.v3.CallType.CALL_TYPE_UNSPECIFIED));
   }
 
   // ---- AgentState ----
 
   @Test
   void agentStateRoundTrip() {
-    var proto = build.buf.gen.tcnapi.exile.v3.AgentState.AGENT_STATE_READY;
+    var proto = build.buf.gen.tcnapi.exile.gate.v3.AgentState.AGENT_STATE_READY;
     var java = ProtoConverter.toAgentState(proto);
     assertEquals(AgentState.READY, java);
     assertEquals(proto, ProtoConverter.fromAgentState(java));
@@ -93,7 +94,7 @@ class ProtoConverterTest {
     assertEquals(
         AgentState.UNSPECIFIED,
         ProtoConverter.toAgentState(
-            build.buf.gen.tcnapi.exile.v3.AgentState.AGENT_STATE_UNSPECIFIED));
+            build.buf.gen.tcnapi.exile.gate.v3.AgentState.AGENT_STATE_UNSPECIFIED));
   }
 
   // ---- Pool ----
@@ -106,7 +107,7 @@ class ProtoConverterTest {
     assertEquals("Test Pool", proto.getDescription());
     assertEquals(42, proto.getRecordCount());
     assertEquals(
-        build.buf.gen.tcnapi.exile.v3.Pool.PoolStatus.POOL_STATUS_READY, proto.getStatus());
+        build.buf.gen.tcnapi.exile.gate.v3.Pool.PoolStatus.POOL_STATUS_READY, proto.getStatus());
 
     var back = ProtoConverter.toPool(proto);
     assertEquals(java, back);
@@ -219,11 +220,11 @@ class ProtoConverterTest {
   void taskDataConversion() {
     var protoList =
         List.of(
-            build.buf.gen.tcnapi.exile.v3.TaskData.newBuilder()
+            build.buf.gen.tcnapi.exile.gate.v3.TaskData.newBuilder()
                 .setKey("pool_id")
                 .setValue(com.google.protobuf.Value.newBuilder().setStringValue("P-1").build())
                 .build(),
-            build.buf.gen.tcnapi.exile.v3.TaskData.newBuilder()
+            build.buf.gen.tcnapi.exile.gate.v3.TaskData.newBuilder()
                 .setKey("count")
                 .setValue(com.google.protobuf.Value.newBuilder().setNumberValue(5.0).build())
                 .build());
@@ -240,7 +241,7 @@ class ProtoConverterTest {
   @Test
   void agentConversion() {
     var proto =
-        build.buf.gen.tcnapi.exile.v3.Agent.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.Agent.newBuilder()
             .setUserId("U-1")
             .setOrgId("O-1")
             .setFirstName("John")
@@ -248,14 +249,14 @@ class ProtoConverterTest {
             .setUsername("jdoe")
             .setPartnerAgentId("PA-1")
             .setCurrentSessionId("S-1")
-            .setAgentState(build.buf.gen.tcnapi.exile.v3.AgentState.AGENT_STATE_READY)
+            .setAgentState(build.buf.gen.tcnapi.exile.gate.v3.AgentState.AGENT_STATE_READY)
             .setIsLoggedIn(true)
             .setIsMuted(false)
             .setIsRecording(true)
             .setConnectedParty(
-                build.buf.gen.tcnapi.exile.v3.Agent.ConnectedParty.newBuilder()
+                build.buf.gen.tcnapi.exile.gate.v3.Agent.ConnectedParty.newBuilder()
                     .setCallSid(42)
-                    .setCallType(build.buf.gen.tcnapi.exile.v3.CallType.CALL_TYPE_INBOUND)
+                    .setCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType.CALL_TYPE_INBOUND)
                     .setIsInbound(true))
             .build();
 
@@ -276,7 +277,10 @@ class ProtoConverterTest {
   @Test
   void agentWithoutConnectedParty() {
     var proto =
-        build.buf.gen.tcnapi.exile.v3.Agent.newBuilder().setUserId("U-1").setOrgId("O-1").build();
+        build.buf.gen.tcnapi.exile.gate.v3.Agent.newBuilder()
+            .setUserId("U-1")
+            .setOrgId("O-1")
+            .build();
     var java = ProtoConverter.toAgent(proto);
     assertTrue(java.connectedParty().isEmpty());
   }
@@ -286,7 +290,7 @@ class ProtoConverterTest {
   @Test
   void skillWithProficiency() {
     var proto =
-        build.buf.gen.tcnapi.exile.v3.Skill.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.Skill.newBuilder()
             .setSkillId("SK-1")
             .setName("Spanish")
             .setDescription("Spanish language")
@@ -304,17 +308,17 @@ class ProtoConverterTest {
   @Test
   void agentCallEventConversion() {
     var proto =
-        build.buf.gen.tcnapi.exile.v3.AgentCall.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.AgentCall.newBuilder()
             .setAgentCallSid(1)
             .setCallSid(2)
-            .setCallType(build.buf.gen.tcnapi.exile.v3.CallType.CALL_TYPE_OUTBOUND)
+            .setCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType.CALL_TYPE_OUTBOUND)
             .setOrgId("O-1")
             .setUserId("U-1")
             .setPartnerAgentId("PA-1")
             .setTalkDuration(com.google.protobuf.Duration.newBuilder().setSeconds(120))
             .setCreateTime(com.google.protobuf.Timestamp.newBuilder().setSeconds(1700000000))
             .addTaskData(
-                build.buf.gen.tcnapi.exile.v3.TaskData.newBuilder()
+                build.buf.gen.tcnapi.exile.gate.v3.TaskData.newBuilder()
                     .setKey("pool_id")
                     .setValue(com.google.protobuf.Value.newBuilder().setStringValue("P-1")))
             .build();
@@ -334,21 +338,23 @@ class ProtoConverterTest {
   @Test
   void telephonyResultEventConversion() {
     var proto =
-        build.buf.gen.tcnapi.exile.v3.TelephonyResult.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.TelephonyResult.newBuilder()
             .setCallSid(42)
-            .setCallType(build.buf.gen.tcnapi.exile.v3.CallType.CALL_TYPE_INBOUND)
+            .setCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType.CALL_TYPE_INBOUND)
             .setOrgId("O-1")
             .setCallerId("+15551234567")
             .setPhoneNumber("+15559876543")
             .setPoolId("P-1")
             .setRecordId("R-1")
-            .setStatus(build.buf.gen.tcnapi.exile.v3.TelephonyStatus.TELEPHONY_STATUS_COMPLETED)
+            .setStatus(
+                build.buf.gen.tcnapi.exile.gate.v3.TelephonyStatus.TELEPHONY_STATUS_COMPLETED)
             .setOutcome(
-                build.buf.gen.tcnapi.exile.v3.TelephonyOutcome.newBuilder()
+                build.buf.gen.tcnapi.exile.gate.v3.TelephonyOutcome.newBuilder()
                     .setCategory(
-                        build.buf.gen.tcnapi.exile.v3.TelephonyOutcome.Category.CATEGORY_ANSWERED)
+                        build.buf.gen.tcnapi.exile.gate.v3.TelephonyOutcome.Category
+                            .CATEGORY_ANSWERED)
                     .setDetail(
-                        build.buf.gen.tcnapi.exile.v3.TelephonyOutcome.Detail.DETAIL_GENERIC))
+                        build.buf.gen.tcnapi.exile.gate.v3.TelephonyOutcome.Detail.DETAIL_GENERIC))
             .build();
 
     var java = ProtoConverter.toTelephonyResultEvent(proto);
@@ -363,14 +369,14 @@ class ProtoConverterTest {
   @Test
   void callRecordingEventConversion() {
     var proto =
-        build.buf.gen.tcnapi.exile.v3.CallRecording.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.CallRecording.newBuilder()
             .setRecordingId("REC-1")
             .setOrgId("O-1")
             .setCallSid(42)
-            .setCallType(build.buf.gen.tcnapi.exile.v3.CallType.CALL_TYPE_INBOUND)
+            .setCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType.CALL_TYPE_INBOUND)
             .setDuration(com.google.protobuf.Duration.newBuilder().setSeconds(300))
             .setRecordingType(
-                build.buf.gen.tcnapi.exile.v3.CallRecording.RecordingType.RECORDING_TYPE_TCN)
+                build.buf.gen.tcnapi.exile.gate.v3.CallRecording.RecordingType.RECORDING_TYPE_TCN)
             .build();
 
     var java = ProtoConverter.toCallRecordingEvent(proto);
@@ -383,14 +389,14 @@ class ProtoConverterTest {
   @Test
   void taskEventConversion() {
     var proto =
-        build.buf.gen.tcnapi.exile.v3.ExileTask.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.ExileTask.newBuilder()
             .setTaskSid(1)
             .setTaskGroupSid(2)
             .setOrgId("O-1")
             .setPoolId("P-1")
             .setRecordId("R-1")
             .setAttempts(3)
-            .setStatus(build.buf.gen.tcnapi.exile.v3.ExileTask.TaskStatus.TASK_STATUS_RUNNING)
+            .setStatus(build.buf.gen.tcnapi.exile.gate.v3.ExileTask.TaskStatus.TASK_STATUS_RUNNING)
             .build();
 
     var java = ProtoConverter.toTaskEvent(proto);

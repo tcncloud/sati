@@ -47,7 +47,7 @@ public final class ProtoConverter {
 
   // ---- Enums ----
 
-  public static CallType toCallType(build.buf.gen.tcnapi.exile.v3.CallType ct) {
+  public static CallType toCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType ct) {
     return switch (ct) {
       case CALL_TYPE_INBOUND -> CallType.INBOUND;
       case CALL_TYPE_OUTBOUND -> CallType.OUTBOUND;
@@ -58,7 +58,7 @@ public final class ProtoConverter {
     };
   }
 
-  public static AgentState toAgentState(build.buf.gen.tcnapi.exile.v3.AgentState as) {
+  public static AgentState toAgentState(build.buf.gen.tcnapi.exile.gate.v3.AgentState as) {
     try {
       return AgentState.valueOf(as.name().replace("AGENT_STATE_", ""));
     } catch (IllegalArgumentException e) {
@@ -66,17 +66,17 @@ public final class ProtoConverter {
     }
   }
 
-  public static build.buf.gen.tcnapi.exile.v3.AgentState fromAgentState(AgentState as) {
+  public static build.buf.gen.tcnapi.exile.gate.v3.AgentState fromAgentState(AgentState as) {
     try {
-      return build.buf.gen.tcnapi.exile.v3.AgentState.valueOf("AGENT_STATE_" + as.name());
+      return build.buf.gen.tcnapi.exile.gate.v3.AgentState.valueOf("AGENT_STATE_" + as.name());
     } catch (IllegalArgumentException e) {
-      return build.buf.gen.tcnapi.exile.v3.AgentState.AGENT_STATE_UNSPECIFIED;
+      return build.buf.gen.tcnapi.exile.gate.v3.AgentState.AGENT_STATE_UNSPECIFIED;
     }
   }
 
   // ---- Core types ----
 
-  public static Pool toPool(build.buf.gen.tcnapi.exile.v3.Pool p) {
+  public static Pool toPool(build.buf.gen.tcnapi.exile.gate.v3.Pool p) {
     return new Pool(
         p.getPoolId(),
         p.getDescription(),
@@ -89,39 +89,40 @@ public final class ProtoConverter {
         p.getRecordCount());
   }
 
-  public static build.buf.gen.tcnapi.exile.v3.Pool fromPool(Pool p) {
-    return build.buf.gen.tcnapi.exile.v3.Pool.newBuilder()
+  public static build.buf.gen.tcnapi.exile.gate.v3.Pool fromPool(Pool p) {
+    return build.buf.gen.tcnapi.exile.gate.v3.Pool.newBuilder()
         .setPoolId(p.poolId())
         .setDescription(p.description())
         .setStatus(
             switch (p.status()) {
-              case READY -> build.buf.gen.tcnapi.exile.v3.Pool.PoolStatus.POOL_STATUS_READY;
-              case NOT_READY -> build.buf.gen.tcnapi.exile.v3.Pool.PoolStatus.POOL_STATUS_NOT_READY;
-              case BUSY -> build.buf.gen.tcnapi.exile.v3.Pool.PoolStatus.POOL_STATUS_BUSY;
-              default -> build.buf.gen.tcnapi.exile.v3.Pool.PoolStatus.POOL_STATUS_UNSPECIFIED;
+              case READY -> build.buf.gen.tcnapi.exile.gate.v3.Pool.PoolStatus.POOL_STATUS_READY;
+              case NOT_READY ->
+                  build.buf.gen.tcnapi.exile.gate.v3.Pool.PoolStatus.POOL_STATUS_NOT_READY;
+              case BUSY -> build.buf.gen.tcnapi.exile.gate.v3.Pool.PoolStatus.POOL_STATUS_BUSY;
+              default -> build.buf.gen.tcnapi.exile.gate.v3.Pool.PoolStatus.POOL_STATUS_UNSPECIFIED;
             })
         .setRecordCount(p.recordCount())
         .build();
   }
 
-  public static DataRecord toRecord(build.buf.gen.tcnapi.exile.v3.Record r) {
+  public static DataRecord toRecord(build.buf.gen.tcnapi.exile.gate.v3.Record r) {
     return new DataRecord(r.getPoolId(), r.getRecordId(), structToMap(r.getPayload()));
   }
 
-  public static build.buf.gen.tcnapi.exile.v3.Record fromRecord(DataRecord r) {
-    return build.buf.gen.tcnapi.exile.v3.Record.newBuilder()
+  public static build.buf.gen.tcnapi.exile.gate.v3.Record fromRecord(DataRecord r) {
+    return build.buf.gen.tcnapi.exile.gate.v3.Record.newBuilder()
         .setPoolId(r.poolId())
         .setRecordId(r.recordId())
         .setPayload(mapToStruct(r.payload()))
         .build();
   }
 
-  public static Field toField(build.buf.gen.tcnapi.exile.v3.Field f) {
+  public static Field toField(build.buf.gen.tcnapi.exile.gate.v3.Field f) {
     return new Field(f.getFieldName(), f.getFieldValue(), f.getPoolId(), f.getRecordId());
   }
 
-  public static build.buf.gen.tcnapi.exile.v3.Field fromField(Field f) {
-    return build.buf.gen.tcnapi.exile.v3.Field.newBuilder()
+  public static build.buf.gen.tcnapi.exile.gate.v3.Field fromField(Field f) {
+    return build.buf.gen.tcnapi.exile.gate.v3.Field.newBuilder()
         .setFieldName(f.fieldName())
         .setFieldValue(f.fieldValue())
         .setPoolId(f.poolId())
@@ -129,7 +130,7 @@ public final class ProtoConverter {
         .build();
   }
 
-  public static Filter toFilter(build.buf.gen.tcnapi.exile.v3.Filter f) {
+  public static Filter toFilter(build.buf.gen.tcnapi.exile.gate.v3.Filter f) {
     return new Filter(
         f.getField(),
         switch (f.getOperator()) {
@@ -145,26 +146,28 @@ public final class ProtoConverter {
         f.getValue());
   }
 
-  public static build.buf.gen.tcnapi.exile.v3.Filter fromFilter(Filter f) {
-    return build.buf.gen.tcnapi.exile.v3.Filter.newBuilder()
+  public static build.buf.gen.tcnapi.exile.gate.v3.Filter fromFilter(Filter f) {
+    return build.buf.gen.tcnapi.exile.gate.v3.Filter.newBuilder()
         .setField(f.field())
         .setOperator(
             switch (f.operator()) {
-              case EQUAL -> build.buf.gen.tcnapi.exile.v3.Filter.Operator.OPERATOR_EQUAL;
-              case NOT_EQUAL -> build.buf.gen.tcnapi.exile.v3.Filter.Operator.OPERATOR_NOT_EQUAL;
-              case CONTAINS -> build.buf.gen.tcnapi.exile.v3.Filter.Operator.OPERATOR_CONTAINS;
+              case EQUAL -> build.buf.gen.tcnapi.exile.gate.v3.Filter.Operator.OPERATOR_EQUAL;
+              case NOT_EQUAL ->
+                  build.buf.gen.tcnapi.exile.gate.v3.Filter.Operator.OPERATOR_NOT_EQUAL;
+              case CONTAINS -> build.buf.gen.tcnapi.exile.gate.v3.Filter.Operator.OPERATOR_CONTAINS;
               case GREATER_THAN ->
-                  build.buf.gen.tcnapi.exile.v3.Filter.Operator.OPERATOR_GREATER_THAN;
-              case LESS_THAN -> build.buf.gen.tcnapi.exile.v3.Filter.Operator.OPERATOR_LESS_THAN;
-              case IN -> build.buf.gen.tcnapi.exile.v3.Filter.Operator.OPERATOR_IN;
-              case EXISTS -> build.buf.gen.tcnapi.exile.v3.Filter.Operator.OPERATOR_EXISTS;
-              default -> build.buf.gen.tcnapi.exile.v3.Filter.Operator.OPERATOR_UNSPECIFIED;
+                  build.buf.gen.tcnapi.exile.gate.v3.Filter.Operator.OPERATOR_GREATER_THAN;
+              case LESS_THAN ->
+                  build.buf.gen.tcnapi.exile.gate.v3.Filter.Operator.OPERATOR_LESS_THAN;
+              case IN -> build.buf.gen.tcnapi.exile.gate.v3.Filter.Operator.OPERATOR_IN;
+              case EXISTS -> build.buf.gen.tcnapi.exile.gate.v3.Filter.Operator.OPERATOR_EXISTS;
+              default -> build.buf.gen.tcnapi.exile.gate.v3.Filter.Operator.OPERATOR_UNSPECIFIED;
             })
         .setValue(f.value())
         .build();
   }
 
-  public static List<TaskData> toTaskData(List<build.buf.gen.tcnapi.exile.v3.TaskData> list) {
+  public static List<TaskData> toTaskData(List<build.buf.gen.tcnapi.exile.gate.v3.TaskData> list) {
     return list.stream()
         .map(td -> new TaskData(td.getKey(), valueToObject(td.getValue())))
         .collect(Collectors.toList());
@@ -172,7 +175,7 @@ public final class ProtoConverter {
 
   // ---- Agent ----
 
-  public static Agent toAgent(build.buf.gen.tcnapi.exile.v3.Agent a) {
+  public static Agent toAgent(build.buf.gen.tcnapi.exile.gate.v3.Agent a) {
     Optional<Agent.ConnectedParty> cp =
         a.hasConnectedParty()
             ? Optional.of(
@@ -196,7 +199,7 @@ public final class ProtoConverter {
         cp);
   }
 
-  public static Skill toSkill(build.buf.gen.tcnapi.exile.v3.Skill s) {
+  public static Skill toSkill(build.buf.gen.tcnapi.exile.gate.v3.Skill s) {
     return new Skill(
         s.getSkillId(),
         s.getName(),
@@ -206,7 +209,7 @@ public final class ProtoConverter {
 
   // ---- Events ----
 
-  public static AgentCallEvent toAgentCallEvent(build.buf.gen.tcnapi.exile.v3.AgentCall ac) {
+  public static AgentCallEvent toAgentCallEvent(build.buf.gen.tcnapi.exile.gate.v3.AgentCall ac) {
     return new AgentCallEvent(
         ac.getAgentCallSid(),
         ac.getCallSid(),
@@ -232,7 +235,7 @@ public final class ProtoConverter {
   }
 
   public static TelephonyResultEvent toTelephonyResultEvent(
-      build.buf.gen.tcnapi.exile.v3.TelephonyResult tr) {
+      build.buf.gen.tcnapi.exile.gate.v3.TelephonyResult tr) {
     return new TelephonyResultEvent(
         tr.getCallSid(),
         toCallType(tr.getCallType()),
@@ -256,7 +259,7 @@ public final class ProtoConverter {
   }
 
   public static AgentResponseEvent toAgentResponseEvent(
-      build.buf.gen.tcnapi.exile.v3.AgentResponse ar) {
+      build.buf.gen.tcnapi.exile.gate.v3.AgentResponse ar) {
     return new AgentResponseEvent(
         ar.getAgentCallResponseSid(),
         ar.getCallSid(),
@@ -274,7 +277,7 @@ public final class ProtoConverter {
   }
 
   public static CallRecordingEvent toCallRecordingEvent(
-      build.buf.gen.tcnapi.exile.v3.CallRecording cr) {
+      build.buf.gen.tcnapi.exile.gate.v3.CallRecording cr) {
     return new CallRecordingEvent(
         cr.getRecordingId(),
         cr.getOrgId(),
@@ -286,7 +289,7 @@ public final class ProtoConverter {
   }
 
   public static TransferInstanceEvent toTransferInstanceEvent(
-      build.buf.gen.tcnapi.exile.v3.TransferInstance ti) {
+      build.buf.gen.tcnapi.exile.gate.v3.TransferInstance ti) {
     var src = ti.getSource();
     return new TransferInstanceEvent(
         ti.getClientSid(),
@@ -314,7 +317,7 @@ public final class ProtoConverter {
         toDuration(ti.getFullDuration()));
   }
 
-  public static TaskEvent toTaskEvent(build.buf.gen.tcnapi.exile.v3.ExileTask t) {
+  public static TaskEvent toTaskEvent(build.buf.gen.tcnapi.exile.gate.v3.ExileTask t) {
     return new TaskEvent(
         t.getTaskSid(),
         t.getTaskGroupSid(),

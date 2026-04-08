@@ -7,11 +7,11 @@ import java.util.List;
 /** Scrub list management. No proto types in the public API. */
 public final class ScrubListService {
 
-  private final build.buf.gen.tcnapi.exile.v3.ScrubListServiceGrpc.ScrubListServiceBlockingStub
+  private final build.buf.gen.tcnapi.exile.gate.v3.ScrubListServiceGrpc.ScrubListServiceBlockingStub
       stub;
 
   ScrubListService(ManagedChannel channel) {
-    this.stub = build.buf.gen.tcnapi.exile.v3.ScrubListServiceGrpc.newBlockingStub(channel);
+    this.stub = build.buf.gen.tcnapi.exile.gate.v3.ScrubListServiceGrpc.newBlockingStub(channel);
   }
 
   public record ScrubList(String scrubListId, boolean readOnly, String contentType) {}
@@ -21,7 +21,8 @@ public final class ScrubListService {
 
   public List<ScrubList> listScrubLists() {
     return stub
-        .listScrubLists(build.buf.gen.tcnapi.exile.v3.ListScrubListsRequest.getDefaultInstance())
+        .listScrubLists(
+            build.buf.gen.tcnapi.exile.gate.v3.ListScrubListsRequest.getDefaultInstance())
         .getScrubListsList()
         .stream()
         .map(sl -> new ScrubList(sl.getScrubListId(), sl.getReadOnly(), sl.getContentType().name()))
@@ -31,10 +32,12 @@ public final class ScrubListService {
   public void addEntries(
       String scrubListId, List<ScrubListEntry> entries, String defaultCountryCode) {
     var req =
-        build.buf.gen.tcnapi.exile.v3.AddEntriesRequest.newBuilder().setScrubListId(scrubListId);
+        build.buf.gen.tcnapi.exile.gate.v3.AddEntriesRequest.newBuilder()
+            .setScrubListId(scrubListId);
     if (defaultCountryCode != null) req.setDefaultCountryCode(defaultCountryCode);
     for (var e : entries) {
-      var eb = build.buf.gen.tcnapi.exile.v3.ScrubListEntry.newBuilder().setContent(e.content());
+      var eb =
+          build.buf.gen.tcnapi.exile.gate.v3.ScrubListEntry.newBuilder().setContent(e.content());
       if (e.expiration() != null) {
         eb.setExpiration(
             com.google.protobuf.Timestamp.newBuilder().setSeconds(e.expiration().getEpochSecond()));
@@ -47,7 +50,8 @@ public final class ScrubListService {
   }
 
   public void updateEntry(String scrubListId, ScrubListEntry entry) {
-    var eb = build.buf.gen.tcnapi.exile.v3.ScrubListEntry.newBuilder().setContent(entry.content());
+    var eb =
+        build.buf.gen.tcnapi.exile.gate.v3.ScrubListEntry.newBuilder().setContent(entry.content());
     if (entry.expiration() != null) {
       eb.setExpiration(
           com.google.protobuf.Timestamp.newBuilder()
@@ -56,7 +60,7 @@ public final class ScrubListService {
     if (entry.notes() != null) eb.setNotes(entry.notes());
     if (entry.countryCode() != null) eb.setCountryCode(entry.countryCode());
     stub.updateEntry(
-        build.buf.gen.tcnapi.exile.v3.UpdateEntryRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.UpdateEntryRequest.newBuilder()
             .setScrubListId(scrubListId)
             .setEntry(eb)
             .build());
@@ -64,7 +68,7 @@ public final class ScrubListService {
 
   public void removeEntries(String scrubListId, List<String> entries) {
     stub.removeEntries(
-        build.buf.gen.tcnapi.exile.v3.RemoveEntriesRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.RemoveEntriesRequest.newBuilder()
             .setScrubListId(scrubListId)
             .addAllEntries(entries)
             .build());

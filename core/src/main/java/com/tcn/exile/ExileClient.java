@@ -1,6 +1,6 @@
 package com.tcn.exile;
 
-import build.buf.gen.tcnapi.exile.v3.WorkType;
+import build.buf.gen.tcnapi.exile.gate.v3.WorkType;
 import com.tcn.exile.handler.EventHandler;
 import com.tcn.exile.handler.JobHandler;
 import com.tcn.exile.internal.ChannelFactory;

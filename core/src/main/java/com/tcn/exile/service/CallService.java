@@ -7,10 +7,10 @@ import java.util.Map;
 /** Call control operations. No proto types in the public API. */
 public final class CallService {
 
-  private final build.buf.gen.tcnapi.exile.v3.CallServiceGrpc.CallServiceBlockingStub stub;
+  private final build.buf.gen.tcnapi.exile.gate.v3.CallServiceGrpc.CallServiceBlockingStub stub;
 
   CallService(ManagedChannel channel) {
-    this.stub = build.buf.gen.tcnapi.exile.v3.CallServiceGrpc.newBlockingStub(channel);
+    this.stub = build.buf.gen.tcnapi.exile.gate.v3.CallServiceGrpc.newBlockingStub(channel);
   }
 
   public record DialResult(
@@ -33,7 +33,7 @@ public final class CallService {
       Boolean skipCompliance,
       Boolean recordCall) {
     var req =
-        build.buf.gen.tcnapi.exile.v3.DialRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.DialRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
             .setPhoneNumber(phoneNumber);
     if (callerId != null) req.setCallerId(callerId);
@@ -62,25 +62,25 @@ public final class CallService {
       String destPhone,
       Map<String, Long> destSkills) {
     var req =
-        build.buf.gen.tcnapi.exile.v3.TransferRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.TransferRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId);
     req.setKind(
-        build.buf.gen.tcnapi.exile.v3.TransferRequest.TransferKind.valueOf(
+        build.buf.gen.tcnapi.exile.gate.v3.TransferRequest.TransferKind.valueOf(
             "TRANSFER_KIND_" + kind));
     req.setAction(
-        build.buf.gen.tcnapi.exile.v3.TransferRequest.TransferAction.valueOf(
+        build.buf.gen.tcnapi.exile.gate.v3.TransferRequest.TransferAction.valueOf(
             "TRANSFER_ACTION_" + action));
     if (destAgentId != null) {
       req.setAgent(
-          build.buf.gen.tcnapi.exile.v3.TransferRequest.AgentDestination.newBuilder()
+          build.buf.gen.tcnapi.exile.gate.v3.TransferRequest.AgentDestination.newBuilder()
               .setPartnerAgentId(destAgentId));
     } else if (destPhone != null) {
       req.setOutbound(
-          build.buf.gen.tcnapi.exile.v3.TransferRequest.OutboundDestination.newBuilder()
+          build.buf.gen.tcnapi.exile.gate.v3.TransferRequest.OutboundDestination.newBuilder()
               .setPhoneNumber(destPhone));
     } else if (destSkills != null) {
       req.setQueue(
-          build.buf.gen.tcnapi.exile.v3.TransferRequest.QueueDestination.newBuilder()
+          build.buf.gen.tcnapi.exile.gate.v3.TransferRequest.QueueDestination.newBuilder()
               .putAllRequiredSkills(destSkills));
     }
     stub.transfer(req.build());
@@ -99,34 +99,34 @@ public final class CallService {
 
   public void setHoldState(String partnerAgentId, HoldTarget target, HoldAction action) {
     stub.setHoldState(
-        build.buf.gen.tcnapi.exile.v3.SetHoldStateRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.SetHoldStateRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
             .setTarget(
-                build.buf.gen.tcnapi.exile.v3.SetHoldStateRequest.HoldTarget.valueOf(
+                build.buf.gen.tcnapi.exile.gate.v3.SetHoldStateRequest.HoldTarget.valueOf(
                     "HOLD_TARGET_" + target.name()))
             .setAction(
-                build.buf.gen.tcnapi.exile.v3.SetHoldStateRequest.HoldAction.valueOf(
+                build.buf.gen.tcnapi.exile.gate.v3.SetHoldStateRequest.HoldAction.valueOf(
                     "HOLD_ACTION_" + action.name()))
             .build());
   }
 
   public void startCallRecording(String partnerAgentId) {
     stub.startCallRecording(
-        build.buf.gen.tcnapi.exile.v3.StartCallRecordingRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.StartCallRecordingRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
             .build());
   }
 
   public void stopCallRecording(String partnerAgentId) {
     stub.stopCallRecording(
-        build.buf.gen.tcnapi.exile.v3.StopCallRecordingRequest.newBuilder()
+        build.buf.gen.tcnapi.exile.gate.v3.StopCallRecordingRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
             .build());
   }
 
   public boolean getRecordingStatus(String partnerAgentId) {
     return stub.getRecordingStatus(
-            build.buf.gen.tcnapi.exile.v3.GetRecordingStatusRequest.newBuilder()
+            build.buf.gen.tcnapi.exile.gate.v3.GetRecordingStatusRequest.newBuilder()
                 .setPartnerAgentId(partnerAgentId)
                 .build())
         .getIsRecording();
@@ -134,7 +134,7 @@ public final class CallService {
 
   public java.util.List<String> listComplianceRulesets() {
     return stub.listComplianceRulesets(
-            build.buf.gen.tcnapi.exile.v3.ListComplianceRulesetsRequest.getDefaultInstance())
+            build.buf.gen.tcnapi.exile.gate.v3.ListComplianceRulesetsRequest.getDefaultInstance())
         .getRulesetNamesList();
   }
 }
