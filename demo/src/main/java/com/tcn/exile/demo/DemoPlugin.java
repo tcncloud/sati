@@ -1,6 +1,6 @@
 package com.tcn.exile.demo;
 
-import com.tcn.exile.handler.Plugin;
+import com.tcn.exile.handler.PluginBase;
 import com.tcn.exile.model.*;
 import com.tcn.exile.model.event.*;
 import com.tcn.exile.service.ConfigService;
@@ -10,10 +10,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Demo plugin that validates config, returns stub job data, and logs events. In a real integration,
- * this would initialize a database connection on config and execute stored procedures for jobs.
+ * Demo plugin that validates config, returns stub job data, and logs events. Extends {@link
+ * PluginBase} which provides default implementations for logs, diagnostics, info, shutdown, and log
+ * level control.
  */
-public class DemoPlugin implements Plugin {
+public class DemoPlugin extends PluginBase {
 
   private static final Logger log = LoggerFactory.getLogger(DemoPlugin.class);
   private volatile boolean configured = false;
@@ -108,16 +109,6 @@ public class DemoPlugin implements Plugin {
   public Map<String, Object> executeLogic(String logicName, Map<String, Object> parameters) {
     log.info("executeLogic called: {} params={}", logicName, parameters);
     return Map.of("result", "ok", "logic", logicName);
-  }
-
-  @Override
-  public void shutdown(String reason) {
-    log.warn("Shutdown requested: {}", reason);
-  }
-
-  @Override
-  public void processLog(String payload) {
-    log.info("Remote log: {}", payload);
   }
 
   // --- Events ---
