@@ -1,7 +1,6 @@
 package com.tcn.exile.service;
 
 import com.tcn.exile.internal.ProtoConverter;
-import com.tcn.exile.model.DataRecord;
 import io.grpc.ManagedChannel;
 import java.util.Map;
 
@@ -49,28 +48,5 @@ public final class ConfigService {
   public void log(String payload) {
     stub.log(
         build.buf.gen.tcnapi.exile.gate.v3.LogRequest.newBuilder().setPayload(payload).build());
-  }
-
-  public enum JourneyBufferStatus {
-    INSERTED,
-    UPDATED,
-    IGNORED,
-    REJECTED,
-    UNSPECIFIED
-  }
-
-  public JourneyBufferStatus addRecordToJourneyBuffer(DataRecord record) {
-    var resp =
-        stub.addRecordToJourneyBuffer(
-            build.buf.gen.tcnapi.exile.gate.v3.AddRecordToJourneyBufferRequest.newBuilder()
-                .setRecord(ProtoConverter.fromRecord(record))
-                .build());
-    return switch (resp.getStatus()) {
-      case JOURNEY_BUFFER_STATUS_INSERTED -> JourneyBufferStatus.INSERTED;
-      case JOURNEY_BUFFER_STATUS_UPDATED -> JourneyBufferStatus.UPDATED;
-      case JOURNEY_BUFFER_STATUS_IGNORED -> JourneyBufferStatus.IGNORED;
-      case JOURNEY_BUFFER_STATUS_REJECTED -> JourneyBufferStatus.REJECTED;
-      default -> JourneyBufferStatus.UNSPECIFIED;
-    };
   }
 }

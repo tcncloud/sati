@@ -11,7 +11,8 @@ public final class ServiceFactory {
       CallService call,
       RecordingService recording,
       ScrubListService scrubList,
-      ConfigService config) {}
+      ConfigService config,
+      JourneyService journey) {}
 
   public static Services create(ManagedChannel channel) {
     return new Services(
@@ -19,6 +20,7 @@ public final class ServiceFactory {
         new CallService(channel),
         new RecordingService(channel),
         new ScrubListService(channel),
-        new ConfigService(channel));
+        new ConfigService(channel),
+        new JourneyService(channel));
   }
 }

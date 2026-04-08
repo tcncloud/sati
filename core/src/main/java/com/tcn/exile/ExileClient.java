@@ -57,6 +57,7 @@ public final class ExileClient implements AutoCloseable {
   private final RecordingService recordingService;
   private final ScrubListService scrubListService;
   private final ConfigService configService;
+  private final JourneyService journeyService;
 
   private ExileClient(Builder builder) {
     this.config = builder.config;
@@ -79,6 +80,7 @@ public final class ExileClient implements AutoCloseable {
     this.recordingService = services.recording();
     this.scrubListService = services.scrubList();
     this.configService = services.config();
+    this.journeyService = services.journey();
   }
 
   /** Start the work stream. Call this after building the client. */
@@ -114,6 +116,10 @@ public final class ExileClient implements AutoCloseable {
 
   public ConfigService config_() {
     return configService;
+  }
+
+  public JourneyService journey() {
+    return journeyService;
   }
 
   @Override
