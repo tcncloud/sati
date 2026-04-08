@@ -1,19 +1,23 @@
 package com.tcn.exile.internal;
 
+import static com.tcn.exile.internal.ProtoConverter.*;
+
 import com.tcn.exile.ExileConfig;
 import com.tcn.exile.handler.EventHandler;
 import com.tcn.exile.handler.JobHandler;
+import com.tcn.exile.model.*;
 import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tcnapi.exile.worker.v3.*;
@@ -21,12 +25,8 @@ import tcnapi.exile.worker.v3.*;
 /**
  * Implements the v3 WorkStream protocol over a single bidirectional gRPC stream.
  *
- * <p>Lifecycle: {@link #start()} opens the stream in a background thread that reconnects
- * automatically. {@link #close()} shuts everything down.
- *
- * <p>The client uses credit-based flow control: it sends {@code Pull(max_items=N)} to control how
- * many concurrent work items it processes. Work items are dispatched to virtual threads, so the
- * main stream thread never blocks on handler execution.
+ * <p>This class is internal. The public API is {@link com.tcn.exile.ExileClient}. All proto types
+ * are converted to/from plain Java types at the boundary — handlers never see proto classes.
  */
 public final class WorkStreamClient implements AutoCloseable {
 
@@ -66,16 +66,12 @@ public final class WorkStreamClient implements AutoCloseable {
     this.capabilities = capabilities;
   }
 
-  /** Start the work stream in a background thread. Returns immediately. */
   public void start() {
     if (!running.compareAndSet(false, true)) {
       throw new IllegalStateException("Already started");
     }
     streamThread =
-        Thread.ofPlatform()
-            .name("exile-work-stream")
-            .daemon(true)
-            .start(this::reconnectLoop);
+        Thread.ofPlatform().name("exile-work-stream").daemon(true).start(this::reconnectLoop);
   }
 
   private void reconnectLoop() {
@@ -84,14 +80,13 @@ public final class WorkStreamClient implements AutoCloseable {
       try {
         backoff.sleep();
         runStream();
-        // Stream ended normally (server closed). Reset and reconnect.
         backoff.reset();
       } catch (InterruptedException e) {
         Thread.currentThread().interrupt();
         break;
       } catch (Exception e) {
         backoff.recordFailure();
-        log.warn("Stream disconnected (attempt {}): {}", backoff, e.getMessage());
+        log.warn("Stream disconnected: {}", e.getMessage());
       }
     }
     log.info("Work stream loop exited");
@@ -126,7 +121,6 @@ public final class WorkStreamClient implements AutoCloseable {
 
       requestObserver.set(observer);
 
-      // 1. Register
       send(
           WorkRequest.newBuilder()
               .setRegister(
@@ -136,10 +130,7 @@ public final class WorkStreamClient implements AutoCloseable {
                       .addAllCapabilities(capabilities))
               .build());
 
-      // 2. Initial pull
       pull(maxConcurrency);
-
-      // 3. Wait until stream ends
       latch.await();
     } finally {
       requestObserver.set(null);
@@ -160,59 +151,40 @@ public final class WorkStreamClient implements AutoCloseable {
             reg.getDefaultLease().getSeconds(),
             reg.getMaxInflight());
       }
-
       case WORK_ITEM -> {
-        var item = response.getWorkItem();
         inflight.incrementAndGet();
-        workerPool.submit(() -> processWorkItem(item));
+        workerPool.submit(() -> processWorkItem(response.getWorkItem()));
       }
-
-      case RESULT_ACCEPTED -> {
-        log.debug("Result accepted: {}", response.getResultAccepted().getWorkId());
-      }
-
+      case RESULT_ACCEPTED ->
+          log.debug("Result accepted: {}", response.getResultAccepted().getWorkId());
       case LEASE_EXPIRING -> {
-        var warning = response.getLeaseExpiring();
-        log.debug(
-            "Lease expiring for {}, {}s remaining",
-            warning.getWorkId(),
-            warning.getRemaining().getSeconds());
-        // Auto-extend by default. Integrations can override via ExileClient.Builder.
+        var w = response.getLeaseExpiring();
+        log.debug("Lease expiring for {}, {}s remaining", w.getWorkId(),
+            w.getRemaining().getSeconds());
         send(
             WorkRequest.newBuilder()
                 .setExtendLease(
                     ExtendLease.newBuilder()
-                        .setWorkId(warning.getWorkId())
+                        .setWorkId(w.getWorkId())
                         .setExtension(
-                            com.google.protobuf.Duration.newBuilder().setSeconds(300).build()))
+                            com.google.protobuf.Duration.newBuilder().setSeconds(300)))
                 .build());
       }
-
-      case LEASE_EXTENDED -> {
-        log.debug("Lease extended for {}", response.getLeaseExtended().getWorkId());
-      }
-
-      case NACK_ACCEPTED -> {
-        log.debug("Nack accepted: {}", response.getNackAccepted().getWorkId());
-      }
-
-      case HEARTBEAT -> {
-        send(
-            WorkRequest.newBuilder()
-                .setHeartbeat(
-                    Heartbeat.newBuilder()
-                        .setClientTime(
-                            com.google.protobuf.Timestamp.newBuilder()
-                                .setSeconds(Instant.now().getEpochSecond())))
-                .build());
-      }
-
+      case HEARTBEAT ->
+          send(
+              WorkRequest.newBuilder()
+                  .setHeartbeat(
+                      Heartbeat.newBuilder()
+                          .setClientTime(
+                              com.google.protobuf.Timestamp.newBuilder()
+                                  .setSeconds(Instant.now().getEpochSecond())))
+                  .build());
       case ERROR -> {
         var err = response.getError();
-        log.warn("Stream error for {}: {} - {}", err.getWorkId(), err.getCode(), err.getMessage());
+        log.warn("Stream error for {}: {} - {}", err.getWorkId(), err.getCode(),
+            err.getMessage());
       }
-
-      default -> log.debug("Unknown response type: {}", response.getPayloadCase());
+      default -> {}
     }
   }
 
@@ -238,47 +210,143 @@ public final class WorkStreamClient implements AutoCloseable {
               .build());
     } finally {
       inflight.decrementAndGet();
-      pull(1); // Replenish one slot.
+      pull(1);
     }
   }
 
+  // ---- Job dispatch: call handler with plain Java types, convert result to proto ----
+
   private Result.Builder dispatchJob(WorkItem item) throws Exception {
     var b = Result.newBuilder().setWorkId(item.getWorkId()).setFinal(true);
+
     switch (item.getTaskCase()) {
-      case LIST_POOLS -> b.setListPools(jobHandler.listPools(item.getListPools()));
-      case GET_POOL_STATUS -> b.setGetPoolStatus(jobHandler.getPoolStatus(item.getGetPoolStatus()));
-      case GET_POOL_RECORDS ->
-          b.setGetPoolRecords(jobHandler.getPoolRecords(item.getGetPoolRecords()));
-      case SEARCH_RECORDS -> b.setSearchRecords(jobHandler.searchRecords(item.getSearchRecords()));
-      case GET_RECORD_FIELDS ->
-          b.setGetRecordFields(jobHandler.getRecordFields(item.getGetRecordFields()));
-      case SET_RECORD_FIELDS ->
-          b.setSetRecordFields(jobHandler.setRecordFields(item.getSetRecordFields()));
-      case CREATE_PAYMENT -> b.setCreatePayment(jobHandler.createPayment(item.getCreatePayment()));
-      case POP_ACCOUNT -> b.setPopAccount(jobHandler.popAccount(item.getPopAccount()));
-      case EXECUTE_LOGIC -> b.setExecuteLogic(jobHandler.executeLogic(item.getExecuteLogic()));
-      case INFO -> b.setInfo(jobHandler.info(item.getInfo()));
-      case SHUTDOWN -> b.setShutdown(jobHandler.shutdown(item.getShutdown()));
-      case LOGGING -> b.setLogging(jobHandler.logging(item.getLogging()));
-      case DIAGNOSTICS -> b.setDiagnostics(jobHandler.diagnostics(item.getDiagnostics()));
-      case LIST_TENANT_LOGS ->
-          b.setListTenantLogs(jobHandler.listTenantLogs(item.getListTenantLogs()));
-      case SET_LOG_LEVEL -> b.setSetLogLevel(jobHandler.setLogLevel(item.getSetLogLevel()));
-      default -> throw new UnsupportedOperationException("Unknown job type: " + item.getTaskCase());
+      case LIST_POOLS -> {
+        var pools = jobHandler.listPools();
+        b.setListPools(
+            ListPoolsResult.newBuilder()
+                .addAllPools(pools.stream().map(ProtoConverter::fromPool).toList()));
+      }
+      case GET_POOL_STATUS -> {
+        var pool = jobHandler.getPoolStatus(item.getGetPoolStatus().getPoolId());
+        b.setGetPoolStatus(GetPoolStatusResult.newBuilder().setPool(fromPool(pool)));
+      }
+      case GET_POOL_RECORDS -> {
+        var task = item.getGetPoolRecords();
+        var page = jobHandler.getPoolRecords(task.getPoolId(), task.getPageToken(),
+            task.getPageSize());
+        b.setGetPoolRecords(
+            GetPoolRecordsResult.newBuilder()
+                .addAllRecords(page.items().stream().map(ProtoConverter::fromRecord).toList())
+                .setNextPageToken(page.nextPageToken() != null ? page.nextPageToken() : ""));
+      }
+      case SEARCH_RECORDS -> {
+        var task = item.getSearchRecords();
+        var filters = task.getFiltersList().stream().map(ProtoConverter::toFilter).toList();
+        var page = jobHandler.searchRecords(filters, task.getPageToken(), task.getPageSize());
+        b.setSearchRecords(
+            SearchRecordsResult.newBuilder()
+                .addAllRecords(page.items().stream().map(ProtoConverter::fromRecord).toList())
+                .setNextPageToken(page.nextPageToken() != null ? page.nextPageToken() : ""));
+      }
+      case GET_RECORD_FIELDS -> {
+        var task = item.getGetRecordFields();
+        var fields = jobHandler.getRecordFields(task.getPoolId(), task.getRecordId(),
+            task.getFieldNamesList());
+        b.setGetRecordFields(
+            GetRecordFieldsResult.newBuilder()
+                .addAllFields(fields.stream().map(ProtoConverter::fromField).toList()));
+      }
+      case SET_RECORD_FIELDS -> {
+        var task = item.getSetRecordFields();
+        var fields = task.getFieldsList().stream().map(ProtoConverter::toField).toList();
+        var ok = jobHandler.setRecordFields(task.getPoolId(), task.getRecordId(), fields);
+        b.setSetRecordFields(SetRecordFieldsResult.newBuilder().setSuccess(ok));
+      }
+      case CREATE_PAYMENT -> {
+        var task = item.getCreatePayment();
+        var paymentId = jobHandler.createPayment(task.getPoolId(), task.getRecordId(),
+            structToMap(task.getPaymentData()));
+        b.setCreatePayment(
+            CreatePaymentResult.newBuilder().setSuccess(true).setPaymentId(paymentId));
+      }
+      case POP_ACCOUNT -> {
+        var task = item.getPopAccount();
+        var record = jobHandler.popAccount(task.getPoolId(), task.getRecordId());
+        b.setPopAccount(PopAccountResult.newBuilder().setRecord(fromRecord(record)));
+      }
+      case EXECUTE_LOGIC -> {
+        var task = item.getExecuteLogic();
+        var output = jobHandler.executeLogic(task.getLogicName(),
+            structToMap(task.getParameters()));
+        b.setExecuteLogic(ExecuteLogicResult.newBuilder().setOutput(mapToStruct(output)));
+      }
+      case INFO -> {
+        var info = jobHandler.info();
+        var ib = InfoResult.newBuilder();
+        if (info.containsKey("appName")) ib.setAppName((String) info.get("appName"));
+        if (info.containsKey("appVersion")) ib.setAppVersion((String) info.get("appVersion"));
+        ib.setMetadata(mapToStruct(info));
+        b.setInfo(ib);
+      }
+      case SHUTDOWN -> {
+        jobHandler.shutdown(item.getShutdown().getReason());
+        b.setShutdown(ShutdownResult.getDefaultInstance());
+      }
+      case LOGGING -> {
+        jobHandler.processLog(item.getLogging().getPayload());
+        b.setLogging(LoggingResult.getDefaultInstance());
+      }
+      case DIAGNOSTICS -> {
+        var diag = jobHandler.diagnostics();
+        b.setDiagnostics(
+            DiagnosticsResult.newBuilder()
+                .setSystemInfo(mapToStruct(diag.systemInfo()))
+                .setRuntimeInfo(mapToStruct(diag.runtimeInfo()))
+                .setDatabaseInfo(mapToStruct(diag.databaseInfo()))
+                .setCustom(mapToStruct(diag.custom())));
+      }
+      case LIST_TENANT_LOGS -> {
+        var task = item.getListTenantLogs();
+        var page = jobHandler.listTenantLogs(
+            toInstant(task.getStartTime()), toInstant(task.getEndTime()),
+            task.getPageToken(), task.getPageSize());
+        var rb = ListTenantLogsResult.newBuilder()
+            .setNextPageToken(page.nextPageToken() != null ? page.nextPageToken() : "");
+        for (var entry : page.items()) {
+          rb.addEntries(
+              ListTenantLogsResult.LogEntry.newBuilder()
+                  .setTimestamp(fromInstant(entry.timestamp()))
+                  .setLevel(entry.level())
+                  .setLogger(entry.logger())
+                  .setMessage(entry.message()));
+        }
+        b.setListTenantLogs(rb);
+      }
+      case SET_LOG_LEVEL -> {
+        var task = item.getSetLogLevel();
+        jobHandler.setLogLevel(task.getLoggerName(), task.getLevel());
+        b.setSetLogLevel(SetLogLevelResult.getDefaultInstance());
+      }
+      default -> throw new UnsupportedOperationException("Unknown job: " + item.getTaskCase());
     }
     return b;
   }
 
+  // ---- Event dispatch: convert proto to plain Java, call handler ----
+
   private void dispatchEvent(WorkItem item) throws Exception {
     switch (item.getTaskCase()) {
-      case AGENT_CALL -> eventHandler.onAgentCall(item.getAgentCall());
-      case TELEPHONY_RESULT -> eventHandler.onTelephonyResult(item.getTelephonyResult());
-      case AGENT_RESPONSE -> eventHandler.onAgentResponse(item.getAgentResponse());
-      case TRANSFER_INSTANCE -> eventHandler.onTransferInstance(item.getTransferInstance());
-      case CALL_RECORDING -> eventHandler.onCallRecording(item.getCallRecording());
-      case TASK -> eventHandler.onTask(item.getTask());
-      default ->
-          throw new UnsupportedOperationException("Unknown event type: " + item.getTaskCase());
+      case AGENT_CALL -> eventHandler.onAgentCall(toAgentCallEvent(item.getAgentCall()));
+      case TELEPHONY_RESULT ->
+          eventHandler.onTelephonyResult(toTelephonyResultEvent(item.getTelephonyResult()));
+      case AGENT_RESPONSE ->
+          eventHandler.onAgentResponse(toAgentResponseEvent(item.getAgentResponse()));
+      case TRANSFER_INSTANCE ->
+          eventHandler.onTransferInstance(toTransferInstanceEvent(item.getTransferInstance()));
+      case CALL_RECORDING ->
+          eventHandler.onCallRecording(toCallRecordingEvent(item.getCallRecording()));
+      case TASK -> eventHandler.onTask(toTaskEvent(item.getTask()));
+      default -> throw new UnsupportedOperationException("Unknown event: " + item.getTaskCase());
     }
   }
 
@@ -302,9 +370,7 @@ public final class WorkStreamClient implements AutoCloseable {
   @Override
   public void close() {
     running.set(false);
-    if (streamThread != null) {
-      streamThread.interrupt();
-    }
+    if (streamThread != null) streamThread.interrupt();
     var observer = requestObserver.getAndSet(null);
     if (observer != null) {
       try {
@@ -313,8 +379,6 @@ public final class WorkStreamClient implements AutoCloseable {
       }
     }
     workerPool.close();
-    if (channel != null) {
-      ChannelFactory.shutdown(channel);
-    }
+    if (channel != null) ChannelFactory.shutdown(channel);
   }
 }

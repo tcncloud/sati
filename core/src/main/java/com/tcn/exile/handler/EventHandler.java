@@ -1,6 +1,6 @@
 package com.tcn.exile.handler;
 
-import tcnapi.exile.types.v3.*;
+import com.tcn.exile.model.event.*;
 
 /**
  * Handles events dispatched by the gate server. Events are informational — the server only needs an
@@ -14,15 +14,15 @@ import tcnapi.exile.types.v3.*;
  */
 public interface EventHandler {
 
-  default void onAgentCall(AgentCall call) throws Exception {}
+  default void onAgentCall(AgentCallEvent event) throws Exception {}
 
-  default void onTelephonyResult(TelephonyResult result) throws Exception {}
+  default void onTelephonyResult(TelephonyResultEvent event) throws Exception {}
 
-  default void onAgentResponse(AgentResponse response) throws Exception {}
+  default void onAgentResponse(AgentResponseEvent event) throws Exception {}
 
-  default void onTransferInstance(TransferInstance transfer) throws Exception {}
+  default void onTransferInstance(TransferInstanceEvent event) throws Exception {}
 
-  default void onCallRecording(CallRecording recording) throws Exception {}
+  default void onCallRecording(CallRecordingEvent event) throws Exception {}
 
-  default void onTask(Task task) throws Exception {}
+  default void onTask(TaskEvent event) throws Exception {}
 }

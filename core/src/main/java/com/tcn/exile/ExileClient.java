@@ -73,11 +73,12 @@ public final class ExileClient implements AutoCloseable {
 
     // Create a shared channel for unary RPCs.
     this.serviceChannel = ChannelFactory.create(config);
-    this.agentService = new AgentService(serviceChannel);
-    this.callService = new CallService(serviceChannel);
-    this.recordingService = new RecordingService(serviceChannel);
-    this.scrubListService = new ScrubListService(serviceChannel);
-    this.configService = new ConfigService(serviceChannel);
+    var services = ServiceFactory.create(serviceChannel);
+    this.agentService = services.agent();
+    this.callService = services.call();
+    this.recordingService = services.recording();
+    this.scrubListService = services.scrubList();
+    this.configService = services.config();
   }
 
   /** Start the work stream. Call this after building the client. */

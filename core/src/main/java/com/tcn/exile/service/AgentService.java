@@ -1,71 +1,124 @@
 package com.tcn.exile.service;
 
+import static com.tcn.exile.internal.ProtoConverter.*;
+
+import com.tcn.exile.internal.ProtoConverter;
+import com.tcn.exile.model.*;
 import io.grpc.ManagedChannel;
+import java.util.List;
+import java.util.stream.Collectors;
 import tcnapi.exile.agent.v3.*;
 
-/** Thin wrapper around the v3 AgentService gRPC stub. */
+/** Agent management operations. No proto types in the public API. */
 public final class AgentService {
 
   private final AgentServiceGrpc.AgentServiceBlockingStub stub;
 
-  public AgentService(ManagedChannel channel) {
+  AgentService(ManagedChannel channel) {
     this.stub = AgentServiceGrpc.newBlockingStub(channel);
   }
 
-  public GetAgentResponse getAgent(GetAgentRequest request) {
-    return stub.getAgent(request);
+  public Agent getAgentByPartnerId(String partnerAgentId) {
+    var resp = stub.getAgent(
+        GetAgentRequest.newBuilder().setPartnerAgentId(partnerAgentId).build());
+    return toAgent(resp.getAgent());
   }
 
-  public ListAgentsResponse listAgents(ListAgentsRequest request) {
-    return stub.listAgents(request);
+  public Agent getAgentByUserId(String userId) {
+    var resp = stub.getAgent(GetAgentRequest.newBuilder().setUserId(userId).build());
+    return toAgent(resp.getAgent());
   }
 
-  public UpsertAgentResponse upsertAgent(UpsertAgentRequest request) {
-    return stub.upsertAgent(request);
+  public Page<Agent> listAgents(Boolean loggedIn, AgentState state,
+      boolean includeRecordingStatus, String pageToken, int pageSize) {
+    var req = ListAgentsRequest.newBuilder()
+        .setIncludeRecordingStatus(includeRecordingStatus)
+        .setPageSize(pageSize);
+    if (loggedIn != null) req.setLoggedIn(loggedIn);
+    if (state != null) req.setState(fromAgentState(state));
+    if (pageToken != null) req.setPageToken(pageToken);
+    var resp = stub.listAgents(req.build());
+    return new Page<>(
+        resp.getAgentsList().stream().map(ProtoConverter::toAgent).collect(Collectors.toList()),
+        resp.getNextPageToken());
   }
 
-  public SetAgentCredentialsResponse setAgentCredentials(SetAgentCredentialsRequest request) {
-    return stub.setAgentCredentials(request);
+  public Agent upsertAgent(String partnerAgentId, String username, String firstName,
+      String lastName) {
+    var resp = stub.upsertAgent(
+        UpsertAgentRequest.newBuilder()
+            .setPartnerAgentId(partnerAgentId)
+            .setUsername(username)
+            .setFirstName(firstName)
+            .setLastName(lastName)
+            .build());
+    return toAgent(resp.getAgent());
   }
 
-  public GetAgentStatusResponse getAgentStatus(GetAgentStatusRequest request) {
-    return stub.getAgentStatus(request);
+  public void setAgentCredentials(String partnerAgentId, String password) {
+    stub.setAgentCredentials(
+        SetAgentCredentialsRequest.newBuilder()
+            .setPartnerAgentId(partnerAgentId)
+            .setPassword(password)
+            .build());
   }
 
-  public UpdateAgentStatusResponse updateAgentStatus(UpdateAgentStatusRequest request) {
-    return stub.updateAgentStatus(request);
+  public void updateAgentStatus(String partnerAgentId, AgentState newState, String reason) {
+    stub.updateAgentStatus(
+        UpdateAgentStatusRequest.newBuilder()
+            .setPartnerAgentId(partnerAgentId)
+            .setNewState(fromAgentState(newState))
+            .setReason(reason != null ? reason : "")
+            .build());
   }
 
-  public MuteAgentResponse muteAgent(MuteAgentRequest request) {
-    return stub.muteAgent(request);
+  public void muteAgent(String partnerAgentId) {
+    stub.muteAgent(MuteAgentRequest.newBuilder().setPartnerAgentId(partnerAgentId).build());
   }
 
-  public UnmuteAgentResponse unmuteAgent(UnmuteAgentRequest request) {
-    return stub.unmuteAgent(request);
+  public void unmuteAgent(String partnerAgentId) {
+    stub.unmuteAgent(UnmuteAgentRequest.newBuilder().setPartnerAgentId(partnerAgentId).build());
   }
 
-  public AddAgentCallResponseResponse addAgentCallResponse(AddAgentCallResponseRequest request) {
-    return stub.addAgentCallResponse(request);
+  public void addAgentCallResponse(String partnerAgentId, long callSid, CallType callType,
+      String sessionId, String key, String value) {
+    stub.addAgentCallResponse(
+        AddAgentCallResponseRequest.newBuilder()
+            .setPartnerAgentId(partnerAgentId)
+            .setCallSid(callSid)
+            .setCallType(
+                tcnapi.exile.types.v3.CallType.valueOf("CALL_TYPE_" + callType.name()))
+            .setCurrentSessionId(sessionId)
+            .setKey(key)
+            .setValue(value)
+            .build());
   }
 
-  public ListHuntGroupPauseCodesResponse listHuntGroupPauseCodes(
-      ListHuntGroupPauseCodesRequest request) {
-    return stub.listHuntGroupPauseCodes(request);
+  public List<Skill> listSkills() {
+    var resp = stub.listSkills(ListSkillsRequest.getDefaultInstance());
+    return resp.getSkillsList().stream().map(ProtoConverter::toSkill).collect(Collectors.toList());
   }
 
-  public ListSkillsResponse listSkills(ListSkillsRequest request) {
-    return stub.listSkills(request);
+  public List<Skill> listAgentSkills(String partnerAgentId) {
+    var resp = stub.listAgentSkills(
+        ListAgentSkillsRequest.newBuilder().setPartnerAgentId(partnerAgentId).build());
+    return resp.getSkillsList().stream().map(ProtoConverter::toSkill).collect(Collectors.toList());
   }
 
-  public ListAgentSkillsResponse listAgentSkills(ListAgentSkillsRequest request) {
-    return stub.listAgentSkills(request);
+  public void assignAgentSkill(String partnerAgentId, String skillId, long proficiency) {
+    stub.assignAgentSkill(
+        AssignAgentSkillRequest.newBuilder()
+            .setPartnerAgentId(partnerAgentId)
+            .setSkillId(skillId)
+            .setProficiency(proficiency)
+            .build());
   }
 
-  public AssignAgentSkillResponse assignAgentSkill(AssignAgentSkillRequest request) {
-    return stub.assignAgentSkill(request);
-  }
-
-  public UnassignAgentSkillResponse unassignAgentSkill(UnassignAgentSkillRequest request) {
-    return stub.unassignAgentSkill(request);
+  public void unassignAgentSkill(String partnerAgentId, String skillId) {
+    stub.unassignAgentSkill(
+        UnassignAgentSkillRequest.newBuilder()
+            .setPartnerAgentId(partnerAgentId)
+            .setSkillId(skillId)
+            .build());
   }
 }
