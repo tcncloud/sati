@@ -60,6 +60,38 @@ public class StatusServer implements AutoCloseable {
         });
 
     server.createContext(
+        "/logs",
+        exchange -> {
+          var appender = com.tcn.exile.memlogger.MemoryAppenderInstance.getInstance();
+          var sb = new StringBuilder();
+          sb.append("{\"appender_exists\":");
+          sb.append(appender != null);
+          if (appender != null) {
+            var events = appender.getEventsWithTimestamps();
+            sb.append(",\"event_count\":").append(events.size());
+            sb.append(",\"entries\":[");
+            int limit = Math.min(events.size(), 50);
+            for (int i = 0; i < limit; i++) {
+              if (i > 0) sb.append(",");
+              var e = events.get(i);
+              sb.append("{\"ts\":").append(e.timestamp);
+              sb.append(",\"msg\":\"")
+                  .append(
+                      e.message.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n"))
+                  .append("\"}");
+            }
+            sb.append("]");
+          }
+          sb.append("}");
+          var body = sb.toString().getBytes(StandardCharsets.UTF_8);
+          exchange.getResponseHeaders().set("Content-Type", "application/json");
+          exchange.sendResponseHeaders(200, body.length);
+          try (var os = exchange.getResponseBody()) {
+            os.write(body);
+          }
+        });
+
+    server.createContext(
         "/",
         exchange -> {
           var body =
@@ -72,6 +104,7 @@ public class StatusServer implements AutoCloseable {
             <ul>
               <li><a href="/health">/health</a> — health check</li>
               <li><a href="/status">/status</a> — stream status (JSON)</li>
+              <li><a href="/logs">/logs</a> — in-memory log buffer (JSON)</li>
             </ul>
           </body>
           </html>

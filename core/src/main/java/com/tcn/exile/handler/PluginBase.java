@@ -58,6 +58,11 @@ public abstract class PluginBase implements Plugin {
     long endMs = endTime != null ? endTime.toEpochMilli() : System.currentTimeMillis();
 
     var logEvents = appender.getEventsWithTimestamps();
+    log.info(
+        "listTenantLogs: appender has {} events, range {}..{}, filtering",
+        logEvents.size(),
+        startMs,
+        endMs);
     var entries =
         logEvents.stream()
             .filter(e -> e.timestamp >= startMs && e.timestamp <= endMs)
@@ -67,6 +72,7 @@ public abstract class PluginBase implements Plugin {
                         Instant.ofEpochMilli(e.timestamp), "INFO", "memlogger", e.message))
             .limit(pageSize > 0 ? pageSize : 100)
             .toList();
+    log.info("listTenantLogs: returning {} entries", entries.size());
 
     return new Page<>(entries, "");
   }

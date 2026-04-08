@@ -15,6 +15,7 @@ shadowJar {
 dependencies {
 	implementation(project(':core'))
 	implementation(project(':config'))
+	implementation(project(':logback-ext'))
 
 	// Logging runtime
 	runtimeOnly('ch.qos.logback:logback-classic:1.5.17')
