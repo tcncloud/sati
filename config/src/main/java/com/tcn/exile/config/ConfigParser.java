@@ -64,11 +64,29 @@ public final class ConfigParser {
           ExileConfig.builder().rootCert(rootCert).publicCert(publicCert).privateKey(privateKey);
 
       if (endpoint != null && !endpoint.isEmpty()) {
-        var parts = endpoint.split(":");
-        builder.apiHostname(parts[0]);
-        if (parts.length > 1) {
-          builder.apiPort(Integer.parseInt(parts[1]));
+        // Handle both "host:port" and URL formats like "https://host" or "https://host:port".
+        String host = endpoint;
+        int port = 443;
+        if (host.contains("://")) {
+          // Strip scheme (https://, http://).
+          host = host.substring(host.indexOf("://") + 3);
         }
+        // Strip trailing slashes.
+        if (host.endsWith("/")) {
+          host = host.substring(0, host.length() - 1);
+        }
+        // Split host:port.
+        int colonIdx = host.lastIndexOf(':');
+        if (colonIdx > 0) {
+          try {
+            port = Integer.parseInt(host.substring(colonIdx + 1));
+            host = host.substring(0, colonIdx);
+          } catch (NumberFormatException e) {
+            // No valid port — use host as-is with default port.
+          }
+        }
+        builder.apiHostname(host);
+        builder.apiPort(port);
       }
 
       return Optional.of(builder.build());

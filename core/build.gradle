@@ -21,6 +21,9 @@ dependencies {
 	// protobuf runtime
 	api("com.google.protobuf:protobuf-java:${protobufVersion}")
 
+	// PKCS#1 → PKCS#8 key conversion for mTLS
+	implementation("org.bouncycastle:bcpkix-jdk18on:1.79")
+
 	// javax.annotation for @Generated in gRPC stubs
 	compileOnly("org.apache.tomcat:annotations-api:6.0.53")
 

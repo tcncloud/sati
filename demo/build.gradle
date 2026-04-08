@@ -8,6 +8,10 @@ application {
 	mainClass = 'com.tcn.exile.demo.Main'
 }
 
+shadowJar {
+	mergeServiceFiles()
+}
+
 dependencies {
 	implementation(project(':core'))
 	implementation(project(':config'))
