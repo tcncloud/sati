@@ -34,33 +34,36 @@ public final class RecordingService {
 
   public record DownloadLinks(String downloadLink, String playbackLink) {}
 
-  public Page<VoiceRecording> searchVoiceRecordings(List<Filter> filters, String pageToken,
-      int pageSize) {
+  public Page<VoiceRecording> searchVoiceRecordings(
+      List<Filter> filters, String pageToken, int pageSize) {
     var req = SearchVoiceRecordingsRequest.newBuilder().setPageSize(pageSize);
     if (pageToken != null) req.setPageToken(pageToken);
     for (var f : filters) req.addFilters(ProtoConverter.fromFilter(f));
     var resp = stub.searchVoiceRecordings(req.build());
-    var recordings = resp.getRecordingsList().stream()
-        .map(r -> new VoiceRecording(
-            r.getRecordingId(),
-            r.getCallSid(),
-            ProtoConverter.toCallType(r.getCallType()),
-            ProtoConverter.toDuration(r.getStartOffset()),
-            ProtoConverter.toDuration(r.getEndOffset()),
-            ProtoConverter.toInstant(r.getStartTime()),
-            ProtoConverter.toDuration(r.getDuration()),
-            r.getAgentPhone(),
-            r.getClientPhone(),
-            r.getCampaign(),
-            r.getPartnerAgentIdsList(),
-            r.getLabel(),
-            r.getValue()))
-        .collect(Collectors.toList());
+    var recordings =
+        resp.getRecordingsList().stream()
+            .map(
+                r ->
+                    new VoiceRecording(
+                        r.getRecordingId(),
+                        r.getCallSid(),
+                        ProtoConverter.toCallType(r.getCallType()),
+                        ProtoConverter.toDuration(r.getStartOffset()),
+                        ProtoConverter.toDuration(r.getEndOffset()),
+                        ProtoConverter.toInstant(r.getStartTime()),
+                        ProtoConverter.toDuration(r.getDuration()),
+                        r.getAgentPhone(),
+                        r.getClientPhone(),
+                        r.getCampaign(),
+                        r.getPartnerAgentIdsList(),
+                        r.getLabel(),
+                        r.getValue()))
+            .collect(Collectors.toList());
     return new Page<>(recordings, resp.getNextPageToken());
   }
 
-  public DownloadLinks getDownloadLink(String recordingId, Duration startOffset,
-      Duration endOffset) {
+  public DownloadLinks getDownloadLink(
+      String recordingId, Duration startOffset, Duration endOffset) {
     var req = GetDownloadLinkRequest.newBuilder().setRecordingId(recordingId);
     if (startOffset != null) req.setStartOffset(ProtoConverter.fromDuration(startOffset));
     if (endOffset != null) req.setEndOffset(ProtoConverter.fromDuration(endOffset));
@@ -69,8 +72,7 @@ public final class RecordingService {
   }
 
   public List<String> listSearchableFields() {
-    return stub
-        .listSearchableFields(ListSearchableFieldsRequest.getDefaultInstance())
+    return stub.listSearchableFields(ListSearchableFieldsRequest.getDefaultInstance())
         .getFieldsList();
   }
 
@@ -78,8 +80,7 @@ public final class RecordingService {
     stub.createLabel(
         CreateLabelRequest.newBuilder()
             .setCallSid(callSid)
-            .setCallType(
-                tcnapi.exile.types.v3.CallType.valueOf("CALL_TYPE_" + callType.name()))
+            .setCallType(tcnapi.exile.types.v3.CallType.valueOf("CALL_TYPE_" + callType.name()))
             .setKey(key)
             .setValue(value)
             .build());

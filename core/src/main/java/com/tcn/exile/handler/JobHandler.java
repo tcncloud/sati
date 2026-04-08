@@ -24,12 +24,12 @@ public interface JobHandler {
     throw new UnsupportedOperationException("getPoolStatus not implemented");
   }
 
-  default Page<Record> getPoolRecords(String poolId, String pageToken, int pageSize)
+  default Page<DataRecord> getPoolRecords(String poolId, String pageToken, int pageSize)
       throws Exception {
     throw new UnsupportedOperationException("getPoolRecords not implemented");
   }
 
-  default Page<Record> searchRecords(List<Filter> filters, String pageToken, int pageSize)
+  default Page<DataRecord> searchRecords(List<Filter> filters, String pageToken, int pageSize)
       throws Exception {
     throw new UnsupportedOperationException("searchRecords not implemented");
   }
@@ -49,7 +49,7 @@ public interface JobHandler {
     throw new UnsupportedOperationException("createPayment not implemented");
   }
 
-  default Record popAccount(String poolId, String recordId) throws Exception {
+  default DataRecord popAccount(String poolId, String recordId) throws Exception {
     throw new UnsupportedOperationException("popAccount not implemented");
   }
 
@@ -76,8 +76,8 @@ public interface JobHandler {
     throw new UnsupportedOperationException("diagnostics not implemented");
   }
 
-  default Page<LogEntry> listTenantLogs(Instant startTime, Instant endTime, String pageToken,
-      int pageSize) throws Exception {
+  default Page<LogEntry> listTenantLogs(
+      Instant startTime, Instant endTime, String pageToken, int pageSize) throws Exception {
     throw new UnsupportedOperationException("listTenantLogs not implemented");
   }
 

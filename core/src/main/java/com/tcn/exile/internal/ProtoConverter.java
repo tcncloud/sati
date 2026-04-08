@@ -1,7 +1,7 @@
 package com.tcn.exile.internal;
 
 import com.tcn.exile.model.*;
-import com.tcn.exile.model.Record;
+import com.tcn.exile.model.DataRecord;
 import com.tcn.exile.model.event.*;
 import java.time.Duration;
 import java.time.Instant;
@@ -19,7 +19,8 @@ public final class ProtoConverter {
   // ---- Duration / Timestamp ----
 
   public static Duration toDuration(com.google.protobuf.Duration d) {
-    if (d == null || d.equals(com.google.protobuf.Duration.getDefaultInstance())) return Duration.ZERO;
+    if (d == null || d.equals(com.google.protobuf.Duration.getDefaultInstance()))
+      return Duration.ZERO;
     return Duration.ofSeconds(d.getSeconds(), d.getNanos());
   }
 
@@ -103,11 +104,11 @@ public final class ProtoConverter {
         .build();
   }
 
-  public static Record toRecord(tcnapi.exile.types.v3.Record r) {
-    return new Record(r.getPoolId(), r.getRecordId(), structToMap(r.getPayload()));
+  public static DataRecord toRecord(tcnapi.exile.types.v3.Record r) {
+    return new DataRecord(r.getPoolId(), r.getRecordId(), structToMap(r.getPayload()));
   }
 
-  public static tcnapi.exile.types.v3.Record fromRecord(Record r) {
+  public static tcnapi.exile.types.v3.Record fromRecord(DataRecord r) {
     return tcnapi.exile.types.v3.Record.newBuilder()
         .setPoolId(r.poolId())
         .setRecordId(r.recordId())
@@ -229,7 +230,8 @@ public final class ProtoConverter {
         toTaskData(ac.getTaskDataList()));
   }
 
-  public static TelephonyResultEvent toTelephonyResultEvent(tcnapi.exile.types.v3.TelephonyResult tr) {
+  public static TelephonyResultEvent toTelephonyResultEvent(
+      tcnapi.exile.types.v3.TelephonyResult tr) {
     return new TelephonyResultEvent(
         tr.getCallSid(),
         toCallType(tr.getCallType()),
@@ -280,7 +282,8 @@ public final class ProtoConverter {
         toInstant(cr.getStartTime()));
   }
 
-  public static TransferInstanceEvent toTransferInstanceEvent(tcnapi.exile.types.v3.TransferInstance ti) {
+  public static TransferInstanceEvent toTransferInstanceEvent(
+      tcnapi.exile.types.v3.TransferInstance ti) {
     var src = ti.getSource();
     return new TransferInstanceEvent(
         ti.getClientSid(),

@@ -24,12 +24,17 @@ public final class CallService {
       boolean attempted,
       String status) {}
 
-  public DialResult dial(String partnerAgentId, String phoneNumber, String callerId,
-      String poolId, String recordId, String rulesetName, Boolean skipCompliance,
+  public DialResult dial(
+      String partnerAgentId,
+      String phoneNumber,
+      String callerId,
+      String poolId,
+      String recordId,
+      String rulesetName,
+      Boolean skipCompliance,
       Boolean recordCall) {
-    var req = DialRequest.newBuilder()
-        .setPartnerAgentId(partnerAgentId)
-        .setPhoneNumber(phoneNumber);
+    var req =
+        DialRequest.newBuilder().setPartnerAgentId(partnerAgentId).setPhoneNumber(phoneNumber);
     if (callerId != null) req.setCallerId(callerId);
     if (poolId != null) req.setPoolId(poolId);
     if (recordId != null) req.setRecordId(recordId);
@@ -48,34 +53,43 @@ public final class CallService {
         resp.getStatus());
   }
 
-  public void transfer(String partnerAgentId, String kind, String action,
-      String destAgentId, String destPhone, Map<String, Long> destSkills) {
+  public void transfer(
+      String partnerAgentId,
+      String kind,
+      String action,
+      String destAgentId,
+      String destPhone,
+      Map<String, Long> destSkills) {
     var req = TransferRequest.newBuilder().setPartnerAgentId(partnerAgentId);
     req.setKind(TransferRequest.TransferKind.valueOf("TRANSFER_KIND_" + kind));
     req.setAction(TransferRequest.TransferAction.valueOf("TRANSFER_ACTION_" + action));
     if (destAgentId != null) {
-      req.setAgent(TransferRequest.AgentDestination.newBuilder()
-          .setPartnerAgentId(destAgentId));
+      req.setAgent(TransferRequest.AgentDestination.newBuilder().setPartnerAgentId(destAgentId));
     } else if (destPhone != null) {
-      req.setOutbound(TransferRequest.OutboundDestination.newBuilder()
-          .setPhoneNumber(destPhone));
+      req.setOutbound(TransferRequest.OutboundDestination.newBuilder().setPhoneNumber(destPhone));
     } else if (destSkills != null) {
       req.setQueue(TransferRequest.QueueDestination.newBuilder().putAllRequiredSkills(destSkills));
     }
     stub.transfer(req.build());
   }
 
-  public enum HoldTarget { CALL, TRANSFER_CALLER, TRANSFER_AGENT }
-  public enum HoldAction { HOLD, UNHOLD }
+  public enum HoldTarget {
+    CALL,
+    TRANSFER_CALLER,
+    TRANSFER_AGENT
+  }
+
+  public enum HoldAction {
+    HOLD,
+    UNHOLD
+  }
 
   public void setHoldState(String partnerAgentId, HoldTarget target, HoldAction action) {
     stub.setHoldState(
         SetHoldStateRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
-            .setTarget(SetHoldStateRequest.HoldTarget.valueOf(
-                "HOLD_TARGET_" + target.name()))
-            .setAction(SetHoldStateRequest.HoldAction.valueOf(
-                "HOLD_ACTION_" + action.name()))
+            .setTarget(SetHoldStateRequest.HoldTarget.valueOf("HOLD_TARGET_" + target.name()))
+            .setAction(SetHoldStateRequest.HoldAction.valueOf("HOLD_ACTION_" + action.name()))
             .build());
   }
 
@@ -90,15 +104,13 @@ public final class CallService {
   }
 
   public boolean getRecordingStatus(String partnerAgentId) {
-    return stub
-        .getRecordingStatus(
+    return stub.getRecordingStatus(
             GetRecordingStatusRequest.newBuilder().setPartnerAgentId(partnerAgentId).build())
         .getIsRecording();
   }
 
   public java.util.List<String> listComplianceRulesets() {
-    return stub
-        .listComplianceRulesets(ListComplianceRulesetsRequest.getDefaultInstance())
+    return stub.listComplianceRulesets(ListComplianceRulesetsRequest.getDefaultInstance())
         .getRulesetNamesList();
   }
 }

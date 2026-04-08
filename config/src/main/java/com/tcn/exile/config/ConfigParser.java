@@ -1,9 +1,6 @@
 package com.tcn.exile.config;
 
 import com.tcn.exile.ExileConfig;
-import java.io.ByteArrayInputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,8 +13,8 @@ import org.slf4j.LoggerFactory;
 /**
  * Parses the Base64-encoded JSON config file used by all exile integrations.
  *
- * <p>The file format is a Base64-encoded JSON object with fields: {@code ca_certificate},
- * {@code certificate}, {@code private_key}, and {@code api_endpoint} (as {@code hostname:port}).
+ * <p>The file format is a Base64-encoded JSON object with fields: {@code ca_certificate}, {@code
+ * certificate}, {@code private_key}, and {@code api_endpoint} (as {@code hostname:port}).
  */
 public final class ConfigParser {
 
@@ -63,7 +60,8 @@ public final class ConfigParser {
         return Optional.empty();
       }
 
-      var builder = ExileConfig.builder().rootCert(rootCert).publicCert(publicCert).privateKey(privateKey);
+      var builder =
+          ExileConfig.builder().rootCert(rootCert).publicCert(publicCert).privateKey(privateKey);
 
       if (endpoint != null && !endpoint.isEmpty()) {
         var parts = endpoint.split(":");
@@ -97,8 +95,12 @@ public final class ConfigParser {
       int i = 0;
       while (i < str.length()) {
         // Skip whitespace and commas.
-        while (i < str.length() && (str.charAt(i) == ' ' || str.charAt(i) == ',' || str.charAt(i) == '\n' || str.charAt(i) == '\r' || str.charAt(i) == '\t'))
-          i++;
+        while (i < str.length()
+            && (str.charAt(i) == ' '
+                || str.charAt(i) == ','
+                || str.charAt(i) == '\n'
+                || str.charAt(i) == '\r'
+                || str.charAt(i) == '\t')) i++;
         if (i >= str.length()) break;
 
         // Parse key.
@@ -122,14 +124,15 @@ public final class ConfigParser {
           while (i < str.length() && str.charAt(i) != '"') {
             if (str.charAt(i) == '\\' && i + 1 < str.length()) {
               i++;
-              sb.append(switch (str.charAt(i)) {
-                case 'n' -> '\n';
-                case 'r' -> '\r';
-                case 't' -> '\t';
-                case '\\' -> '\\';
-                case '"' -> '"';
-                default -> str.charAt(i);
-              });
+              sb.append(
+                  switch (str.charAt(i)) {
+                    case 'n' -> '\n';
+                    case 'r' -> '\r';
+                    case 't' -> '\t';
+                    case '\\' -> '\\';
+                    case '"' -> '"';
+                    default -> str.charAt(i);
+                  });
             } else {
               sb.append(str.charAt(i));
             }

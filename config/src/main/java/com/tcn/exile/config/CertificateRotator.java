@@ -89,8 +89,7 @@ public final class CertificateRotator {
       var cert =
           (X509Certificate)
               cf.generateCertificate(
-                  new ByteArrayInputStream(
-                      config.publicCert().getBytes(StandardCharsets.UTF_8)));
+                  new ByteArrayInputStream(config.publicCert().getBytes(StandardCharsets.UTF_8)));
       return cert.getNotAfter().toInstant();
     } catch (Exception e) {
       return null;
@@ -103,8 +102,7 @@ public final class CertificateRotator {
       var cert =
           (X509Certificate)
               cf.generateCertificate(
-                  new ByteArrayInputStream(
-                      config.publicCert().getBytes(StandardCharsets.UTF_8)));
+                  new ByteArrayInputStream(config.publicCert().getBytes(StandardCharsets.UTF_8)));
       var digest = MessageDigest.getInstance("SHA-256");
       var hash = digest.digest(cert.getEncoded());
       return HexFormat.of().withDelimiter(":").formatHex(hash);

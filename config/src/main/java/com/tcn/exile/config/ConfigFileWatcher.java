@@ -6,7 +6,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -66,8 +65,7 @@ public final class ConfigFileWatcher implements AutoCloseable {
     }
 
     // Find or create the config directory.
-    configDir =
-        watchDirs.stream().filter(p -> p.toFile().exists()).findFirst().orElse(null);
+    configDir = watchDirs.stream().filter(p -> p.toFile().exists()).findFirst().orElse(null);
     if (configDir == null) {
       var fallback = watchDirs.get(0);
       if (fallback.toFile().mkdirs()) {
@@ -133,10 +131,12 @@ public final class ConfigFileWatcher implements AutoCloseable {
     if (configDir == null) return;
     var file = configDir.resolve(CONFIG_FILE_NAME);
     if (file.toFile().exists()) {
-      ConfigParser.parse(file).ifPresent(config -> {
-        log.info("Loaded existing config for org={}", config.org());
-        listener.onConfigChanged(config);
-      });
+      ConfigParser.parse(file)
+          .ifPresent(
+              config -> {
+                log.info("Loaded existing config for org={}", config.org());
+                listener.onConfigChanged(config);
+              });
     }
   }
 
@@ -145,12 +145,13 @@ public final class ConfigFileWatcher implements AutoCloseable {
       log.warn("Config file not readable: {}", path);
       return;
     }
-    ConfigParser.parse(path).ifPresentOrElse(
-        config -> {
-          log.info("Config changed for org={}", config.org());
-          listener.onConfigChanged(config);
-        },
-        () -> log.warn("Failed to parse config file: {}", path));
+    ConfigParser.parse(path)
+        .ifPresentOrElse(
+            config -> {
+              log.info("Config changed for org={}", config.org());
+              listener.onConfigChanged(config);
+            },
+            () -> log.warn("Failed to parse config file: {}", path));
   }
 
   @Override

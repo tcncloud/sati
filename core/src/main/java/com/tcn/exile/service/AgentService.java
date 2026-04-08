@@ -19,8 +19,8 @@ public final class AgentService {
   }
 
   public Agent getAgentByPartnerId(String partnerAgentId) {
-    var resp = stub.getAgent(
-        GetAgentRequest.newBuilder().setPartnerAgentId(partnerAgentId).build());
+    var resp =
+        stub.getAgent(GetAgentRequest.newBuilder().setPartnerAgentId(partnerAgentId).build());
     return toAgent(resp.getAgent());
   }
 
@@ -29,11 +29,16 @@ public final class AgentService {
     return toAgent(resp.getAgent());
   }
 
-  public Page<Agent> listAgents(Boolean loggedIn, AgentState state,
-      boolean includeRecordingStatus, String pageToken, int pageSize) {
-    var req = ListAgentsRequest.newBuilder()
-        .setIncludeRecordingStatus(includeRecordingStatus)
-        .setPageSize(pageSize);
+  public Page<Agent> listAgents(
+      Boolean loggedIn,
+      AgentState state,
+      boolean includeRecordingStatus,
+      String pageToken,
+      int pageSize) {
+    var req =
+        ListAgentsRequest.newBuilder()
+            .setIncludeRecordingStatus(includeRecordingStatus)
+            .setPageSize(pageSize);
     if (loggedIn != null) req.setLoggedIn(loggedIn);
     if (state != null) req.setState(fromAgentState(state));
     if (pageToken != null) req.setPageToken(pageToken);
@@ -43,15 +48,16 @@ public final class AgentService {
         resp.getNextPageToken());
   }
 
-  public Agent upsertAgent(String partnerAgentId, String username, String firstName,
-      String lastName) {
-    var resp = stub.upsertAgent(
-        UpsertAgentRequest.newBuilder()
-            .setPartnerAgentId(partnerAgentId)
-            .setUsername(username)
-            .setFirstName(firstName)
-            .setLastName(lastName)
-            .build());
+  public Agent upsertAgent(
+      String partnerAgentId, String username, String firstName, String lastName) {
+    var resp =
+        stub.upsertAgent(
+            UpsertAgentRequest.newBuilder()
+                .setPartnerAgentId(partnerAgentId)
+                .setUsername(username)
+                .setFirstName(firstName)
+                .setLastName(lastName)
+                .build());
     return toAgent(resp.getAgent());
   }
 
@@ -80,14 +86,18 @@ public final class AgentService {
     stub.unmuteAgent(UnmuteAgentRequest.newBuilder().setPartnerAgentId(partnerAgentId).build());
   }
 
-  public void addAgentCallResponse(String partnerAgentId, long callSid, CallType callType,
-      String sessionId, String key, String value) {
+  public void addAgentCallResponse(
+      String partnerAgentId,
+      long callSid,
+      CallType callType,
+      String sessionId,
+      String key,
+      String value) {
     stub.addAgentCallResponse(
         AddAgentCallResponseRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
             .setCallSid(callSid)
-            .setCallType(
-                tcnapi.exile.types.v3.CallType.valueOf("CALL_TYPE_" + callType.name()))
+            .setCallType(tcnapi.exile.types.v3.CallType.valueOf("CALL_TYPE_" + callType.name()))
             .setCurrentSessionId(sessionId)
             .setKey(key)
             .setValue(value)
@@ -100,8 +110,9 @@ public final class AgentService {
   }
 
   public List<Skill> listAgentSkills(String partnerAgentId) {
-    var resp = stub.listAgentSkills(
-        ListAgentSkillsRequest.newBuilder().setPartnerAgentId(partnerAgentId).build());
+    var resp =
+        stub.listAgentSkills(
+            ListAgentSkillsRequest.newBuilder().setPartnerAgentId(partnerAgentId).build());
     return resp.getSkillsList().stream().map(ProtoConverter::toSkill).collect(Collectors.toList());
   }
 

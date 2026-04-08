@@ -93,11 +93,13 @@ public final class ExileClientManager implements AutoCloseable {
     watcher.start();
 
     // Schedule certificate rotation.
-    scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-      var t = new Thread(r, "exile-cert-rotator");
-      t.setDaemon(true);
-      return t;
-    });
+    scheduler =
+        Executors.newSingleThreadScheduledExecutor(
+            r -> {
+              var t = new Thread(r, "exile-cert-rotator");
+              t.setDaemon(true);
+              return t;
+            });
     var rotator = new CertificateRotator(this);
     scheduler.scheduleAtFixedRate(
         () -> {
@@ -267,8 +269,8 @@ public final class ExileClientManager implements AutoCloseable {
     }
 
     /**
-     * Override the default config directory paths. Defaults to {@code /workdir/config} and
-     * {@code workdir/config}.
+     * Override the default config directory paths. Defaults to {@code /workdir/config} and {@code
+     * workdir/config}.
      */
     public Builder watchDirs(List<Path> watchDirs) {
       this.watchDirs = watchDirs;

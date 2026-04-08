@@ -3,7 +3,6 @@ package com.tcn.exile.model.event;
 import com.tcn.exile.model.CallType;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
 
 public record TransferInstanceEvent(
     long clientSid,

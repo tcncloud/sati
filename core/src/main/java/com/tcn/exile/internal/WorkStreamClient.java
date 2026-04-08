@@ -12,7 +12,6 @@ import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -208,16 +207,13 @@ public final class WorkStreamClient implements AutoCloseable {
       case LEASE_EXPIRING -> {
         var w = response.getLeaseExpiring();
         log.debug(
-            "Lease expiring for {}, {}s remaining",
-            w.getWorkId(),
-            w.getRemaining().getSeconds());
+            "Lease expiring for {}, {}s remaining", w.getWorkId(), w.getRemaining().getSeconds());
         send(
             WorkRequest.newBuilder()
                 .setExtendLease(
                     ExtendLease.newBuilder()
                         .setWorkId(w.getWorkId())
-                        .setExtension(
-                            com.google.protobuf.Duration.newBuilder().setSeconds(300)))
+                        .setExtension(com.google.protobuf.Duration.newBuilder().setSeconds(300)))
                 .build());
       }
       case HEARTBEAT ->
@@ -232,8 +228,7 @@ public final class WorkStreamClient implements AutoCloseable {
       case ERROR -> {
         var err = response.getError();
         lastError = err.getCode() + ": " + err.getMessage();
-        log.warn(
-            "Stream error for {}: {} - {}", err.getWorkId(), err.getCode(), err.getMessage());
+        log.warn("Stream error for {}: {} - {}", err.getWorkId(), err.getCode(), err.getMessage());
       }
       default -> {}
     }
@@ -287,7 +282,10 @@ public final class WorkStreamClient implements AutoCloseable {
             jobHandler.getPoolRecords(task.getPoolId(), task.getPageToken(), task.getPageSize());
         b.setGetPoolRecords(
             GetPoolRecordsResult.newBuilder()
-                .addAllRecords(page.items().stream().map(ProtoConverter::fromRecord).toList())
+                .addAllRecords(
+                    page.items().stream()
+                        .<tcnapi.exile.types.v3.Record>map(r -> ProtoConverter.fromRecord(r))
+                        .toList())
                 .setNextPageToken(page.nextPageToken() != null ? page.nextPageToken() : ""));
       }
       case SEARCH_RECORDS -> {
@@ -296,7 +294,10 @@ public final class WorkStreamClient implements AutoCloseable {
         var page = jobHandler.searchRecords(filters, task.getPageToken(), task.getPageSize());
         b.setSearchRecords(
             SearchRecordsResult.newBuilder()
-                .addAllRecords(page.items().stream().map(ProtoConverter::fromRecord).toList())
+                .addAllRecords(
+                    page.items().stream()
+                        .<tcnapi.exile.types.v3.Record>map(r -> ProtoConverter.fromRecord(r))
+                        .toList())
                 .setNextPageToken(page.nextPageToken() != null ? page.nextPageToken() : ""));
       }
       case GET_RECORD_FIELDS -> {
@@ -400,7 +401,7 @@ public final class WorkStreamClient implements AutoCloseable {
           eventHandler.onTransferInstance(toTransferInstanceEvent(item.getTransferInstance()));
       case CALL_RECORDING ->
           eventHandler.onCallRecording(toCallRecordingEvent(item.getCallRecording()));
-      case TASK -> eventHandler.onTask(toTaskEvent(item.getTask()));
+      case EXILE_TASK -> eventHandler.onTask(toTaskEvent(item.getExileTask()));
       default -> throw new UnsupportedOperationException("Unknown event: " + item.getTaskCase());
     }
   }

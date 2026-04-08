@@ -66,11 +66,13 @@ public final class MultiTenantManager implements AutoCloseable {
 
   /** Start polling for tenants. */
   public void start() {
-    scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-      var t = new Thread(r, "exile-tenant-poller");
-      t.setDaemon(true);
-      return t;
-    });
+    scheduler =
+        Executors.newSingleThreadScheduledExecutor(
+            r -> {
+              var t = new Thread(r, "exile-tenant-poller");
+              t.setDaemon(true);
+              return t;
+            });
     scheduler.scheduleAtFixedRate(this::reconcile, 0, pollIntervalSeconds, TimeUnit.SECONDS);
     log.info("MultiTenantManager started (poll={}s)", pollIntervalSeconds);
   }

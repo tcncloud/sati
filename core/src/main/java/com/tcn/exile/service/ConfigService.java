@@ -1,7 +1,7 @@
 package com.tcn.exile.service;
 
 import com.tcn.exile.internal.ProtoConverter;
-import com.tcn.exile.model.Record;
+import com.tcn.exile.model.DataRecord;
 import io.grpc.ManagedChannel;
 import java.util.Map;
 import tcnapi.exile.config.v3.*;
@@ -35,8 +35,9 @@ public final class ConfigService {
   }
 
   public String rotateCertificate(String certificateHash) {
-    var resp = stub.rotateCertificate(
-        RotateCertificateRequest.newBuilder().setCertificateHash(certificateHash).build());
+    var resp =
+        stub.rotateCertificate(
+            RotateCertificateRequest.newBuilder().setCertificateHash(certificateHash).build());
     return resp.getEncodedCertificate();
   }
 
@@ -44,13 +45,20 @@ public final class ConfigService {
     stub.log(LogRequest.newBuilder().setPayload(payload).build());
   }
 
-  public enum JourneyBufferStatus { INSERTED, UPDATED, IGNORED, REJECTED, UNSPECIFIED }
+  public enum JourneyBufferStatus {
+    INSERTED,
+    UPDATED,
+    IGNORED,
+    REJECTED,
+    UNSPECIFIED
+  }
 
-  public JourneyBufferStatus addRecordToJourneyBuffer(Record record) {
-    var resp = stub.addRecordToJourneyBuffer(
-        AddRecordToJourneyBufferRequest.newBuilder()
-            .setRecord(ProtoConverter.fromRecord(record))
-            .build());
+  public JourneyBufferStatus addRecordToJourneyBuffer(DataRecord record) {
+    var resp =
+        stub.addRecordToJourneyBuffer(
+            AddRecordToJourneyBufferRequest.newBuilder()
+                .setRecord(ProtoConverter.fromRecord(record))
+                .build());
     return switch (resp.getStatus()) {
       case JOURNEY_BUFFER_STATUS_INSERTED -> JourneyBufferStatus.INSERTED;
       case JOURNEY_BUFFER_STATUS_UPDATED -> JourneyBufferStatus.UPDATED;
