@@ -5,11 +5,18 @@
     </encoder>
   </appender>
 
+  <appender name="MEMORY" class="com.tcn.exile.memlogger.MemoryAppender">
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n</pattern>
+    </encoder>
+  </appender>
+
   <logger name="com.tcn.exile" level="DEBUG"/>
   <logger name="io.grpc" level="WARN"/>
   <logger name="io.netty" level="WARN"/>
 
   <root level="INFO">
     <appender-ref ref="CONSOLE"/>
+    <appender-ref ref="MEMORY"/>
   </root>
 </configuration>

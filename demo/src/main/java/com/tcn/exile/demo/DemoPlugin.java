@@ -4,7 +4,6 @@ import com.tcn.exile.handler.Plugin;
 import com.tcn.exile.model.*;
 import com.tcn.exile.model.event.*;
 import com.tcn.exile.service.ConfigService;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -112,21 +111,6 @@ public class DemoPlugin implements Plugin {
   }
 
   @Override
-  public Map<String, Object> info() {
-    return Map.of(
-        "appName",
-        "sati-demo",
-        "appVersion",
-        Main.VERSION,
-        "runtime",
-        System.getProperty("java.version"),
-        "os",
-        System.getProperty("os.name"),
-        "configured",
-        configured);
-  }
-
-  @Override
   public void shutdown(String reason) {
     log.warn("Shutdown requested: {}", reason);
   }
@@ -134,35 +118,6 @@ public class DemoPlugin implements Plugin {
   @Override
   public void processLog(String payload) {
     log.info("Remote log: {}", payload);
-  }
-
-  @Override
-  public DiagnosticsInfo diagnostics() {
-    var runtime = Runtime.getRuntime();
-    return new DiagnosticsInfo(
-        Map.of(
-            "os", System.getProperty("os.name"),
-            "arch", System.getProperty("os.arch"),
-            "processors", runtime.availableProcessors()),
-        Map.of(
-            "java.version", System.getProperty("java.version"),
-            "heap.max", runtime.maxMemory(),
-            "heap.used", runtime.totalMemory() - runtime.freeMemory()),
-        Map.of("type", "demo", "connected", configured),
-        Map.of("demo", true));
-  }
-
-  @Override
-  public Page<LogEntry> listTenantLogs(
-      Instant startTime, Instant endTime, String pageToken, int pageSize) {
-    log.info("listTenantLogs called from {} to {}", startTime, endTime);
-    return new Page<>(
-        List.of(new LogEntry(Instant.now(), "INFO", "demo", "This is a demo log entry")), "");
-  }
-
-  @Override
-  public void setLogLevel(String loggerName, String level) {
-    log.info("setLogLevel called: {}={}", loggerName, level);
   }
 
   // --- Events ---

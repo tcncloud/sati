@@ -24,6 +24,9 @@ dependencies {
 	// PKCS#1 → PKCS#8 key conversion for mTLS
 	implementation("org.bouncycastle:bcpkix-jdk18on:1.79")
 
+	// In-memory log buffer for listTenantLogs/setLogLevel
+	implementation(project(':logback-ext'))
+
 	// javax.annotation for @Generated in gRPC stubs
 	compileOnly("org.apache.tomcat:annotations-api:6.0.53")
 
