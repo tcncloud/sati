@@ -550,6 +550,28 @@ public class EventStreamClient implements AutoCloseable {
             dto.sourceCallType = src.getCallType();
             dto.sourceUserId = src.getUserId();
             dto.sourcePartnerAgentId = src.getPartnerAgentId();
+            dto.sourceConversationId = src.getConversationId();
+            dto.sourceSessionSid = src.getSessionSid();
+        }
+        if (proto.hasDestination()) {
+            var dest = proto.getDestination();
+            dto.destinationSkills = dest.getSkillsMap();
+            if (dest.hasAgent()) {
+                var a = dest.getAgent();
+                dto.destinationType = "agent";
+                dto.destinationPartnerAgentId = a.getPartnerAgentId();
+                dto.destinationUserId = a.getUserId();
+                dto.destinationSessionSid = a.getSessionSid();
+            } else if (dest.hasCall()) {
+                var c = dest.getCall();
+                dto.destinationType = "call";
+                dto.destinationCallSid = String.valueOf(c.getCallSid());
+                dto.destinationCallType = c.getCallType();
+                dto.destinationConversationId = c.getConversationId();
+            } else if (dest.hasPhone()) {
+                dto.destinationType = "phone";
+                dto.destinationPhoneNumber = dest.getPhone().getPhoneNumber();
+            }
         }
         dto.durationMicroseconds = proto.getDurationMicroseconds();
         dto.externalDurationMicroseconds = proto.getExternalDurationMicroseconds();

@@ -17,6 +17,23 @@ public class SkillDto {
         public Long proficiency;
     }
 
+    /** Skill info for org (multi-tenant) responses — snake_case keys, no proficiency. */
+    @OpenApiByFields
+    public static class OrgSkillInfo {
+        public String skill_id;
+        public String name;
+        public String description;
+    }
+
+    /** Agent skill info for org (multi-tenant) responses — snake_case keys, includes proficiency. */
+    @OpenApiByFields
+    public static class OrgAgentSkillInfo {
+        public String skill_id;
+        public String name;
+        public String description;
+        public Long proficiency;
+    }
+
     // ========== Request DTOs ==========
 
     /** Request for assigning a skill to an agent. */

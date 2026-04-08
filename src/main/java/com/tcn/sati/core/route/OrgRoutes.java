@@ -9,7 +9,9 @@ import io.javalin.Javalin;
 import io.javalin.http.Context;
 import io.javalin.openapi.*;
 
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Org-scoped multi-tenant routes. All paths use the
@@ -194,7 +196,8 @@ public class OrgRoutes {
     @OpenApi(path = P + "/agents", methods = HttpMethod.GET, summary = "List Agents", tags = {
             "Agents" }, pathParams = @OpenApiParam(name = "tenantKey", required = true), queryParams = {
                     @OpenApiParam(name = "loggedIn", type = Boolean.class, description = "Filter by login status"),
-                    @OpenApiParam(name = "state", description = "Filter by agent state")
+                    @OpenApiParam(name = "state", description = "Filter by agent state"),
+                    @OpenApiParam(name = "fetch_recording_status", type = Boolean.class, description = "If true, fetch recording status for each agent (may be expensive)")
             }, responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = AgentDto.AgentInfo[].class)))
     private static void listAgents(Context ctx) {
         TenantContext t = tenant(ctx);
@@ -203,6 +206,7 @@ public class OrgRoutes {
         var req = new AgentDto.ListAgentsRequest();
         req.loggedIn = ctx.queryParam("loggedIn") != null ? Boolean.parseBoolean(ctx.queryParam("loggedIn")) : null;
         req.state = ctx.queryParam("state");
+        req.fetchRecordingStatus = "true".equalsIgnoreCase(ctx.queryParam("fetch_recording_status"));
         ctx.json(agentSvc(ctx).listAgents(req));
     }
 
@@ -292,7 +296,7 @@ public class OrgRoutes {
     @OpenApi(path = P
             + "/agents/{partnerAgentId}/pausecodes", methods = HttpMethod.GET, summary = "List Pause Codes", tags = {
                     "Agents" }, pathParams = { @OpenApiParam(name = "tenantKey", required = true),
-                            @OpenApiParam(name = "partnerAgentId", required = true) }, responses = @OpenApiResponse(status = "200"))
+                            @OpenApiParam(name = "partnerAgentId", required = true) }, responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = String[].class)))
     private static void getPauseCodes(Context ctx) {
         TenantContext t = tenant(ctx);
         if (t == null || t.getGateClient() == null)
@@ -451,23 +455,38 @@ public class OrgRoutes {
     // ========== Skills ==========
 
     @OpenApi(path = P + "/skills", methods = HttpMethod.GET, summary = "List All Skills", tags = {
-            "Skills" }, pathParams = @OpenApiParam(name = "tenantKey", required = true), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SkillDto.SkillInfo[].class)))
+            "Skills" }, pathParams = @OpenApiParam(name = "tenantKey", required = true), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SkillDto.OrgSkillInfo[].class)))
     private static void listSkills(Context ctx) {
         TenantContext t = tenant(ctx);
         if (t == null || t.getGateClient() == null)
             return;
-        ctx.json(new SkillsService(t.getGateClient()).listSkills());
+        List<SkillDto.OrgSkillInfo> result = new SkillsService(t.getGateClient()).listSkills().stream().map(s -> {
+            var o = new SkillDto.OrgSkillInfo();
+            o.skill_id = s.skillId;
+            o.name = s.name;
+            o.description = s.description;
+            return o;
+        }).collect(Collectors.toList());
+        ctx.json(result);
     }
 
     @OpenApi(path = P
             + "/skills/agents/{partnerAgentId}", methods = HttpMethod.GET, summary = "List Agent Skills", tags = {
                     "Skills" }, pathParams = { @OpenApiParam(name = "tenantKey", required = true),
-                            @OpenApiParam(name = "partnerAgentId", required = true) }, responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SkillDto.SkillInfo[].class)))
+                            @OpenApiParam(name = "partnerAgentId", required = true) }, responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = SkillDto.OrgAgentSkillInfo[].class)))
     private static void listAgentSkills(Context ctx) {
         TenantContext t = tenant(ctx);
         if (t == null || t.getGateClient() == null)
             return;
-        ctx.json(new SkillsService(t.getGateClient()).listAgentSkills(ctx.pathParam("partnerAgentId")));
+        List<SkillDto.OrgAgentSkillInfo> result = new SkillsService(t.getGateClient()).listAgentSkills(ctx.pathParam("partnerAgentId")).stream().map(s -> {
+            var o = new SkillDto.OrgAgentSkillInfo();
+            o.skill_id = s.skillId;
+            o.name = s.name;
+            o.description = s.description;
+            o.proficiency = s.proficiency;
+            return o;
+        }).collect(Collectors.toList());
+        ctx.json(result);
     }
 
     @OpenApi(path = P
@@ -497,7 +516,7 @@ public class OrgRoutes {
     // ========== NCL Rulesets ==========
 
     @OpenApi(path = P + "/nclrulesets/names", methods = HttpMethod.GET, summary = "List NCL Ruleset Names", tags = {
-            "NCL Rulesets" }, pathParams = @OpenApiParam(name = "tenantKey", required = true), responses = @OpenApiResponse(status = "200"))
+            "NCL Rulesets" }, pathParams = @OpenApiParam(name = "tenantKey", required = true), responses = @OpenApiResponse(status = "200", content = @OpenApiContent(from = String[].class)))
     private static void listNCLNames(Context ctx) {
         TenantContext t = tenant(ctx);
         if (t == null || t.getGateClient() == null)

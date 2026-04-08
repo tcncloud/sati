@@ -239,6 +239,18 @@ public interface TenantBackendClient extends AutoCloseable {
         public String sourceCallType;
         public String sourceUserId;
         public String sourcePartnerAgentId;
+        public long sourceConversationId;
+        public long sourceSessionSid;
+        // Destination (type = "agent", "call", or "phone"; null if absent)
+        public String destinationType;
+        public String destinationPartnerAgentId;
+        public String destinationUserId;
+        public long destinationSessionSid;
+        public String destinationCallSid;
+        public String destinationCallType;
+        public long destinationConversationId;
+        public String destinationPhoneNumber;
+        public java.util.Map<String, Boolean> destinationSkills;
         // Durations
         public long durationMicroseconds;
         public long externalDurationMicroseconds;

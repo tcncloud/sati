@@ -2,6 +2,7 @@ package com.tcn.sati.core.tenant;
 
 import com.tcn.sati.config.BackendType;
 import com.tcn.sati.config.SatiConfig;
+import com.tcn.sati.infra.backend.TenantBackendClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -73,6 +74,26 @@ public class TenantManager implements AutoCloseable {
         }
 
         TenantContext ctx = new TenantContext(tenantKey, config, backendType);
+        ctx.start();
+        tenants.put(tenantKey, ctx);
+
+        log.info("Tenant {} created successfully (total: {})", tenantKey, tenants.size());
+        return ctx;
+    }
+
+    /**
+     * Create a tenant with a custom backend client.
+     * Use this when the application provides its own TenantBackendClient implementation.
+     */
+    public TenantContext createTenant(String tenantKey, SatiConfig config, TenantBackendClient customBackend) {
+        log.info("Creating tenant: {} (custom backend)", tenantKey);
+
+        if (tenants.containsKey(tenantKey)) {
+            log.warn("Tenant {} already exists, destroying first", tenantKey);
+            destroyTenant(tenantKey);
+        }
+
+        TenantContext ctx = new TenantContext(tenantKey, config, customBackend);
         ctx.start();
         tenants.put(tenantKey, ctx);
 
