@@ -45,6 +45,7 @@ public final class ExileClient implements AutoCloseable {
   private final JourneyService journeyService;
 
   private volatile ConfigService.ClientConfiguration lastConfig;
+  private final AtomicBoolean pluginReady = new AtomicBoolean(false);
   private final AtomicBoolean workStreamStarted = new AtomicBoolean(false);
 
   private ExileClient(Builder builder) {
@@ -113,16 +114,21 @@ public final class ExileClient implements AutoCloseable {
           ready = plugin.onConfig(newConfig);
         } catch (Exception e) {
           log.warn("Plugin {} rejected config: {}", plugin.pluginName(), e.getMessage());
+          pluginReady.set(false);
           return;
         }
 
         if (!ready) {
           log.warn("Plugin {} not ready — WorkStream will not start yet", plugin.pluginName());
+          pluginReady.set(false);
           return;
         }
+
+        pluginReady.set(true);
       }
 
-      if (workStreamStarted.compareAndSet(false, true)) {
+      // Only start WorkStream if plugin has explicitly accepted a config.
+      if (pluginReady.get() && workStreamStarted.compareAndSet(false, true)) {
         log.info("Plugin {} ready, starting WorkStream", plugin.pluginName());
         workStream.start();
       }
