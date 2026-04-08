@@ -153,6 +153,13 @@ public final class WorkStreamClient implements AutoCloseable {
                   lastDisconnect = Instant.now();
                   connectedSince = null;
                   log.warn("Stream error ({}): {}", t.getClass().getSimpleName(), t.getMessage());
+                  // Log the full cause chain for SSL errors to aid debugging.
+                  for (Throwable cause = t.getCause(); cause != null; cause = cause.getCause()) {
+                    log.warn(
+                        "  caused by ({}): {}",
+                        cause.getClass().getSimpleName(),
+                        cause.getMessage());
+                  }
                   latch.countDown();
                 }
 

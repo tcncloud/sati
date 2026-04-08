@@ -13,6 +13,7 @@ import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,8 +21,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Main entry point for the Exile client library.
  *
- * <p>Connects to the gate server, opens a work stream, and exposes domain service clients for
- * making unary RPCs. Periodically polls the gate for configuration updates.
+ * <p>On {@link #start()}, only the config poller begins. The WorkStream does not open until the
+ * first successful config poll from the gate and the {@code onConfigPolled} callback completes
+ * without error. This ensures the integration's resources (database, HTTP client) are initialized
+ * before any work items arrive.
  */
 public final class ExileClient implements AutoCloseable {
 
@@ -42,6 +45,7 @@ public final class ExileClient implements AutoCloseable {
   private final JourneyService journeyService;
 
   private volatile ConfigService.ClientConfiguration lastConfig;
+  private final AtomicBoolean workStreamStarted = new AtomicBoolean(false);
 
   private ExileClient(Builder builder) {
     this.config = builder.config;
@@ -76,14 +80,18 @@ public final class ExileClient implements AutoCloseable {
             });
   }
 
-  /** Start the work stream and config poller. */
+  /**
+   * Start the client. Only the config poller begins immediately. The WorkStream opens after the
+   * first successful config poll and onConfigPolled callback.
+   */
   public void start() {
-    log.info("Starting ExileClient for org={}", config.org());
-    workStream.start();
+    log.info(
+        "Starting ExileClient for org={} (waiting for gate config before opening stream)",
+        config.org());
 
     configPoller.scheduleAtFixedRate(
         this::pollConfig,
-        configPollInterval.toSeconds(),
+        0, // poll immediately on start
         configPollInterval.toSeconds(),
         TimeUnit.SECONDS);
   }
@@ -102,6 +110,12 @@ public final class ExileClient implements AutoCloseable {
             newConfig.orgId(),
             newConfig.configName());
         onConfigPolled.accept(newConfig);
+      }
+
+      // Start WorkStream on first successful config poll.
+      if (workStreamStarted.compareAndSet(false, true)) {
+        log.info("Gate config received, starting WorkStream");
+        workStream.start();
       }
     } catch (Exception e) {
       log.debug("Config poll failed ({}): {}", e.getClass().getSimpleName(), e.getMessage());
@@ -202,9 +216,9 @@ public final class ExileClient implements AutoCloseable {
     }
 
     /**
-     * Callback invoked when the gate returns a new or changed client configuration. The config
-     * payload typically contains database credentials, API keys, or plugin-specific settings. This
-     * is polled from the gate every {@code configPollInterval}.
+     * Callback invoked when the gate returns a new or changed client configuration. On the first
+     * successful poll, this fires before the WorkStream opens — use it to initialize database
+     * connections, HTTP clients, or other resources that job/event handlers depend on.
      */
     public Builder onConfigPolled(Consumer<ConfigService.ClientConfiguration> onConfigPolled) {
       this.onConfigPolled = onConfigPolled;
