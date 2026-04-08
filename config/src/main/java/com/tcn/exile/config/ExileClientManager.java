@@ -146,7 +146,11 @@ public final class ExileClientManager implements AutoCloseable {
   }
 
   private void createClient(ExileConfig config) {
-    // If org changed, destroy the old client first.
+    log.info(
+        "Creating ExileClient (endpoint={}:{}, org={})",
+        config.apiHostname(),
+        config.apiPort(),
+        config.org());
     var newOrg = config.org();
     if (activeOrg != null && !activeOrg.equals(newOrg)) {
       log.info("Org changed from {} to {}, destroying old client", activeOrg, newOrg);

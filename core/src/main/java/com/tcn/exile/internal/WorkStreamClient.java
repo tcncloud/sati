@@ -103,11 +103,15 @@ public final class WorkStreamClient implements AutoCloseable {
     var backoff = new Backoff();
     while (running.get()) {
       try {
-        if (backoff.nextDelayMs() > 0) {
+        long delayMs = backoff.nextDelayMs();
+        if (delayMs > 0) {
           phase = Phase.RECONNECTING;
+          log.info("Reconnecting in {}ms (attempt #{})", delayMs, reconnectAttempts.get() + 1);
         }
         backoff.sleep();
-        reconnectAttempts.incrementAndGet();
+        long attempt = reconnectAttempts.incrementAndGet();
+        log.info(
+            "Connecting to {}:{} (attempt #{})", config.apiHostname(), config.apiPort(), attempt);
         runStream();
         backoff.reset();
       } catch (InterruptedException e) {
@@ -116,10 +120,10 @@ public final class WorkStreamClient implements AutoCloseable {
       } catch (Exception e) {
         backoff.recordFailure();
         lastDisconnect = Instant.now();
-        lastError = e.getMessage();
+        lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
         connectedSince = null;
         clientId = null;
-        log.warn("Stream disconnected: {}", e.getMessage());
+        log.warn("Stream disconnected ({}): {}", e.getClass().getSimpleName(), e.getMessage());
       }
     }
     phase = Phase.CLOSED;
@@ -128,7 +132,9 @@ public final class WorkStreamClient implements AutoCloseable {
 
   private void runStream() throws InterruptedException {
     phase = Phase.CONNECTING;
+    log.debug("Creating gRPC channel to {}:{}", config.apiHostname(), config.apiPort());
     channel = ChannelFactory.create(config);
+    log.debug("Channel created, opening WorkStream");
     try {
       var stub = WorkerServiceGrpc.newStub(channel);
       var latch = new CountDownLatch(1);
@@ -143,10 +149,10 @@ public final class WorkStreamClient implements AutoCloseable {
 
                 @Override
                 public void onError(Throwable t) {
-                  lastError = t.getMessage();
+                  lastError = t.getClass().getSimpleName() + ": " + t.getMessage();
                   lastDisconnect = Instant.now();
                   connectedSince = null;
-                  log.warn("Stream error: {}", t.getMessage());
+                  log.warn("Stream error ({}): {}", t.getClass().getSimpleName(), t.getMessage());
                   latch.countDown();
                 }
 

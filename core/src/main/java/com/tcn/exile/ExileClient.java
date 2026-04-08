@@ -104,7 +104,7 @@ public final class ExileClient implements AutoCloseable {
         onConfigPolled.accept(newConfig);
       }
     } catch (Exception e) {
-      log.debug("Config poll failed (gate may not be reachable yet): {}", e.getMessage());
+      log.debug("Config poll failed ({}): {}", e.getClass().getSimpleName(), e.getMessage());
     }
   }
 
