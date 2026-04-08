@@ -198,6 +198,18 @@ public abstract class PluginBase implements Plugin {
 
   @Override
   public void shutdown(String reason) throws Exception {
-    log.warn("Shutdown requested: {}", reason);
+    log.warn("Shutdown requested: {}. Exiting in 2 seconds.", reason);
+    Thread.ofVirtual()
+        .name("exile-shutdown")
+        .start(
+            () -> {
+              try {
+                Thread.sleep(2000);
+              } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+              }
+              log.info("Exiting now (reason: {})", reason);
+              System.exit(0);
+            });
   }
 }
