@@ -30,6 +30,10 @@ public class DemoPlugin implements Plugin {
         config.configPayload() != null ? config.configPayload().keySet() : "null");
     // In a real plugin, you would parse config.configPayload() for DB credentials,
     // initialize the connection pool, and return false if it fails.
+    if (config.configPayload() == null || config.configPayload().isEmpty()) {
+      configured = false;
+      return false;
+    }
     configured = true;
     return true;
   }
