@@ -1,0 +1,10 @@
+plugins {
+	id("maven-publish")
+}
+
+dependencies {
+	api(project(':core'))
+
+	// File watching — the only external dependency beyond core.
+	implementation("io.methvin:directory-watcher:0.18.0")
+}
