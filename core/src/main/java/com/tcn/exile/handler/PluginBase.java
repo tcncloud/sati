@@ -107,17 +107,91 @@ public abstract class PluginBase implements Plugin {
   @Override
   public JobHandler.DiagnosticsInfo diagnostics() throws Exception {
     var rt = Runtime.getRuntime();
-    return new JobHandler.DiagnosticsInfo(
-        Map.of(
-            "os", System.getProperty("os.name"),
-            "arch", System.getProperty("os.arch"),
-            "processors", rt.availableProcessors()),
-        Map.of(
-            "java.version", System.getProperty("java.version"),
-            "heap.max", rt.maxMemory(),
-            "heap.used", rt.totalMemory() - rt.freeMemory()),
-        Map.of(),
-        Map.of());
+    var mem = java.lang.management.ManagementFactory.getMemoryMXBean();
+    var heap = mem.getHeapMemoryUsage();
+    var nonHeap = mem.getNonHeapMemoryUsage();
+    var os = java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+    var thread = java.lang.management.ManagementFactory.getThreadMXBean();
+
+    // System info.
+    var systemInfo = new java.util.LinkedHashMap<String, Object>();
+    systemInfo.put("os.name", System.getProperty("os.name"));
+    systemInfo.put("os.version", System.getProperty("os.version"));
+    systemInfo.put("os.arch", System.getProperty("os.arch"));
+    systemInfo.put("processors", rt.availableProcessors());
+    systemInfo.put("system.load.average", os.getSystemLoadAverage());
+    systemInfo.put("hostname", getHostname());
+
+    // Detect container environment.
+    var containerFile = new java.io.File("/.dockerenv");
+    if (containerFile.exists()) {
+      systemInfo.put("container", "docker");
+    }
+    var cgroupFile = new java.io.File("/proc/1/cgroup");
+    if (cgroupFile.exists()) {
+      systemInfo.put("cgroup", true);
+    }
+    var podName = System.getenv("HOSTNAME");
+    if (podName != null) {
+      systemInfo.put("pod.name", podName);
+    }
+
+    // Storage.
+    for (var root : java.io.File.listRoots()) {
+      systemInfo.put(
+          "storage." + root.getAbsolutePath().replace("/", "root"),
+          Map.of(
+              "total", root.getTotalSpace(),
+              "free", root.getFreeSpace(),
+              "usable", root.getUsableSpace()));
+    }
+
+    // Runtime info.
+    var runtimeInfo = new java.util.LinkedHashMap<String, Object>();
+    runtimeInfo.put("java.version", System.getProperty("java.version"));
+    runtimeInfo.put("java.vendor", System.getProperty("java.vendor"));
+    runtimeInfo.put("java.vm.name", System.getProperty("java.vm.name"));
+    runtimeInfo.put("java.vm.version", System.getProperty("java.vm.version"));
+    runtimeInfo.put("heap.init", heap.getInit());
+    runtimeInfo.put("heap.used", heap.getUsed());
+    runtimeInfo.put("heap.committed", heap.getCommitted());
+    runtimeInfo.put("heap.max", heap.getMax());
+    runtimeInfo.put("non_heap.used", nonHeap.getUsed());
+    runtimeInfo.put("non_heap.committed", nonHeap.getCommitted());
+    runtimeInfo.put("threads.live", thread.getThreadCount());
+    runtimeInfo.put("threads.daemon", thread.getDaemonThreadCount());
+    runtimeInfo.put("threads.peak", thread.getPeakThreadCount());
+    runtimeInfo.put("threads.total_started", thread.getTotalStartedThreadCount());
+    runtimeInfo.put(
+        "uptime.ms", java.lang.management.ManagementFactory.getRuntimeMXBean().getUptime());
+
+    // GC info.
+    for (var gc : java.lang.management.ManagementFactory.getGarbageCollectorMXBeans()) {
+      runtimeInfo.put("gc." + gc.getName() + ".count", gc.getCollectionCount());
+      runtimeInfo.put("gc." + gc.getName() + ".time_ms", gc.getCollectionTime());
+    }
+
+    // Database info — empty by default, plugins override to add connection pool stats.
+    var databaseInfo = new java.util.LinkedHashMap<String, Object>();
+
+    // Custom — plugin name and memory appender stats.
+    var custom = new java.util.LinkedHashMap<String, Object>();
+    custom.put("plugin.name", pluginName());
+    var appender = MemoryAppenderInstance.getInstance();
+    if (appender != null) {
+      custom.put("memlogger.events", appender.getEventsWithTimestamps().size());
+    }
+
+    return new JobHandler.DiagnosticsInfo(systemInfo, runtimeInfo, databaseInfo, custom);
+  }
+
+  private static String getHostname() {
+    try {
+      return java.net.InetAddress.getLocalHost().getHostName();
+    } catch (Exception e) {
+      var hostname = System.getenv("HOSTNAME");
+      return hostname != null ? hostname : "unknown";
+    }
   }
 
   // --- Shutdown ---
