@@ -87,6 +87,11 @@ public final class ExileClient implements AutoCloseable {
     workStream.start();
   }
 
+  /** Returns a snapshot of the work stream's current state. */
+  public StreamStatus streamStatus() {
+    return workStream.status();
+  }
+
   public ExileConfig config() {
     return config;
   }

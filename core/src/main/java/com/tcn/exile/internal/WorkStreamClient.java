@@ -3,6 +3,8 @@ package com.tcn.exile.internal;
 import static com.tcn.exile.internal.ProtoConverter.*;
 
 import com.tcn.exile.ExileConfig;
+import com.tcn.exile.StreamStatus;
+import com.tcn.exile.StreamStatus.Phase;
 import com.tcn.exile.handler.EventHandler;
 import com.tcn.exile.handler.JobHandler;
 import com.tcn.exile.model.*;
@@ -16,8 +18,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tcnapi.exile.worker.v3.*;
@@ -46,6 +48,16 @@ public final class WorkStreamClient implements AutoCloseable {
   private final AtomicInteger inflight = new AtomicInteger(0);
   private final ExecutorService workerPool = Executors.newVirtualThreadPerTaskExecutor();
 
+  // Status tracking.
+  private volatile Phase phase = Phase.IDLE;
+  private volatile String clientId;
+  private volatile Instant connectedSince;
+  private volatile Instant lastDisconnect;
+  private volatile String lastError;
+  private final AtomicLong completedTotal = new AtomicLong(0);
+  private final AtomicLong failedTotal = new AtomicLong(0);
+  private final AtomicLong reconnectAttempts = new AtomicLong(0);
+
   private volatile ManagedChannel channel;
   private volatile Thread streamThread;
 
@@ -66,6 +78,20 @@ public final class WorkStreamClient implements AutoCloseable {
     this.capabilities = capabilities;
   }
 
+  /** Returns a snapshot of the stream's current state. */
+  public StreamStatus status() {
+    return new StreamStatus(
+        phase,
+        clientId,
+        connectedSince,
+        lastDisconnect,
+        lastError,
+        inflight.get(),
+        completedTotal.get(),
+        failedTotal.get(),
+        reconnectAttempts.get());
+  }
+
   public void start() {
     if (!running.compareAndSet(false, true)) {
       throw new IllegalStateException("Already started");
@@ -78,7 +104,11 @@ public final class WorkStreamClient implements AutoCloseable {
     var backoff = new Backoff();
     while (running.get()) {
       try {
+        if (backoff.nextDelayMs() > 0) {
+          phase = Phase.RECONNECTING;
+        }
         backoff.sleep();
+        reconnectAttempts.incrementAndGet();
         runStream();
         backoff.reset();
       } catch (InterruptedException e) {
@@ -86,13 +116,19 @@ public final class WorkStreamClient implements AutoCloseable {
         break;
       } catch (Exception e) {
         backoff.recordFailure();
+        lastDisconnect = Instant.now();
+        lastError = e.getMessage();
+        connectedSince = null;
+        clientId = null;
         log.warn("Stream disconnected: {}", e.getMessage());
       }
     }
+    phase = Phase.CLOSED;
     log.info("Work stream loop exited");
   }
 
   private void runStream() throws InterruptedException {
+    phase = Phase.CONNECTING;
     channel = ChannelFactory.create(config);
     try {
       var stub = WorkerServiceGrpc.newStub(channel);
@@ -108,12 +144,17 @@ public final class WorkStreamClient implements AutoCloseable {
 
                 @Override
                 public void onError(Throwable t) {
+                  lastError = t.getMessage();
+                  lastDisconnect = Instant.now();
+                  connectedSince = null;
                   log.warn("Stream error: {}", t.getMessage());
                   latch.countDown();
                 }
 
                 @Override
                 public void onCompleted() {
+                  lastDisconnect = Instant.now();
+                  connectedSince = null;
                   log.info("Stream completed by server");
                   latch.countDown();
                 }
@@ -121,6 +162,8 @@ public final class WorkStreamClient implements AutoCloseable {
 
       requestObserver.set(observer);
 
+      // Register.
+      phase = Phase.REGISTERING;
       send(
           WorkRequest.newBuilder()
               .setRegister(
@@ -130,7 +173,7 @@ public final class WorkStreamClient implements AutoCloseable {
                       .addAllCapabilities(capabilities))
               .build());
 
-      pull(maxConcurrency);
+      // Wait until stream ends.
       latch.await();
     } finally {
       requestObserver.set(null);
@@ -144,12 +187,17 @@ public final class WorkStreamClient implements AutoCloseable {
     switch (response.getPayloadCase()) {
       case REGISTERED -> {
         var reg = response.getRegistered();
+        clientId = reg.getClientId();
+        connectedSince = Instant.now();
+        phase = Phase.ACTIVE;
         log.info(
             "Registered as {} (heartbeat={}s, lease={}s, max_inflight={})",
             reg.getClientId(),
             reg.getHeartbeatInterval().getSeconds(),
             reg.getDefaultLease().getSeconds(),
             reg.getMaxInflight());
+        // Initial pull now that we're registered.
+        pull(maxConcurrency);
       }
       case WORK_ITEM -> {
         inflight.incrementAndGet();
@@ -159,7 +207,9 @@ public final class WorkStreamClient implements AutoCloseable {
           log.debug("Result accepted: {}", response.getResultAccepted().getWorkId());
       case LEASE_EXPIRING -> {
         var w = response.getLeaseExpiring();
-        log.debug("Lease expiring for {}, {}s remaining", w.getWorkId(),
+        log.debug(
+            "Lease expiring for {}, {}s remaining",
+            w.getWorkId(),
             w.getRemaining().getSeconds());
         send(
             WorkRequest.newBuilder()
@@ -181,8 +231,9 @@ public final class WorkStreamClient implements AutoCloseable {
                   .build());
       case ERROR -> {
         var err = response.getError();
-        log.warn("Stream error for {}: {} - {}", err.getWorkId(), err.getCode(),
-            err.getMessage());
+        lastError = err.getCode() + ": " + err.getMessage();
+        log.warn(
+            "Stream error for {}: {} - {}", err.getWorkId(), err.getCode(), err.getMessage());
       }
       default -> {}
     }
@@ -198,7 +249,9 @@ public final class WorkStreamClient implements AutoCloseable {
         dispatchEvent(item);
         send(WorkRequest.newBuilder().setAck(Ack.newBuilder().addWorkIds(workId)).build());
       }
+      completedTotal.incrementAndGet();
     } catch (Exception e) {
+      failedTotal.incrementAndGet();
       log.warn("Work item {} failed: {}", workId, e.getMessage());
       send(
           WorkRequest.newBuilder()
@@ -213,8 +266,6 @@ public final class WorkStreamClient implements AutoCloseable {
       pull(1);
     }
   }
-
-  // ---- Job dispatch: call handler with plain Java types, convert result to proto ----
 
   private Result.Builder dispatchJob(WorkItem item) throws Exception {
     var b = Result.newBuilder().setWorkId(item.getWorkId()).setFinal(true);
@@ -232,8 +283,8 @@ public final class WorkStreamClient implements AutoCloseable {
       }
       case GET_POOL_RECORDS -> {
         var task = item.getGetPoolRecords();
-        var page = jobHandler.getPoolRecords(task.getPoolId(), task.getPageToken(),
-            task.getPageSize());
+        var page =
+            jobHandler.getPoolRecords(task.getPoolId(), task.getPageToken(), task.getPageSize());
         b.setGetPoolRecords(
             GetPoolRecordsResult.newBuilder()
                 .addAllRecords(page.items().stream().map(ProtoConverter::fromRecord).toList())
@@ -250,8 +301,9 @@ public final class WorkStreamClient implements AutoCloseable {
       }
       case GET_RECORD_FIELDS -> {
         var task = item.getGetRecordFields();
-        var fields = jobHandler.getRecordFields(task.getPoolId(), task.getRecordId(),
-            task.getFieldNamesList());
+        var fields =
+            jobHandler.getRecordFields(
+                task.getPoolId(), task.getRecordId(), task.getFieldNamesList());
         b.setGetRecordFields(
             GetRecordFieldsResult.newBuilder()
                 .addAllFields(fields.stream().map(ProtoConverter::fromField).toList()));
@@ -264,8 +316,9 @@ public final class WorkStreamClient implements AutoCloseable {
       }
       case CREATE_PAYMENT -> {
         var task = item.getCreatePayment();
-        var paymentId = jobHandler.createPayment(task.getPoolId(), task.getRecordId(),
-            structToMap(task.getPaymentData()));
+        var paymentId =
+            jobHandler.createPayment(
+                task.getPoolId(), task.getRecordId(), structToMap(task.getPaymentData()));
         b.setCreatePayment(
             CreatePaymentResult.newBuilder().setSuccess(true).setPaymentId(paymentId));
       }
@@ -276,8 +329,8 @@ public final class WorkStreamClient implements AutoCloseable {
       }
       case EXECUTE_LOGIC -> {
         var task = item.getExecuteLogic();
-        var output = jobHandler.executeLogic(task.getLogicName(),
-            structToMap(task.getParameters()));
+        var output =
+            jobHandler.executeLogic(task.getLogicName(), structToMap(task.getParameters()));
         b.setExecuteLogic(ExecuteLogicResult.newBuilder().setOutput(mapToStruct(output)));
       }
       case INFO -> {
@@ -307,11 +360,15 @@ public final class WorkStreamClient implements AutoCloseable {
       }
       case LIST_TENANT_LOGS -> {
         var task = item.getListTenantLogs();
-        var page = jobHandler.listTenantLogs(
-            toInstant(task.getStartTime()), toInstant(task.getEndTime()),
-            task.getPageToken(), task.getPageSize());
-        var rb = ListTenantLogsResult.newBuilder()
-            .setNextPageToken(page.nextPageToken() != null ? page.nextPageToken() : "");
+        var page =
+            jobHandler.listTenantLogs(
+                toInstant(task.getStartTime()),
+                toInstant(task.getEndTime()),
+                task.getPageToken(),
+                task.getPageSize());
+        var rb =
+            ListTenantLogsResult.newBuilder()
+                .setNextPageToken(page.nextPageToken() != null ? page.nextPageToken() : "");
         for (var entry : page.items()) {
           rb.addEntries(
               ListTenantLogsResult.LogEntry.newBuilder()
@@ -331,8 +388,6 @@ public final class WorkStreamClient implements AutoCloseable {
     }
     return b;
   }
-
-  // ---- Event dispatch: convert proto to plain Java, call handler ----
 
   private void dispatchEvent(WorkItem item) throws Exception {
     switch (item.getTaskCase()) {
@@ -370,6 +425,7 @@ public final class WorkStreamClient implements AutoCloseable {
   @Override
   public void close() {
     running.set(false);
+    phase = Phase.CLOSED;
     if (streamThread != null) streamThread.interrupt();
     var observer = requestObserver.getAndSet(null);
     if (observer != null) {
