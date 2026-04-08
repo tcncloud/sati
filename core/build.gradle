@@ -39,6 +39,10 @@ dependencies {
 
 	// javax.annotation for @Generated in gRPC stubs
 	compileOnly("org.apache.tomcat:annotations-api:6.0.53")
+
+	// test: in-process gRPC server for service client tests
+	testImplementation("io.grpc:grpc-testing:${grpcVersion}")
+	testImplementation("io.grpc:grpc-inprocess:${grpcVersion}")
 }
 
 jacoco {
