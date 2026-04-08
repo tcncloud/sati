@@ -185,11 +185,138 @@ class ChannelBenchmark {
     observer.onCompleted();
   }
 
-  /** Minimal WorkerService that responds to Register with Registered. */
+  @Test
+  void benchmarkMessageThroughput() throws Exception {
+    int messageCount = 10_000;
+    var channel = InProcessChannelBuilder.forName(SERVER_NAME).directExecutor().build();
+    var stub = WorkerServiceGrpc.newStub(channel);
+    var received = new AtomicInteger(0);
+    var allReceived = new CountDownLatch(1);
+
+    var observer =
+        stub.workStream(
+            new StreamObserver<WorkResponse>() {
+              @Override
+              public void onNext(WorkResponse response) {
+                if (received.incrementAndGet() >= messageCount + 1) { // +1 for Registered
+                  allReceived.countDown();
+                }
+              }
+
+              @Override
+              public void onError(Throwable t) {
+                allReceived.countDown();
+              }
+
+              @Override
+              public void onCompleted() {
+                allReceived.countDown();
+              }
+            });
+
+    // Register first.
+    observer.onNext(
+        WorkRequest.newBuilder()
+            .setRegister(Register.newBuilder().setClientName("bench").setClientVersion("1.0"))
+            .build());
+
+    // Now send Pull messages as fast as possible — server responds with WorkItem for each.
+    long start = System.nanoTime();
+    for (int i = 0; i < messageCount; i++) {
+      observer.onNext(WorkRequest.newBuilder().setPull(Pull.newBuilder().setMaxItems(1)).build());
+    }
+
+    assertTrue(allReceived.await(10, TimeUnit.SECONDS), "Timed out waiting for all messages");
+    long elapsed = System.nanoTime() - start;
+
+    observer.onCompleted();
+    channel.shutdownNow().awaitTermination(5, TimeUnit.SECONDS);
+
+    double elapsedMs = elapsed / 1_000_000.0;
+    double msgsPerSec = messageCount / (elapsed / 1_000_000_000.0);
+    double usPerMsg = (elapsed / 1_000.0) / messageCount;
+
+    System.out.println("=== MESSAGE THROUGHPUT (" + messageCount + " messages) ===");
+    System.out.printf("  total time:    %.2f ms%n", elapsedMs);
+    System.out.printf("  msgs/sec:      %,.0f%n", msgsPerSec);
+    System.out.printf("  us/msg:        %.2f%n", usPerMsg);
+    System.out.printf("  received:      %d%n", received.get());
+  }
+
+  @Test
+  void benchmarkRoundTripLatency() throws Exception {
+    int iterations = 1000;
+    var channel = InProcessChannelBuilder.forName(SERVER_NAME).directExecutor().build();
+    var stub = WorkerServiceGrpc.newStub(channel);
+    var times = new ArrayList<Long>();
+
+    for (int i = 0; i < iterations; i++) {
+      var latch = new CountDownLatch(1);
+      var responseObserver =
+          stub.workStream(
+              new StreamObserver<WorkResponse>() {
+                boolean registered = false;
+
+                @Override
+                public void onNext(WorkResponse response) {
+                  if (!registered) {
+                    registered = true;
+                    return; // skip Registered
+                  }
+                  latch.countDown(); // got the WorkItem response
+                }
+
+                @Override
+                public void onError(Throwable t) {
+                  latch.countDown();
+                }
+
+                @Override
+                public void onCompleted() {
+                  latch.countDown();
+                }
+              });
+
+      // Register.
+      responseObserver.onNext(
+          WorkRequest.newBuilder()
+              .setRegister(Register.newBuilder().setClientName("bench").setClientVersion("1.0"))
+              .build());
+
+      // Measure round-trip: send Pull → receive WorkItem.
+      long start = System.nanoTime();
+      responseObserver.onNext(
+          WorkRequest.newBuilder().setPull(Pull.newBuilder().setMaxItems(1)).build());
+      latch.await(5, TimeUnit.SECONDS);
+      long elapsed = System.nanoTime() - start;
+      times.add(elapsed);
+
+      responseObserver.onCompleted();
+    }
+
+    channel.shutdownNow().awaitTermination(5, TimeUnit.SECONDS);
+
+    long avg = times.stream().mapToLong(Long::longValue).sum() / iterations;
+    long min = times.stream().mapToLong(Long::longValue).min().orElse(0);
+    long max = times.stream().mapToLong(Long::longValue).max().orElse(0);
+    long p50 = times.stream().sorted().skip(iterations / 2).findFirst().orElse(0L);
+    long p99 = times.stream().sorted().skip((long) (iterations * 0.99)).findFirst().orElse(0L);
+
+    System.out.println("=== ROUND-TRIP LATENCY (" + iterations + " iterations) ===");
+    System.out.printf("  avg:  %,d ns  (%.3f ms)%n", avg, avg / 1_000_000.0);
+    System.out.printf("  min:  %,d ns  (%.3f ms)%n", min, min / 1_000_000.0);
+    System.out.printf("  max:  %,d ns  (%.3f ms)%n", max, max / 1_000_000.0);
+    System.out.printf("  p50:  %,d ns  (%.3f ms)%n", p50, p50 / 1_000_000.0);
+    System.out.printf("  p99:  %,d ns  (%.3f ms)%n", p99, p99 / 1_000_000.0);
+  }
+
+  /** WorkerService that responds to Register with Registered and to Pull with a WorkItem. */
   static class BenchmarkWorkerService extends WorkerServiceGrpc.WorkerServiceImplBase {
     @Override
     public StreamObserver<WorkRequest> workStream(StreamObserver<WorkResponse> responseObserver) {
       return new StreamObserver<>() {
+        int seq = 0;
+
         @Override
         public void onNext(WorkRequest request) {
           if (request.hasRegister()) {
@@ -203,6 +330,27 @@ class ChannelBenchmark {
                             .setDefaultLease(
                                 com.google.protobuf.Duration.newBuilder().setSeconds(300))
                             .setMaxInflight(20))
+                    .build());
+          } else if (request.hasPull()) {
+            // Respond with a WorkItem for each Pull.
+            responseObserver.onNext(
+                WorkResponse.newBuilder()
+                    .setWorkItem(
+                        WorkItem.newBuilder()
+                            .setWorkId("w-" + (seq++))
+                            .setCategory(WorkCategory.WORK_CATEGORY_EVENT)
+                            .setAttempt(1)
+                            .setAgentCall(
+                                build.buf.gen.tcnapi.exile.gate.v3.AgentCall.newBuilder()
+                                    .setCallSid(seq)
+                                    .setAgentCallSid(seq)))
+                    .build());
+          } else if (request.hasResult() || request.hasAck()) {
+            // Accept results/acks silently.
+            responseObserver.onNext(
+                WorkResponse.newBuilder()
+                    .setResultAccepted(
+                        ResultAccepted.newBuilder().setWorkId(request.getResult().getWorkId()))
                     .build());
           }
         }
