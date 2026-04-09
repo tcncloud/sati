@@ -141,16 +141,19 @@ public final class WorkStreamClient implements AutoCloseable {
         log.info(
             "Connecting to {}:{} (attempt #{})", config.apiHostname(), config.apiPort(), attempt);
         runStream();
-        backoff.reset();
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        break;
-      } catch (Exception e) {
+        // Only reset backoff if the stream ended gracefully (RST_STREAM NO_ERROR or server close).
+        // UNAVAILABLE and other errors should trigger backoff to avoid hammering the server.
         if (lastDisconnectGraceful) {
           backoff.reset();
         } else {
           backoff.recordFailure();
         }
+        lastDisconnectGraceful = false;
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        break;
+      } catch (Exception e) {
+        backoff.recordFailure();
         lastDisconnect = Instant.now();
         lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
         connectedSince = null;
