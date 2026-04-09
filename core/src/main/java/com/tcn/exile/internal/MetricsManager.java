@@ -64,11 +64,19 @@ public final class MetricsManager implements AutoCloseable {
     // TracerProvider generates valid trace/span IDs for log correlation.
     var tracerProvider = SdkTracerProvider.builder().setResource(resource).build();
 
-    this.openTelemetry =
+    var sdkBuilder =
         OpenTelemetrySdk.builder()
             .setMeterProvider(meterProvider)
-            .setTracerProvider(tracerProvider)
-            .buildAndRegisterGlobal();
+            .setTracerProvider(tracerProvider);
+
+    OpenTelemetrySdk sdk;
+    try {
+      sdk = sdkBuilder.buildAndRegisterGlobal();
+    } catch (IllegalStateException e) {
+      // Already registered (e.g. multi-tenant or restart) — build without registering.
+      sdk = sdkBuilder.build();
+    }
+    this.openTelemetry = sdk;
 
     this.meter = meterProvider.get("com.tcn.exile.sati");
 
