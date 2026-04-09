@@ -5,8 +5,8 @@ import java.util.concurrent.ThreadLocalRandom;
 /** Exponential backoff with jitter for reconnection. */
 public final class Backoff {
 
-  private static final long BASE_MS = 2_000;
-  private static final long MAX_MS = 30_000;
+  private static final long BASE_MS = 500;
+  private static final long MAX_MS = 10_000;
   private static final double JITTER = 0.2;
 
   private int failures;

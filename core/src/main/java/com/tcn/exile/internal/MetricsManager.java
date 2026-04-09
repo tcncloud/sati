@@ -35,6 +35,7 @@ public final class MetricsManager implements AutoCloseable {
   private final DoubleHistogram workDuration;
   private final DoubleHistogram methodDuration;
   private final LongCounter methodCalls;
+  private final DoubleHistogram reconnectDuration;
 
   private static final AttributeKey<String> METHOD_KEY = AttributeKey.stringKey("method");
   private static final AttributeKey<String> STATUS_KEY = AttributeKey.stringKey("status");
@@ -166,6 +167,13 @@ public final class MetricsManager implements AutoCloseable {
             .setUnit("1")
             .build();
 
+    this.reconnectDuration =
+        meter
+            .histogramBuilder("exile.work.reconnect_duration")
+            .setDescription("Time from stream disconnect to successful re-registration")
+            .setUnit("s")
+            .build();
+
     log.info(
         "MetricsManager initialized (export interval=60s, clientId={}, orgId={}, configName={})",
         clientId,
@@ -181,6 +189,11 @@ public final class MetricsManager implements AutoCloseable {
   /** Record the duration of a completed work item. Called from WorkStreamClient. */
   public void recordWorkDuration(double seconds) {
     workDuration.record(seconds);
+  }
+
+  /** Record the time from disconnect to successful re-registration. */
+  public void recordReconnectDuration(double seconds) {
+    reconnectDuration.record(seconds);
   }
 
   /** Record a plugin method call with duration and success/failure status. */

@@ -40,8 +40,8 @@ public final class ChannelFactory {
       return NettyChannelBuilder.forAddress(
               new InetSocketAddress(config.apiHostname(), config.apiPort()))
           .sslContext(sslContext)
-          .keepAliveTime(32, TimeUnit.SECONDS)
-          .keepAliveTimeout(30, TimeUnit.SECONDS)
+          .keepAliveTime(10, TimeUnit.SECONDS)
+          .keepAliveTimeout(5, TimeUnit.SECONDS)
           .keepAliveWithoutCalls(true)
           .idleTimeout(30, TimeUnit.MINUTES)
           .flowControlWindow(4 * 1024 * 1024) // 4MB — match envoy upstream window

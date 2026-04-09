@@ -75,6 +75,8 @@ public final class WorkStreamClient implements AutoCloseable {
   private volatile ManagedChannel channel;
   private volatile Thread streamThread;
   private volatile java.util.function.DoubleConsumer durationRecorder;
+  private volatile java.util.function.DoubleConsumer reconnectRecorder;
+  private volatile boolean lastDisconnectGraceful;
   private volatile MethodRecorder methodRecorder;
 
   /** Callback to record per-method metrics (name, duration, success). */
@@ -144,11 +146,16 @@ public final class WorkStreamClient implements AutoCloseable {
         Thread.currentThread().interrupt();
         break;
       } catch (Exception e) {
-        backoff.recordFailure();
+        if (lastDisconnectGraceful) {
+          backoff.reset();
+        } else {
+          backoff.recordFailure();
+        }
         lastDisconnect = Instant.now();
         lastError = e.getClass().getSimpleName() + ": " + e.getMessage();
         connectedSince = null;
         clientId = null;
+        lastDisconnectGraceful = false;
         log.warn("Stream disconnected ({}): {}", e.getClass().getSimpleName(), e.getMessage());
       }
     }
@@ -176,6 +183,9 @@ public final class WorkStreamClient implements AutoCloseable {
                   lastError = t.getClass().getSimpleName() + ": " + t.getMessage();
                   lastDisconnect = Instant.now();
                   connectedSince = null;
+                  // RST_STREAM with NO_ERROR is envoy recycling the stream, not a real failure.
+                  String msg = t.getMessage();
+                  lastDisconnectGraceful = msg != null && msg.contains("RST_STREAM") && msg.contains("NO_ERROR");
                   log.warn("Stream error ({}): {}", t.getClass().getSimpleName(), t.getMessage());
                   // Log the full cause chain for SSL errors to aid debugging.
                   for (Throwable cause = t.getCause(); cause != null; cause = cause.getCause()) {
@@ -191,6 +201,7 @@ public final class WorkStreamClient implements AutoCloseable {
                 public void onCompleted() {
                   lastDisconnect = Instant.now();
                   connectedSince = null;
+                  lastDisconnectGraceful = true;
                   log.info("Stream completed by server");
                   latch.countDown();
                 }
@@ -223,7 +234,16 @@ public final class WorkStreamClient implements AutoCloseable {
       case REGISTERED -> {
         var reg = response.getRegistered();
         clientId = reg.getClientId();
-        connectedSince = Instant.now();
+        var now = Instant.now();
+        // Record reconnect duration if this is a re-registration.
+        var disconnectTime = lastDisconnect;
+        if (disconnectTime != null) {
+          double reconnectSec = java.time.Duration.between(disconnectTime, now).toMillis() / 1000.0;
+          var rr = reconnectRecorder;
+          if (rr != null) rr.accept(reconnectSec);
+          log.info("Reconnected in {}ms", java.time.Duration.between(disconnectTime, now).toMillis());
+        }
+        connectedSince = now;
         phase = Phase.ACTIVE;
         log.info(
             "Registered as {} (heartbeat={}s, lease={}s, max_inflight={})",
@@ -282,6 +302,11 @@ public final class WorkStreamClient implements AutoCloseable {
   /** Set a callback to record per-method metrics. */
   public void setMethodRecorder(MethodRecorder recorder) {
     this.methodRecorder = recorder;
+  }
+
+  /** Set a callback to record reconnect duration (in seconds). */
+  public void setReconnectRecorder(java.util.function.DoubleConsumer recorder) {
+    this.reconnectRecorder = recorder;
   }
 
   private static final Tracer tracer =
