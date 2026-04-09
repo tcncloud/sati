@@ -12,6 +12,7 @@ import com.tcn.exile.model.*;
 import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 import io.opentelemetry.api.GlobalOpenTelemetry;
+import org.slf4j.MDC;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanContext;
 import io.opentelemetry.api.trace.SpanKind;
@@ -279,7 +280,12 @@ public final class WorkStreamClient implements AutoCloseable {
     var sc = workSpanContexts.get(workId);
     if (sc != null) {
       try (Scope ignored = Context.current().with(Span.wrap(sc)).makeCurrent()) {
+        MDC.put("traceId", sc.getTraceId());
+        MDC.put("spanId", sc.getSpanId());
         action.run();
+      } finally {
+        MDC.remove("traceId");
+        MDC.remove("spanId");
       }
     } else {
       action.run();
@@ -325,6 +331,8 @@ public final class WorkStreamClient implements AutoCloseable {
     workSpanContexts.put(workId, span.getSpanContext());
 
     try (Scope ignored = span.makeCurrent()) {
+      MDC.put("traceId", span.getSpanContext().getTraceId());
+      MDC.put("spanId", span.getSpanContext().getSpanId());
       if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB) {
         var result = dispatchJob(item);
         send(WorkRequest.newBuilder().setResult(result).build());
@@ -347,6 +355,8 @@ public final class WorkStreamClient implements AutoCloseable {
                       .setError(ErrorResult.newBuilder().setMessage(e.getMessage())))
               .build());
     } finally {
+      MDC.remove("traceId");
+      MDC.remove("spanId");
       span.end();
       // For events (ACK), clean up now — no RESULT_ACCEPTED will come.
       // For jobs, clean up in handleResponse when RESULT_ACCEPTED is received.
