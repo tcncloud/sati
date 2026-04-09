@@ -44,6 +44,7 @@ public final class ChannelFactory {
           .keepAliveTimeout(30, TimeUnit.SECONDS)
           .keepAliveWithoutCalls(true)
           .idleTimeout(30, TimeUnit.MINUTES)
+          .flowControlWindow(4 * 1024 * 1024) // 4MB — match envoy upstream window
           .build();
     } catch (Exception e) {
       throw new IllegalStateException("Failed to create gRPC channel", e);
