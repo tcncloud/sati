@@ -13,8 +13,13 @@ import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanContext;
+import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.TraceFlags;
+import io.opentelemetry.api.trace.TraceState;
 import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import java.time.Instant;
 import java.util.List;
@@ -261,18 +266,42 @@ public final class WorkStreamClient implements AutoCloseable {
   private static final Tracer tracer =
       GlobalOpenTelemetry.getTracer("com.tcn.exile.sati", "1.0.0");
 
+  /** Parse a W3C traceparent string ("00-traceId-spanId-flags") into a SpanContext. */
+  private static SpanContext parseTraceParent(String traceParent) {
+    if (traceParent == null || traceParent.isEmpty()) return null;
+    String[] parts = traceParent.split("-");
+    if (parts.length < 4) return null;
+    try {
+      return SpanContext.createFromRemoteParent(
+          parts[1],
+          parts[2],
+          TraceFlags.fromByte(Byte.parseByte(parts[3], 16)),
+          TraceState.getDefault());
+    } catch (Exception e) {
+      return null;
+    }
+  }
+
   private void processWorkItem(WorkItem item) {
     long startNanos = System.nanoTime();
     String workId = item.getWorkId();
     String category =
         item.getCategory() == WorkCategory.WORK_CATEGORY_JOB ? "job" : "event";
 
-    Span span =
+    var spanBuilder =
         tracer
             .spanBuilder("exile.work." + category)
+            .setSpanKind(SpanKind.CONSUMER)
             .setAttribute("exile.work_id", workId)
-            .setAttribute("exile.work_category", category)
-            .startSpan();
+            .setAttribute("exile.work_category", category);
+
+    // Link to the upstream trace from the gate if trace_parent is set.
+    var parentCtx = parseTraceParent(item.getTraceParent());
+    if (parentCtx != null) {
+      spanBuilder.setParent(Context.current().with(Span.wrap(parentCtx)));
+    }
+
+    Span span = spanBuilder.startSpan();
 
     try (Scope ignored = span.makeCurrent()) {
       if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB) {
