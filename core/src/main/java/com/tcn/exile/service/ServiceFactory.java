@@ -12,7 +12,8 @@ public final class ServiceFactory {
       RecordingService recording,
       ScrubListService scrubList,
       ConfigService config,
-      JourneyService journey) {}
+      JourneyService journey,
+      TelemetryService telemetry) {}
 
   public static Services create(ManagedChannel channel) {
     return new Services(
@@ -21,6 +22,7 @@ public final class ServiceFactory {
         new RecordingService(channel),
         new ScrubListService(channel),
         new ConfigService(channel),
-        new JourneyService(channel));
+        new JourneyService(channel),
+        new TelemetryService(channel));
   }
 }

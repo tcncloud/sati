@@ -59,6 +59,7 @@ public final class WorkStreamClient implements AutoCloseable {
 
   private volatile ManagedChannel channel;
   private volatile Thread streamThread;
+  private volatile java.util.function.DoubleConsumer durationRecorder;
 
   public WorkStreamClient(
       ExileConfig config,
@@ -247,7 +248,13 @@ public final class WorkStreamClient implements AutoCloseable {
     }
   }
 
+  /** Set a callback to record work item processing duration (in seconds). */
+  public void setDurationRecorder(java.util.function.DoubleConsumer recorder) {
+    this.durationRecorder = recorder;
+  }
+
   private void processWorkItem(WorkItem item) {
+    long startNanos = System.nanoTime();
     String workId = item.getWorkId();
     try {
       if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB) {
@@ -270,8 +277,16 @@ public final class WorkStreamClient implements AutoCloseable {
                       .setError(ErrorResult.newBuilder().setMessage(e.getMessage())))
               .build());
     } finally {
-      inflight.decrementAndGet();
-      pull(1);
+      var recorder = durationRecorder;
+      if (recorder != null) {
+        recorder.accept((System.nanoTime() - startNanos) / 1_000_000_000.0);
+      }
+      int remaining = inflight.decrementAndGet();
+      // Pull enough to fill capacity. Avoids 1-at-a-time round-trips over a 32ms RTT.
+      int available = maxConcurrency - remaining;
+      if (available > 0) {
+        pull(available);
+      }
     }
   }
 
@@ -434,6 +449,12 @@ public final class WorkStreamClient implements AutoCloseable {
         }
       } catch (Exception e) {
         log.warn("Failed to send {}: {}", request.getActionCase(), e.getMessage());
+        // Stream is broken — cancel it so the reconnect loop picks up immediately
+        // instead of waiting for the next Recv to fail.
+        var current = requestObserver.getAndSet(null);
+        if (current != null) {
+          try { current.onError(e); } catch (Exception ignored) {}
+        }
       }
     }
   }

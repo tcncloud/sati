@@ -21,6 +21,11 @@ dependencies {
 	// protobuf runtime
 	api("com.google.protobuf:protobuf-java:${protobufVersion}")
 
+	// OpenTelemetry SDK — metrics collection and custom exporter
+	implementation("io.opentelemetry:opentelemetry-api:1.46.0")
+	implementation("io.opentelemetry:opentelemetry-sdk:1.46.0")
+	implementation("io.opentelemetry:opentelemetry-sdk-metrics:1.46.0")
+
 	// PKCS#1 → PKCS#8 key conversion for mTLS
 	implementation("org.bouncycastle:bcpkix-jdk18on:1.79")
 

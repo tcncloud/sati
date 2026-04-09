@@ -2,8 +2,12 @@ package com.tcn.exile;
 
 import com.tcn.exile.handler.Plugin;
 import com.tcn.exile.internal.ChannelFactory;
+import com.tcn.exile.internal.GrpcLogShipper;
+import com.tcn.exile.internal.MetricsManager;
 import com.tcn.exile.internal.WorkStreamClient;
+import com.tcn.exile.memlogger.MemoryAppenderInstance;
 import com.tcn.exile.service.*;
+import io.opentelemetry.api.metrics.Meter;
 import io.grpc.ManagedChannel;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -43,6 +47,7 @@ public final class ExileClient implements AutoCloseable {
   private final ScrubListService scrubListService;
   private final ConfigService configService;
   private final JourneyService journeyService;
+  private final MetricsManager metricsManager;
 
   private volatile ConfigService.ClientConfiguration lastConfig;
   private final AtomicBoolean pluginReady = new AtomicBoolean(false);
@@ -71,6 +76,17 @@ public final class ExileClient implements AutoCloseable {
     this.scrubListService = services.scrubList();
     this.configService = services.config();
     this.journeyService = services.journey();
+
+    // Telemetry: OTel metrics exported via gRPC to the gate.
+    var telemetryClientId = builder.clientName + "-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+    this.metricsManager = new MetricsManager(services.telemetry(), telemetryClientId, workStream::status);
+    workStream.setDurationRecorder(metricsManager::recordWorkDuration);
+
+    // Telemetry: structured log shipping via gRPC to the gate.
+    var appender = MemoryAppenderInstance.getInstance();
+    if (appender != null) {
+      appender.enableLogShipper(new GrpcLogShipper(services.telemetry(), telemetryClientId));
+    }
 
     this.configPoller =
         Executors.newSingleThreadScheduledExecutor(
@@ -178,10 +194,23 @@ public final class ExileClient implements AutoCloseable {
     return journeyService;
   }
 
+  /**
+   * The OTel Meter for registering custom metrics from plugins. Instruments created on this meter
+   * are exported alongside sati's built-in metrics to the gate TelemetryService.
+   */
+  public Meter meter() {
+    return metricsManager.meter();
+  }
+
   @Override
   public void close() {
     log.info("Shutting down ExileClient");
     configPoller.shutdownNow();
+    var appender = MemoryAppenderInstance.getInstance();
+    if (appender != null) {
+      appender.disableLogShipper();
+    }
+    metricsManager.close();
     workStream.close();
     ChannelFactory.shutdown(serviceChannel);
   }

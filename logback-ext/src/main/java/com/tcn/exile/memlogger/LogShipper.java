@@ -21,5 +21,10 @@ import java.util.List;
 public interface LogShipper {
   void shipLogs(List<String> payload);
 
+  /** Ship structured log events with level, logger, MDC, and stack trace. */
+  default void shipStructuredLogs(List<MemoryAppender.LogEvent> events) {
+    shipLogs(events.stream().map(e -> e.message).toList());
+  }
+
   void stop();
 }
