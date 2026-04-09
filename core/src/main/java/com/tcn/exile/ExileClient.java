@@ -176,6 +176,7 @@ public final class ExileClient implements AutoCloseable {
                 newConfig.configName(),
                 workStream::status);
         workStream.setDurationRecorder(metricsManager::recordWorkDuration);
+        workStream.setMethodRecorder(metricsManager::recordMethodCall);
 
         log.info("Plugin {} ready, starting WorkStream", plugin.pluginName());
         workStream.start();

@@ -75,6 +75,13 @@ public final class WorkStreamClient implements AutoCloseable {
   private volatile ManagedChannel channel;
   private volatile Thread streamThread;
   private volatile java.util.function.DoubleConsumer durationRecorder;
+  private volatile MethodRecorder methodRecorder;
+
+  /** Callback to record per-method metrics (name, duration, success). */
+  @FunctionalInterface
+  public interface MethodRecorder {
+    void record(String method, double durationSeconds, boolean success);
+  }
 
   public WorkStreamClient(
       ExileConfig config,
@@ -272,6 +279,11 @@ public final class WorkStreamClient implements AutoCloseable {
     this.durationRecorder = recorder;
   }
 
+  /** Set a callback to record per-method metrics. */
+  public void setMethodRecorder(MethodRecorder recorder) {
+    this.methodRecorder = recorder;
+  }
+
   private static final Tracer tracer =
       GlobalOpenTelemetry.getTracer("com.tcn.exile.sati", "1.0.0");
 
@@ -378,7 +390,10 @@ public final class WorkStreamClient implements AutoCloseable {
 
   private Result.Builder dispatchJob(WorkItem item) throws Exception {
     var b = Result.newBuilder().setWorkId(item.getWorkId()).setFinal(true);
-
+    var methodName = item.getTaskCase().name().toLowerCase();
+    long methodStart = System.nanoTime();
+    boolean methodSuccess = false;
+    try {
     switch (item.getTaskCase()) {
       case LIST_POOLS -> {
         var pools = jobHandler.listPools();
@@ -503,22 +518,40 @@ public final class WorkStreamClient implements AutoCloseable {
       }
       default -> throw new UnsupportedOperationException("Unknown job: " + item.getTaskCase());
     }
+    methodSuccess = true;
     return b;
+    } finally {
+      var mr = methodRecorder;
+      if (mr != null) {
+        mr.record(methodName, (System.nanoTime() - methodStart) / 1_000_000_000.0, methodSuccess);
+      }
+    }
   }
 
   private void dispatchEvent(WorkItem item) throws Exception {
-    switch (item.getTaskCase()) {
-      case AGENT_CALL -> eventHandler.onAgentCall(toAgentCallEvent(item.getAgentCall()));
-      case TELEPHONY_RESULT ->
-          eventHandler.onTelephonyResult(toTelephonyResultEvent(item.getTelephonyResult()));
-      case AGENT_RESPONSE ->
-          eventHandler.onAgentResponse(toAgentResponseEvent(item.getAgentResponse()));
-      case TRANSFER_INSTANCE ->
-          eventHandler.onTransferInstance(toTransferInstanceEvent(item.getTransferInstance()));
-      case CALL_RECORDING ->
-          eventHandler.onCallRecording(toCallRecordingEvent(item.getCallRecording()));
-      case EXILE_TASK -> eventHandler.onTask(toTaskEvent(item.getExileTask()));
-      default -> throw new UnsupportedOperationException("Unknown event: " + item.getTaskCase());
+    var methodName = item.getTaskCase().name().toLowerCase();
+    long methodStart = System.nanoTime();
+    boolean methodSuccess = false;
+    try {
+      switch (item.getTaskCase()) {
+        case AGENT_CALL -> eventHandler.onAgentCall(toAgentCallEvent(item.getAgentCall()));
+        case TELEPHONY_RESULT ->
+            eventHandler.onTelephonyResult(toTelephonyResultEvent(item.getTelephonyResult()));
+        case AGENT_RESPONSE ->
+            eventHandler.onAgentResponse(toAgentResponseEvent(item.getAgentResponse()));
+        case TRANSFER_INSTANCE ->
+            eventHandler.onTransferInstance(toTransferInstanceEvent(item.getTransferInstance()));
+        case CALL_RECORDING ->
+            eventHandler.onCallRecording(toCallRecordingEvent(item.getCallRecording()));
+        case EXILE_TASK -> eventHandler.onTask(toTaskEvent(item.getExileTask()));
+        default -> throw new UnsupportedOperationException("Unknown event: " + item.getTaskCase());
+      }
+      methodSuccess = true;
+    } finally {
+      var mr = methodRecorder;
+      if (mr != null) {
+        mr.record(methodName, (System.nanoTime() - methodStart) / 1_000_000_000.0, methodSuccess);
+      }
     }
   }
 

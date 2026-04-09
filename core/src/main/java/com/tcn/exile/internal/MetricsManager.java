@@ -5,7 +5,10 @@ import com.tcn.exile.service.TelemetryService;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
+import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
@@ -30,6 +33,11 @@ public final class MetricsManager implements AutoCloseable {
   private final SdkMeterProvider meterProvider;
   private final Meter meter;
   private final DoubleHistogram workDuration;
+  private final DoubleHistogram methodDuration;
+  private final LongCounter methodCalls;
+
+  private static final AttributeKey<String> METHOD_KEY = AttributeKey.stringKey("method");
+  private static final AttributeKey<String> STATUS_KEY = AttributeKey.stringKey("status");
 
   /**
    * @param telemetryService gRPC stub for reporting metrics
@@ -143,6 +151,21 @@ public final class MetricsManager implements AutoCloseable {
             .setUnit("s")
             .build();
 
+    // Per-method metrics (method name as attribute)
+    this.methodDuration =
+        meter
+            .histogramBuilder("exile.plugin.duration")
+            .setDescription("Time to execute a plugin method")
+            .setUnit("s")
+            .build();
+
+    this.methodCalls =
+        meter
+            .counterBuilder("exile.plugin.calls")
+            .setDescription("Plugin method invocations")
+            .setUnit("1")
+            .build();
+
     log.info(
         "MetricsManager initialized (export interval=60s, clientId={}, orgId={}, configName={})",
         clientId,
@@ -158,6 +181,13 @@ public final class MetricsManager implements AutoCloseable {
   /** Record the duration of a completed work item. Called from WorkStreamClient. */
   public void recordWorkDuration(double seconds) {
     workDuration.record(seconds);
+  }
+
+  /** Record a plugin method call with duration and success/failure status. */
+  public void recordMethodCall(String method, double durationSeconds, boolean success) {
+    var attrs = Attributes.of(METHOD_KEY, method, STATUS_KEY, success ? "ok" : "error");
+    methodCalls.add(1, attrs);
+    methodDuration.record(durationSeconds, attrs);
   }
 
   @Override
