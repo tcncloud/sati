@@ -57,6 +57,10 @@ public final class WorkStreamClient implements AutoCloseable {
   private final AtomicInteger inflight = new AtomicInteger(0);
   private final ExecutorService workerPool = Executors.newVirtualThreadPerTaskExecutor();
 
+  // Maps work_id → SpanContext so async responses (ResultAccepted, etc.) can log with trace context.
+  private final java.util.concurrent.ConcurrentHashMap<String, SpanContext> workSpanContexts =
+      new java.util.concurrent.ConcurrentHashMap<>();
+
   // Status tracking.
   private volatile Phase phase = Phase.IDLE;
   private volatile String clientId;
@@ -226,12 +230,15 @@ public final class WorkStreamClient implements AutoCloseable {
         inflight.incrementAndGet();
         workerPool.submit(() -> processWorkItem(response.getWorkItem()));
       }
-      case RESULT_ACCEPTED ->
-          log.debug("Result accepted: {}", response.getResultAccepted().getWorkId());
+      case RESULT_ACCEPTED -> {
+        var workId = response.getResultAccepted().getWorkId();
+        withWorkSpan(workId, () -> log.debug("Result accepted: {}", workId));
+        workSpanContexts.remove(workId);
+      }
       case LEASE_EXPIRING -> {
         var w = response.getLeaseExpiring();
-        log.debug(
-            "Lease expiring for {}, {}s remaining", w.getWorkId(), w.getRemaining().getSeconds());
+        withWorkSpan(w.getWorkId(), () ->
+            log.debug("Lease expiring for {}, {}s remaining", w.getWorkId(), w.getRemaining().getSeconds()));
         send(
             WorkRequest.newBuilder()
                 .setExtendLease(
@@ -252,7 +259,8 @@ public final class WorkStreamClient implements AutoCloseable {
       case ERROR -> {
         var err = response.getError();
         lastError = err.getCode() + ": " + err.getMessage();
-        log.warn("Stream error for {}: {} - {}", err.getWorkId(), err.getCode(), err.getMessage());
+        withWorkSpan(err.getWorkId(), () ->
+            log.warn("Stream error for {}: {} - {}", err.getWorkId(), err.getCode(), err.getMessage()));
       }
       default -> {}
     }
@@ -265,6 +273,18 @@ public final class WorkStreamClient implements AutoCloseable {
 
   private static final Tracer tracer =
       GlobalOpenTelemetry.getTracer("com.tcn.exile.sati", "1.0.0");
+
+  /** Run a block with the span context of a work item temporarily set as current. */
+  private void withWorkSpan(String workId, Runnable action) {
+    var sc = workSpanContexts.get(workId);
+    if (sc != null) {
+      try (Scope ignored = Context.current().with(Span.wrap(sc)).makeCurrent()) {
+        action.run();
+      }
+    } else {
+      action.run();
+    }
+  }
 
   /** Parse a W3C traceparent string ("00-traceId-spanId-flags") into a SpanContext. */
   private static SpanContext parseTraceParent(String traceParent) {
@@ -302,6 +322,7 @@ public final class WorkStreamClient implements AutoCloseable {
     }
 
     Span span = spanBuilder.startSpan();
+    workSpanContexts.put(workId, span.getSpanContext());
 
     try (Scope ignored = span.makeCurrent()) {
       if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB) {
@@ -327,6 +348,11 @@ public final class WorkStreamClient implements AutoCloseable {
               .build());
     } finally {
       span.end();
+      // For events (ACK), clean up now — no RESULT_ACCEPTED will come.
+      // For jobs, clean up in handleResponse when RESULT_ACCEPTED is received.
+      if (item.getCategory() != WorkCategory.WORK_CATEGORY_JOB) {
+        workSpanContexts.remove(workId);
+      }
       var recorder = durationRecorder;
       if (recorder != null) {
         recorder.accept((System.nanoTime() - startNanos) / 1_000_000_000.0);
