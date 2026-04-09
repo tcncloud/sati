@@ -6,7 +6,6 @@ import com.google.protobuf.Timestamp;
 import com.tcn.exile.memlogger.LogShipper;
 import com.tcn.exile.memlogger.MemoryAppender;
 import com.tcn.exile.service.TelemetryService;
-import io.opentelemetry.api.trace.Span;
 import java.util.ArrayList;
 import java.util.List;
 import org.slf4j.Logger;
@@ -59,13 +58,8 @@ public final class GrpcLogShipper implements LogShipper {
       if (event.threadName != null) builder.setThreadName(event.threadName);
       if (event.stackTrace != null) builder.setStackTrace(event.stackTrace);
       if (event.mdc != null) builder.putAllMdc(event.mdc);
-
-      // Attach trace context from the current span if available.
-      var spanContext = Span.current().getSpanContext();
-      if (spanContext.isValid()) {
-        builder.setTraceId(spanContext.getTraceId());
-        builder.setSpanId(spanContext.getSpanId());
-      }
+      if (event.traceId != null) builder.setTraceId(event.traceId);
+      if (event.spanId != null) builder.setSpanId(event.spanId);
 
       records.add(builder.build());
     }

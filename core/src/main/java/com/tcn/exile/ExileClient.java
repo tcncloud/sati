@@ -5,8 +5,10 @@ import com.tcn.exile.internal.ChannelFactory;
 import com.tcn.exile.internal.GrpcLogShipper;
 import com.tcn.exile.internal.MetricsManager;
 import com.tcn.exile.internal.WorkStreamClient;
+import com.tcn.exile.memlogger.MemoryAppender;
 import com.tcn.exile.memlogger.MemoryAppenderInstance;
 import com.tcn.exile.service.*;
+import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.metrics.Meter;
 import io.grpc.ManagedChannel;
 import java.time.Duration;
@@ -83,6 +85,22 @@ public final class ExileClient implements AutoCloseable {
     // Telemetry client ID (stable across reconnects).
     this.telemetryClientId =
         builder.clientName + "-" + java.util.UUID.randomUUID().toString().substring(0, 8);
+
+    // Wire OTel trace context into log events so each LogRecord carries trace_id/span_id.
+    MemoryAppender.setTraceContextExtractor(
+        new MemoryAppender.TraceContextExtractor() {
+          @Override
+          public String traceId() {
+            var ctx = Span.current().getSpanContext();
+            return ctx.isValid() ? ctx.getTraceId() : null;
+          }
+
+          @Override
+          public String spanId() {
+            var ctx = Span.current().getSpanContext();
+            return ctx.isValid() ? ctx.getSpanId() : null;
+          }
+        });
 
     // Structured log shipping starts immediately (doesn't need org_id).
     var appender = MemoryAppenderInstance.getInstance();

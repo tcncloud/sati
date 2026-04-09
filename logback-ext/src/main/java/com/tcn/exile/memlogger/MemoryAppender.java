@@ -38,6 +38,21 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
   private Thread cleanupThread;
   private Thread shipperThread;
 
+  /**
+   * Pluggable trace context extractor. Called at append time to capture the current trace/span IDs.
+   * Set from the core module after OTel SDK is initialized.
+   */
+  public interface TraceContextExtractor {
+    String traceId();
+    String spanId();
+  }
+
+  private static volatile TraceContextExtractor traceContextExtractor;
+
+  public static void setTraceContextExtractor(TraceContextExtractor extractor) {
+    traceContextExtractor = extractor;
+  }
+
   public MemoryAppender() {
     this.events = new ArrayBlockingQueue<>(MAX_SIZE);
   }
@@ -121,6 +136,14 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     Map<String, String> mdc =
         event.getMDCPropertyMap() != null ? new HashMap<>(event.getMDCPropertyMap()) : null;
 
+    String traceId = null;
+    String spanId = null;
+    var extractor = traceContextExtractor;
+    if (extractor != null) {
+      traceId = extractor.traceId();
+      spanId = extractor.spanId();
+    }
+
     LogEvent logEvent =
         new LogEvent(
             event.getFormattedMessage(),
@@ -130,7 +153,9 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
             event.getLoggerName(),
             event.getThreadName(),
             mdc,
-            stackTrace);
+            stackTrace,
+            traceId,
+            spanId);
 
     if (!events.offer(logEvent)) {
       // If queue is full, remove oldest and try again
@@ -189,7 +214,8 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
       result.add(
           new LogEvent(
               event.message, event.formattedMessage, event.timestamp, event.level,
-              event.loggerName, event.threadName, event.mdc, event.stackTrace));
+              event.loggerName, event.threadName, event.mdc, event.stackTrace,
+              event.traceId, event.spanId));
     }
 
     return result;
@@ -262,9 +288,11 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     public final String threadName;
     public final Map<String, String> mdc;
     public final String stackTrace;
+    public final String traceId;
+    public final String spanId;
 
     public LogEvent(String message, long timestamp) {
-      this(message, null, timestamp, null, null, null, null, null);
+      this(message, null, timestamp, null, null, null, null, null, null, null);
     }
 
     public LogEvent(
@@ -275,7 +303,9 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
         String loggerName,
         String threadName,
         Map<String, String> mdc,
-        String stackTrace) {
+        String stackTrace,
+        String traceId,
+        String spanId) {
       this.message = message;
       this.formattedMessage = formattedMessage;
       this.timestamp = timestamp;
@@ -284,6 +314,8 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
       this.threadName = threadName;
       this.mdc = mdc;
       this.stackTrace = stackTrace;
+      this.traceId = traceId;
+      this.spanId = spanId;
     }
   }
 }
