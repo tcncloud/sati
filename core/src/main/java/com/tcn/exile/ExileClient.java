@@ -47,7 +47,9 @@ public final class ExileClient implements AutoCloseable {
   private final ScrubListService scrubListService;
   private final ConfigService configService;
   private final JourneyService journeyService;
-  private final MetricsManager metricsManager;
+  private final TelemetryService telemetryService;
+  private final String telemetryClientId;
+  private volatile MetricsManager metricsManager;
 
   private volatile ConfigService.ClientConfiguration lastConfig;
   private final AtomicBoolean pluginReady = new AtomicBoolean(false);
@@ -76,17 +78,19 @@ public final class ExileClient implements AutoCloseable {
     this.scrubListService = services.scrubList();
     this.configService = services.config();
     this.journeyService = services.journey();
+    this.telemetryService = services.telemetry();
 
-    // Telemetry: OTel metrics exported via gRPC to the gate.
-    var telemetryClientId = builder.clientName + "-" + java.util.UUID.randomUUID().toString().substring(0, 8);
-    this.metricsManager = new MetricsManager(services.telemetry(), telemetryClientId, workStream::status);
-    workStream.setDurationRecorder(metricsManager::recordWorkDuration);
+    // Telemetry client ID (stable across reconnects).
+    this.telemetryClientId =
+        builder.clientName + "-" + java.util.UUID.randomUUID().toString().substring(0, 8);
 
-    // Telemetry: structured log shipping via gRPC to the gate.
+    // Structured log shipping starts immediately (doesn't need org_id).
     var appender = MemoryAppenderInstance.getInstance();
     if (appender != null) {
-      appender.enableLogShipper(new GrpcLogShipper(services.telemetry(), telemetryClientId));
+      appender.enableLogShipper(new GrpcLogShipper(telemetryService, telemetryClientId));
     }
+
+    // MetricsManager is created after first config poll (needs org_id + configName).
 
     this.configPoller =
         Executors.newSingleThreadScheduledExecutor(
@@ -143,8 +147,18 @@ public final class ExileClient implements AutoCloseable {
         pluginReady.set(true);
       }
 
-      // Only start WorkStream if plugin has explicitly accepted a config.
+      // Only start WorkStream + metrics once plugin has explicitly accepted a config.
       if (pluginReady.get() && workStreamStarted.compareAndSet(false, true)) {
+        // Initialize MetricsManager now that we have org_id and configName.
+        this.metricsManager =
+            new MetricsManager(
+                telemetryService,
+                telemetryClientId,
+                newConfig.orgId(),
+                newConfig.configName(),
+                workStream::status);
+        workStream.setDurationRecorder(metricsManager::recordWorkDuration);
+
         log.info("Plugin {} ready, starting WorkStream", plugin.pluginName());
         workStream.start();
       }
@@ -196,10 +210,12 @@ public final class ExileClient implements AutoCloseable {
 
   /**
    * The OTel Meter for registering custom metrics from plugins. Instruments created on this meter
-   * are exported alongside sati's built-in metrics to the gate TelemetryService.
+   * are exported alongside sati's built-in metrics to the gate TelemetryService. Returns null if
+   * the first config poll has not completed yet.
    */
   public Meter meter() {
-    return metricsManager.meter();
+    var mm = metricsManager;
+    return mm != null ? mm.meter() : null;
   }
 
   @Override
@@ -210,7 +226,8 @@ public final class ExileClient implements AutoCloseable {
     if (appender != null) {
       appender.disableLogShipper();
     }
-    metricsManager.close();
+    var mm = metricsManager;
+    if (mm != null) mm.close();
     workStream.close();
     ChannelFactory.shutdown(serviceChannel);
   }

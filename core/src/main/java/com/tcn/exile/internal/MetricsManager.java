@@ -2,10 +2,13 @@ package com.tcn.exile.internal;
 
 import com.tcn.exile.StreamStatus;
 import com.tcn.exile.service.TelemetryService;
+import io.opentelemetry.api.common.AttributeKey;
+import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.Meter;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader;
+import io.opentelemetry.sdk.resources.Resource;
 import java.lang.management.ManagementFactory;
 import java.time.Duration;
 import java.util.function.Supplier;
@@ -24,16 +27,35 @@ public final class MetricsManager implements AutoCloseable {
   private final Meter meter;
   private final DoubleHistogram workDuration;
 
+  /**
+   * @param telemetryService gRPC stub for reporting metrics
+   * @param clientId unique client identifier
+   * @param orgId organization ID (from config poll)
+   * @param configName exile certificate/config name (from config poll)
+   * @param statusSupplier supplies current WorkStream status snapshot
+   */
   public MetricsManager(
       TelemetryService telemetryService,
       String clientId,
+      String orgId,
+      String configName,
       Supplier<StreamStatus> statusSupplier) {
 
     var exporter = new GrpcMetricExporter(telemetryService, clientId);
     var reader =
         PeriodicMetricReader.builder(exporter).setInterval(Duration.ofSeconds(60)).build();
 
-    this.meterProvider = SdkMeterProvider.builder().registerMetricReader(reader).build();
+    var resource =
+        Resource.getDefault()
+            .merge(
+                Resource.create(
+                    Attributes.of(
+                        AttributeKey.stringKey("exile.org_id"), orgId,
+                        AttributeKey.stringKey("exile.config_name"), configName,
+                        AttributeKey.stringKey("exile.client_id"), clientId)));
+
+    this.meterProvider =
+        SdkMeterProvider.builder().setResource(resource).registerMetricReader(reader).build();
     this.meter = meterProvider.get("com.tcn.exile.sati");
 
     // --- Built-in instruments ---
@@ -43,22 +65,19 @@ public final class MetricsManager implements AutoCloseable {
         .counterBuilder("exile.work.completed")
         .setDescription("Total work items completed since start")
         .setUnit("1")
-        .buildWithCallback(
-            obs -> obs.record(statusSupplier.get().completedTotal()));
+        .buildWithCallback(obs -> obs.record(statusSupplier.get().completedTotal()));
 
     meter
         .counterBuilder("exile.work.failed")
         .setDescription("Total work items that failed since start")
         .setUnit("1")
-        .buildWithCallback(
-            obs -> obs.record(statusSupplier.get().failedTotal()));
+        .buildWithCallback(obs -> obs.record(statusSupplier.get().failedTotal()));
 
     meter
         .counterBuilder("exile.work.reconnects")
         .setDescription("Total stream reconnection attempts since start")
         .setUnit("1")
-        .buildWithCallback(
-            obs -> obs.record(statusSupplier.get().reconnectAttempts()));
+        .buildWithCallback(obs -> obs.record(statusSupplier.get().reconnectAttempts()));
 
     // WorkStream gauges
     meter
@@ -66,16 +85,15 @@ public final class MetricsManager implements AutoCloseable {
         .ofLongs()
         .setDescription("Work items currently being processed")
         .setUnit("1")
-        .buildWithCallback(
-            obs -> obs.record(statusSupplier.get().inflight()));
+        .buildWithCallback(obs -> obs.record(statusSupplier.get().inflight()));
 
     meter
         .gaugeBuilder("exile.work.phase")
         .ofLongs()
-        .setDescription("WorkStream phase (0=IDLE, 1=CONNECTING, 2=REGISTERING, 3=ACTIVE, 4=RECONNECTING, 5=CLOSED)")
+        .setDescription(
+            "WorkStream phase (0=IDLE, 1=CONNECTING, 2=REGISTERING, 3=ACTIVE, 4=RECONNECTING, 5=CLOSED)")
         .setUnit("1")
-        .buildWithCallback(
-            obs -> obs.record(statusSupplier.get().phase().ordinal()));
+        .buildWithCallback(obs -> obs.record(statusSupplier.get().phase().ordinal()));
 
     // JVM gauges
     var memoryBean = ManagementFactory.getMemoryMXBean();
@@ -86,16 +104,14 @@ public final class MetricsManager implements AutoCloseable {
         .ofLongs()
         .setDescription("JVM heap memory used")
         .setUnit("bytes")
-        .buildWithCallback(
-            obs -> obs.record(memoryBean.getHeapMemoryUsage().getUsed()));
+        .buildWithCallback(obs -> obs.record(memoryBean.getHeapMemoryUsage().getUsed()));
 
     meter
         .gaugeBuilder("exile.jvm.threads")
         .ofLongs()
         .setDescription("JVM thread count")
         .setUnit("1")
-        .buildWithCallback(
-            obs -> obs.record(threadBean.getThreadCount()));
+        .buildWithCallback(obs -> obs.record(threadBean.getThreadCount()));
 
     // Work duration histogram (recorded externally via recordWorkDuration)
     this.workDuration =
@@ -105,7 +121,11 @@ public final class MetricsManager implements AutoCloseable {
             .setUnit("s")
             .build();
 
-    log.info("MetricsManager initialized (export interval=60s, clientId={})", clientId);
+    log.info(
+        "MetricsManager initialized (export interval=60s, clientId={}, orgId={}, configName={})",
+        clientId,
+        orgId,
+        configName);
   }
 
   /** The OTel Meter for plugin developers to create custom instruments. */

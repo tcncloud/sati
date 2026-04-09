@@ -29,17 +29,20 @@ public final class TelemetryService {
       var name = metric.getName();
       var description = metric.getDescription();
       var unit = metric.getUnit();
+      // Resource attributes (org_id, config_name, client_id) are merged into every data point.
+      var resourceAttrs = attributesToMap(metric.getResource().getAttributes());
 
       switch (metric.getType()) {
         case LONG_GAUGE -> {
           for (var point : metric.getLongGaugeData().getPoints()) {
+            var attrs = mergeAttributes(resourceAttrs, point.getAttributes());
             builder.addDataPoints(
                 MetricDataPoint.newBuilder()
                     .setName(name)
                     .setDescription(description)
                     .setUnit(unit)
                     .setType(MetricType.METRIC_TYPE_GAUGE)
-                    .putAllAttributes(attributesToMap(point.getAttributes()))
+                    .putAllAttributes(attrs)
                     .setTime(toTimestamp(point.getEpochNanos()))
                     .setDoubleValue(point.getValue())
                     .build());
@@ -47,13 +50,14 @@ public final class TelemetryService {
         }
         case DOUBLE_GAUGE -> {
           for (var point : metric.getDoubleGaugeData().getPoints()) {
+            var attrs = mergeAttributes(resourceAttrs, point.getAttributes());
             builder.addDataPoints(
                 MetricDataPoint.newBuilder()
                     .setName(name)
                     .setDescription(description)
                     .setUnit(unit)
                     .setType(MetricType.METRIC_TYPE_GAUGE)
-                    .putAllAttributes(attributesToMap(point.getAttributes()))
+                    .putAllAttributes(attrs)
                     .setTime(toTimestamp(point.getEpochNanos()))
                     .setDoubleValue(point.getValue())
                     .build());
@@ -61,13 +65,14 @@ public final class TelemetryService {
         }
         case LONG_SUM -> {
           for (var point : metric.getLongSumData().getPoints()) {
+            var attrs = mergeAttributes(resourceAttrs, point.getAttributes());
             builder.addDataPoints(
                 MetricDataPoint.newBuilder()
                     .setName(name)
                     .setDescription(description)
                     .setUnit(unit)
                     .setType(MetricType.METRIC_TYPE_SUM)
-                    .putAllAttributes(attributesToMap(point.getAttributes()))
+                    .putAllAttributes(attrs)
                     .setTime(toTimestamp(point.getEpochNanos()))
                     .setIntValue(point.getValue())
                     .build());
@@ -75,13 +80,14 @@ public final class TelemetryService {
         }
         case DOUBLE_SUM -> {
           for (var point : metric.getDoubleSumData().getPoints()) {
+            var attrs = mergeAttributes(resourceAttrs, point.getAttributes());
             builder.addDataPoints(
                 MetricDataPoint.newBuilder()
                     .setName(name)
                     .setDescription(description)
                     .setUnit(unit)
                     .setType(MetricType.METRIC_TYPE_SUM)
-                    .putAllAttributes(attributesToMap(point.getAttributes()))
+                    .putAllAttributes(attrs)
                     .setTime(toTimestamp(point.getEpochNanos()))
                     .setDoubleValue(point.getValue())
                     .build());
@@ -89,6 +95,7 @@ public final class TelemetryService {
         }
         case HISTOGRAM -> {
           for (var point : metric.getHistogramData().getPoints()) {
+            var attrs = mergeAttributes(resourceAttrs, point.getAttributes());
             var hv =
                 HistogramValue.newBuilder()
                     .setCount(point.getCount())
@@ -103,7 +110,7 @@ public final class TelemetryService {
                     .setDescription(description)
                     .setUnit(unit)
                     .setType(MetricType.METRIC_TYPE_HISTOGRAM)
-                    .putAllAttributes(attributesToMap(point.getAttributes()))
+                    .putAllAttributes(attrs)
                     .setTime(toTimestamp(point.getEpochNanos()))
                     .setHistogramValue(hv)
                     .build());
@@ -129,6 +136,15 @@ public final class TelemetryService {
     var map = new java.util.HashMap<String, String>();
     attrs.forEach((k, v) -> map.put(k.getKey(), String.valueOf(v)));
     return map;
+  }
+
+  /** Merge resource attributes with point attributes (point attrs take precedence). */
+  private static java.util.Map<String, String> mergeAttributes(
+      java.util.Map<String, String> resourceAttrs,
+      io.opentelemetry.api.common.Attributes pointAttrs) {
+    var merged = new java.util.HashMap<>(resourceAttrs);
+    pointAttrs.forEach((k, v) -> merged.put(k.getKey(), String.valueOf(v)));
+    return merged;
   }
 
   private static Timestamp toTimestamp(Instant instant) {

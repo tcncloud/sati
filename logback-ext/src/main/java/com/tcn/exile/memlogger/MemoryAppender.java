@@ -123,6 +123,7 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
 
     LogEvent logEvent =
         new LogEvent(
+            event.getFormattedMessage(),
             new String(this.encoder.encode(event)),
             System.currentTimeMillis(),
             event.getLevel() != null ? event.getLevel().toString() : null,
@@ -145,7 +146,7 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     List<LogEvent> snapshot = new ArrayList<>(events);
 
     for (LogEvent event : snapshot) {
-      result.add(event.message);
+      result.add(event.formattedMessage != null ? event.formattedMessage : event.message);
     }
 
     return result;
@@ -166,7 +167,7 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
 
     for (LogEvent event : snapshot) {
       if (event.timestamp >= startTimeMs && event.timestamp <= endTimeMs) {
-        result.add(event.message);
+        result.add(event.formattedMessage != null ? event.formattedMessage : event.message);
       }
     }
 
@@ -187,8 +188,8 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     for (LogEvent event : snapshot) {
       result.add(
           new LogEvent(
-              event.message, event.timestamp, event.level, event.loggerName, event.threadName,
-              event.mdc, event.stackTrace));
+              event.message, event.formattedMessage, event.timestamp, event.level,
+              event.loggerName, event.threadName, event.mdc, event.stackTrace));
     }
 
     return result;
@@ -251,7 +252,10 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
   }
 
   public static class LogEvent {
+    /** Raw log message (no pattern formatting). */
     public final String message;
+    /** Formatted log line from the encoder pattern (for display/legacy). */
+    public final String formattedMessage;
     public final long timestamp;
     public final String level;
     public final String loggerName;
@@ -260,11 +264,12 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     public final String stackTrace;
 
     public LogEvent(String message, long timestamp) {
-      this(message, timestamp, null, null, null, null, null);
+      this(message, null, timestamp, null, null, null, null, null);
     }
 
     public LogEvent(
         String message,
+        String formattedMessage,
         long timestamp,
         String level,
         String loggerName,
@@ -272,6 +277,7 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
         Map<String, String> mdc,
         String stackTrace) {
       this.message = message;
+      this.formattedMessage = formattedMessage;
       this.timestamp = timestamp;
       this.level = level;
       this.loggerName = loggerName;
