@@ -1,7 +1,7 @@
 <configuration>
   <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
-      <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg [traceId=%mdc{traceId:-} spanId=%mdc{spanId:-}]%n</pattern>
+      <pattern>%d{HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%replace( [traceId=%mdc{traceId} spanId=%mdc{spanId}]){' \[traceId= spanId=\]', ''}%n</pattern>
     </encoder>
   </appender>
 
