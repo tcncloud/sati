@@ -11,6 +11,11 @@ import com.tcn.exile.handler.JobHandler;
 import com.tcn.exile.model.*;
 import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
+import io.opentelemetry.api.GlobalOpenTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.StatusCode;
+import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.context.Scope;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -253,10 +258,23 @@ public final class WorkStreamClient implements AutoCloseable {
     this.durationRecorder = recorder;
   }
 
+  private static final Tracer tracer =
+      GlobalOpenTelemetry.getTracer("com.tcn.exile.sati", "1.0.0");
+
   private void processWorkItem(WorkItem item) {
     long startNanos = System.nanoTime();
     String workId = item.getWorkId();
-    try {
+    String category =
+        item.getCategory() == WorkCategory.WORK_CATEGORY_JOB ? "job" : "event";
+
+    Span span =
+        tracer
+            .spanBuilder("exile.work." + category)
+            .setAttribute("exile.work_id", workId)
+            .setAttribute("exile.work_category", category)
+            .startSpan();
+
+    try (Scope ignored = span.makeCurrent()) {
       if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB) {
         var result = dispatchJob(item);
         send(WorkRequest.newBuilder().setResult(result).build());
@@ -266,6 +284,8 @@ public final class WorkStreamClient implements AutoCloseable {
       }
       completedTotal.incrementAndGet();
     } catch (Exception e) {
+      span.setStatus(StatusCode.ERROR, e.getMessage());
+      span.recordException(e);
       failedTotal.incrementAndGet();
       log.warn("Work item {} failed: {}", workId, e.getMessage());
       send(
@@ -277,6 +297,7 @@ public final class WorkStreamClient implements AutoCloseable {
                       .setError(ErrorResult.newBuilder().setMessage(e.getMessage())))
               .build());
     } finally {
+      span.end();
       var recorder = durationRecorder;
       if (recorder != null) {
         recorder.accept((System.nanoTime() - startNanos) / 1_000_000_000.0);

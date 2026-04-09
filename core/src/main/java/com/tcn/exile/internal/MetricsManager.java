@@ -2,13 +2,16 @@ package com.tcn.exile.internal;
 
 import com.tcn.exile.StreamStatus;
 import com.tcn.exile.service.TelemetryService;
+import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.Meter;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader;
 import io.opentelemetry.sdk.resources.Resource;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import java.lang.management.ManagementFactory;
 import java.time.Duration;
 import java.util.function.Supplier;
@@ -23,6 +26,7 @@ public final class MetricsManager implements AutoCloseable {
 
   private static final Logger log = LoggerFactory.getLogger(MetricsManager.class);
 
+  private final OpenTelemetrySdk openTelemetry;
   private final SdkMeterProvider meterProvider;
   private final Meter meter;
   private final DoubleHistogram workDuration;
@@ -56,6 +60,16 @@ public final class MetricsManager implements AutoCloseable {
 
     this.meterProvider =
         SdkMeterProvider.builder().setResource(resource).registerMetricReader(reader).build();
+
+    // TracerProvider generates valid trace/span IDs for log correlation.
+    var tracerProvider = SdkTracerProvider.builder().setResource(resource).build();
+
+    this.openTelemetry =
+        OpenTelemetrySdk.builder()
+            .setMeterProvider(meterProvider)
+            .setTracerProvider(tracerProvider)
+            .buildAndRegisterGlobal();
+
     this.meter = meterProvider.get("com.tcn.exile.sati");
 
     // --- Built-in instruments ---
@@ -140,7 +154,7 @@ public final class MetricsManager implements AutoCloseable {
 
   @Override
   public void close() {
-    meterProvider.close();
+    openTelemetry.close();
     log.info("MetricsManager shut down");
   }
 }
