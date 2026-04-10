@@ -223,8 +223,25 @@ public final class WorkStreamClient implements AutoCloseable {
                       .addAllCapabilities(capabilities))
               .build());
 
+      // Periodically send Pull to tell the gate how many items we can handle.
+      var pullThread = Thread.ofPlatform().name("exile-pull-ticker").daemon(true).start(() -> {
+        while (!Thread.currentThread().isInterrupted() && phase == Phase.ACTIVE) {
+          try {
+            Thread.sleep(2000);
+            int available = maxConcurrency - inflight.get();
+            if (available > 0 && phase == Phase.ACTIVE) {
+              pull(available);
+            }
+          } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            break;
+          }
+        }
+      });
+
       // Wait until stream ends.
       latch.await();
+      pullThread.interrupt();
     } finally {
       requestObserver.set(null);
       inflight.set(0);
@@ -408,12 +425,8 @@ public final class WorkStreamClient implements AutoCloseable {
       if (recorder != null) {
         recorder.accept((System.nanoTime() - startNanos) / 1_000_000_000.0);
       }
-      int remaining = inflight.decrementAndGet();
-      // Pull enough to fill capacity. Avoids 1-at-a-time round-trips over a 32ms RTT.
-      int available = maxConcurrency - remaining;
-      if (available > 0) {
-        pull(available);
-      }
+      inflight.decrementAndGet();
+      // Periodic pull thread handles capacity signaling.
     }
   }
 
