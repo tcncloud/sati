@@ -404,14 +404,21 @@ public final class WorkStreamClient implements AutoCloseable {
       span.recordException(e);
       failedTotal.incrementAndGet();
       log.warn("Work item {} failed: {}", workId, e.getMessage());
-      send(
-          WorkRequest.newBuilder()
-              .setResult(
-                  Result.newBuilder()
-                      .setWorkId(workId)
-                      .setFinal(true)
-                      .setError(ErrorResult.newBuilder().setMessage(e.getMessage())))
-              .build());
+      if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB) {
+        send(
+            WorkRequest.newBuilder()
+                .setResult(
+                    Result.newBuilder()
+                        .setWorkId(workId)
+                        .setFinal(true)
+                        .setError(ErrorResult.newBuilder().setMessage(e.getMessage())))
+                .build());
+      } else {
+        send(
+            WorkRequest.newBuilder()
+                .setNack(Nack.newBuilder().setWorkId(workId).setReason(e.getMessage()))
+                .build());
+      }
     } finally {
       MDC.remove("traceId");
       MDC.remove("spanId");
