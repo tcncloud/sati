@@ -227,7 +227,7 @@ public final class WorkStreamClient implements AutoCloseable {
       var pullThread = Thread.ofPlatform().name("exile-pull-ticker").daemon(true).start(() -> {
         while (!Thread.currentThread().isInterrupted() && phase == Phase.ACTIVE) {
           try {
-            Thread.sleep(2000);
+            Thread.sleep(1000);
             int available = maxConcurrency - inflight.get();
             if (available > 0 && phase == Phase.ACTIVE) {
               pull(available);
