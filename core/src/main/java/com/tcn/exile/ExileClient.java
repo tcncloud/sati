@@ -167,13 +167,13 @@ public final class ExileClient implements AutoCloseable {
 
       // Only start WorkStream + metrics once plugin has explicitly accepted a config.
       if (pluginReady.get() && workStreamStarted.compareAndSet(false, true)) {
-        // Initialize MetricsManager now that we have org_id and configName.
+        // Initialize MetricsManager now that we have org_id and certificate_name.
         this.metricsManager =
             new MetricsManager(
                 telemetryService,
                 telemetryClientId,
                 newConfig.orgId(),
-                newConfig.configName(),
+                config.certificateName(),
                 workStream::status);
         workStream.setDurationRecorder(metricsManager::recordWorkDuration);
         workStream.setMethodRecorder(metricsManager::recordMethodCall);

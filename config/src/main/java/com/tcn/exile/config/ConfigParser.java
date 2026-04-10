@@ -63,6 +63,9 @@ public final class ConfigParser {
       var builder =
           ExileConfig.builder().rootCert(rootCert).publicCert(publicCert).privateKey(privateKey);
 
+      var certName = (String) map.get("certificate_name");
+      if (certName != null) builder.certificateName(certName);
+
       if (endpoint != null && !endpoint.isEmpty()) {
         // Handle both "host:port" and URL formats like "https://host" or "https://host:port".
         String host = endpoint;

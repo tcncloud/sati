@@ -44,14 +44,14 @@ public final class MetricsManager implements AutoCloseable {
    * @param telemetryService gRPC stub for reporting metrics
    * @param clientId unique client identifier
    * @param orgId organization ID (from config poll)
-   * @param configName exile certificate/config name (from config poll)
+   * @param certificateName certificate name from the config file
    * @param statusSupplier supplies current WorkStream status snapshot
    */
   public MetricsManager(
       TelemetryService telemetryService,
       String clientId,
       String orgId,
-      String configName,
+      String certificateName,
       Supplier<StreamStatus> statusSupplier) {
 
     var exporter = new GrpcMetricExporter(telemetryService, clientId);
@@ -64,7 +64,7 @@ public final class MetricsManager implements AutoCloseable {
                 Resource.create(
                     Attributes.of(
                         AttributeKey.stringKey("exile.org_id"), orgId,
-                        AttributeKey.stringKey("exile.config_name"), configName,
+                        AttributeKey.stringKey("exile.certificate_name"), certificateName,
                         AttributeKey.stringKey("exile.client_id"), clientId)));
 
     this.meterProvider =
@@ -175,10 +175,10 @@ public final class MetricsManager implements AutoCloseable {
             .build();
 
     log.info(
-        "MetricsManager initialized (export interval=60s, clientId={}, orgId={}, configName={})",
+        "MetricsManager initialized (export interval=60s, clientId={}, orgId={}, certificateName={})",
         clientId,
         orgId,
-        configName);
+        certificateName);
   }
 
   /** The OTel Meter for plugin developers to create custom instruments. */

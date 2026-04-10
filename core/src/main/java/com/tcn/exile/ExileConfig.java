@@ -18,6 +18,7 @@ public final class ExileConfig {
   private final String privateKey;
   private final String apiHostname;
   private final int apiPort;
+  private final String certificateName;
 
   // Lazily derived from certificate.
   private volatile String org;
@@ -28,6 +29,7 @@ public final class ExileConfig {
     this.privateKey = Objects.requireNonNull(builder.privateKey, "privateKey");
     this.apiHostname = Objects.requireNonNull(builder.apiHostname, "apiHostname");
     this.apiPort = builder.apiPort > 0 ? builder.apiPort : 443;
+    this.certificateName = builder.certificateName != null ? builder.certificateName : "";
   }
 
   public String rootCert() {
@@ -48,6 +50,11 @@ public final class ExileConfig {
 
   public int apiPort() {
     return apiPort;
+  }
+
+  /** The certificate name from the config file (may be empty). */
+  public String certificateName() {
+    return certificateName;
   }
 
   /** Extracts the organization name from the certificate CN field. Thread-safe. */
@@ -95,6 +102,7 @@ public final class ExileConfig {
     private String privateKey;
     private String apiHostname;
     private int apiPort;
+    private String certificateName;
 
     private Builder() {}
 
@@ -115,6 +123,11 @@ public final class ExileConfig {
 
     public Builder apiHostname(String apiHostname) {
       this.apiHostname = apiHostname;
+      return this;
+    }
+
+    public Builder certificateName(String certificateName) {
+      this.certificateName = certificateName;
       return this;
     }
 
