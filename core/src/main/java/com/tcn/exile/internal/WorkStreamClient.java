@@ -245,6 +245,7 @@ public final class WorkStreamClient implements AutoCloseable {
           var rr = reconnectRecorder;
           if (rr != null) rr.accept(reconnectSec);
           log.info("Reconnected in {}ms", java.time.Duration.between(disconnectTime, now).toMillis());
+          lastDisconnect = null;
         }
         connectedSince = now;
         phase = Phase.ACTIVE;
