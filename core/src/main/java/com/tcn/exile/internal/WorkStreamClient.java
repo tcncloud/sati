@@ -223,25 +223,8 @@ public final class WorkStreamClient implements AutoCloseable {
                       .addAllCapabilities(capabilities))
               .build());
 
-      // Periodically send Pull to tell the gate how many items we can handle.
-      var pullThread = Thread.ofPlatform().name("exile-pull-ticker").daemon(true).start(() -> {
-        while (!Thread.currentThread().isInterrupted() && phase == Phase.ACTIVE) {
-          try {
-            Thread.sleep(1000);
-            int available = maxConcurrency - inflight.get();
-            if (available > 0 && phase == Phase.ACTIVE) {
-              pull(available);
-            }
-          } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            break;
-          }
-        }
-      });
-
       // Wait until stream ends.
       latch.await();
-      pullThread.interrupt();
     } finally {
       requestObserver.set(null);
       inflight.set(0);
@@ -272,8 +255,9 @@ public final class WorkStreamClient implements AutoCloseable {
             reg.getHeartbeatInterval().getSeconds(),
             reg.getDefaultLease().getSeconds(),
             reg.getMaxInflight());
-        // Initial pull now that we're registered.
-        pull(maxConcurrency);
+        // Signal the gate to start sending events. The gate pushes continuously;
+        // gRPC HTTP/2 flow control handles backpressure if we can't keep up.
+        pull(Integer.MAX_VALUE);
       }
       case WORK_ITEM -> {
         inflight.incrementAndGet();
