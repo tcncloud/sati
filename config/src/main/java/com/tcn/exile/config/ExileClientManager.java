@@ -184,7 +184,7 @@ public final class ExileClientManager implements AutoCloseable {
   public static final class Builder {
     private String clientName = "sati";
     private String clientVersion = "unknown";
-    private int maxConcurrency = 20;
+    private int maxConcurrency = 100;
     private Plugin plugin;
     private List<Path> watchDirs;
     private int certRotationHours = 1;
