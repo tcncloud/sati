@@ -17,15 +17,15 @@ class BackoffTest {
     var b = new Backoff();
     b.recordFailure();
     long d1 = b.nextDelayMs();
-    assertTrue(d1 >= 1600 && d1 <= 2400, "First failure ~2s, got " + d1);
+    assertTrue(d1 >= 400 && d1 <= 600, "First failure ~500ms, got " + d1);
 
     b.recordFailure();
     long d2 = b.nextDelayMs();
-    assertTrue(d2 >= 3200 && d2 <= 4800, "Second failure ~4s, got " + d2);
+    assertTrue(d2 >= 800 && d2 <= 1200, "Second failure ~1s, got " + d2);
 
     b.recordFailure();
     long d3 = b.nextDelayMs();
-    assertTrue(d3 >= 6400 && d3 <= 9600, "Third failure ~8s, got " + d3);
+    assertTrue(d3 >= 1600 && d3 <= 2400, "Third failure ~2s, got " + d3);
   }
 
   @Test
@@ -33,7 +33,7 @@ class BackoffTest {
     var b = new Backoff();
     for (int i = 0; i < 20; i++) b.recordFailure();
     long d = b.nextDelayMs();
-    assertTrue(d <= 30_000, "Should cap at 30s, got " + d);
+    assertTrue(d <= 10_000, "Should cap at 10s, got " + d);
   }
 
   @Test
