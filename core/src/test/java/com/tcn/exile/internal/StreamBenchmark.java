@@ -5,7 +5,6 @@ import static org.junit.jupiter.api.Assertions.*;
 import build.buf.gen.tcnapi.exile.gate.v3.*;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.Timestamp;
-import io.grpc.ManagedChannel;
 import io.grpc.Server;
 import io.grpc.inprocess.InProcessChannelBuilder;
 import io.grpc.inprocess.InProcessServerBuilder;
@@ -84,7 +83,10 @@ class StreamBenchmark {
     requestObserver.onNext(
         BenchmarkRequest.newBuilder()
             .setStart(
-                StartBenchmark.newBuilder().setPayloadSize(0).setMaxMessages(maxMessages).setBatchSize(0))
+                StartBenchmark.newBuilder()
+                    .setPayloadSize(0)
+                    .setMaxMessages(maxMessages)
+                    .setBatchSize(0))
             .build());
 
     assertTrue(done.await(30, TimeUnit.SECONDS), "Timed out waiting for benchmark to complete");
@@ -92,7 +94,8 @@ class StreamBenchmark {
     var stats = statsRef.get();
     assertNotNull(stats, "Should have received stats");
 
-    System.out.println("=== UNLIMITED THROUGHPUT (" + maxMessages + " messages, 0 byte payload) ===");
+    System.out.println(
+        "=== UNLIMITED THROUGHPUT (" + maxMessages + " messages, 0 byte payload) ===");
     System.out.printf("  server msgs sent:    %,d%n", stats.getTotalMessages());
     System.out.printf("  client msgs received: %,d%n", received.get());
     System.out.printf("  duration:            %,d ms%n", stats.getDurationMs());
@@ -233,11 +236,7 @@ class StreamBenchmark {
     assertNotNull(stats);
 
     System.out.println(
-        "=== FLOW-CONTROLLED ("
-            + maxMessages
-            + " messages, batch_size="
-            + batchSize
-            + ") ===");
+        "=== FLOW-CONTROLLED (" + maxMessages + " messages, batch_size=" + batchSize + ") ===");
     System.out.printf("  server msgs sent:    %,d%n", stats.getTotalMessages());
     System.out.printf("  client msgs received: %,d%n", received.get());
     System.out.printf("  duration:            %,d ms%n", stats.getDurationMs());
@@ -332,8 +331,7 @@ class StreamBenchmark {
    * In-process BenchmarkService that implements the streaming and ping protocols for local
    * benchmarking.
    */
-  static class InProcessBenchmarkService
-      extends BenchmarkServiceGrpc.BenchmarkServiceImplBase {
+  static class InProcessBenchmarkService extends BenchmarkServiceGrpc.BenchmarkServiceImplBase {
 
     @Override
     public StreamObserver<BenchmarkRequest> streamBenchmark(

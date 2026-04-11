@@ -8,6 +8,7 @@ import com.google.protobuf.ByteString;
 import com.google.protobuf.Timestamp;
 import com.tcn.exile.ExileConfig;
 import io.grpc.ManagedChannel;
+import io.grpc.stub.StreamObserver;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,24 +18,27 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
-import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.*;
 
 /**
- * Live benchmarks against a real exile gate v3 deployment. Reads mTLS config from the standard
- * sati config file. Skipped if config is not present.
+ * Live benchmarks against a real exile gate v3 deployment. Reads mTLS config from the standard sati
+ * config file. Skipped if config is not present.
  */
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class LiveBenchmark {
 
   private static final Path CONFIG_PATH =
-      Path.of(System.getProperty("user.home"), "dev/tcncloud/workdir/config/com.tcn.exiles.sati.config.cfg");
+      Path.of(
+          System.getProperty("user.home"),
+          "dev/tcncloud/workdir/config/com.tcn.exiles.sati.config.cfg");
 
   private static ManagedChannel channel;
 
   @BeforeAll
   static void connect() throws Exception {
-    assumeTrue(Files.exists(CONFIG_PATH), "No sati config found at " + CONFIG_PATH + " — skipping live benchmarks");
+    assumeTrue(
+        Files.exists(CONFIG_PATH),
+        "No sati config found at " + CONFIG_PATH + " — skipping live benchmarks");
 
     var raw = new String(Files.readAllBytes(CONFIG_PATH), StandardCharsets.UTF_8).trim();
     byte[] json;
@@ -46,13 +50,14 @@ class LiveBenchmark {
     var jsonStr = new String(json, StandardCharsets.UTF_8);
 
     // Minimal JSON extraction for the 4 fields we need.
-    var config = ExileConfig.builder()
-        .rootCert(extractJsonString(jsonStr, "ca_certificate"))
-        .publicCert(extractJsonString(jsonStr, "certificate"))
-        .privateKey(extractJsonString(jsonStr, "private_key"))
-        .apiHostname(parseHost(extractJsonString(jsonStr, "api_endpoint")))
-        .apiPort(parsePort(extractJsonString(jsonStr, "api_endpoint")))
-        .build();
+    var config =
+        ExileConfig.builder()
+            .rootCert(extractJsonString(jsonStr, "ca_certificate"))
+            .publicCert(extractJsonString(jsonStr, "certificate"))
+            .privateKey(extractJsonString(jsonStr, "private_key"))
+            .apiHostname(parseHost(extractJsonString(jsonStr, "api_endpoint")))
+            .apiPort(parsePort(extractJsonString(jsonStr, "api_endpoint")))
+            .build();
 
     channel = ChannelFactory.create(config);
     System.out.println("Connected to " + config.apiHostname() + ":" + config.apiPort());
@@ -71,14 +76,15 @@ class LiveBenchmark {
       if (c == '"') break;
       if (c == '\\' && i + 1 < json.length()) {
         i++;
-        sb.append(switch (json.charAt(i)) {
-          case 'n' -> '\n';
-          case 'r' -> '\r';
-          case 't' -> '\t';
-          case '\\' -> '\\';
-          case '"' -> '"';
-          default -> json.charAt(i);
-        });
+        sb.append(
+            switch (json.charAt(i)) {
+              case 'n' -> '\n';
+              case 'r' -> '\r';
+              case 't' -> '\t';
+              case '\\' -> '\\';
+              case '"' -> '"';
+              default -> json.charAt(i);
+            });
       } else {
         sb.append(c);
       }
@@ -98,8 +104,11 @@ class LiveBenchmark {
     if (endpoint.endsWith("/")) endpoint = endpoint.substring(0, endpoint.length() - 1);
     int colon = endpoint.lastIndexOf(':');
     if (colon > 0) {
-      try { return Integer.parseInt(endpoint.substring(colon + 1)); }
-      catch (NumberFormatException e) { /* fall through */ }
+      try {
+        return Integer.parseInt(endpoint.substring(colon + 1));
+      } catch (NumberFormatException e) {
+        /* fall through */
+      }
     }
     return 443;
   }
@@ -123,11 +132,7 @@ class LiveBenchmark {
 
     for (int i = 0; i < iterations; i++) {
       long start = System.nanoTime();
-      var resp =
-          stub.ping(
-              PingRequest.newBuilder()
-                  .setClientTime(toTimestamp(start))
-                  .build());
+      var resp = stub.ping(PingRequest.newBuilder().setClientTime(toTimestamp(start)).build());
       long elapsed = System.nanoTime() - start;
       times.add(elapsed);
     }
@@ -137,10 +142,16 @@ class LiveBenchmark {
 
     System.out.println("=== LIVE PING LATENCY (" + iterations + " iterations) ===");
     System.out.printf("  avg:  %,d ns  (%.3f ms)%n", avg, avg / 1_000_000.0);
-    System.out.printf("  min:  %,d ns  (%.3f ms)%n", times.getFirst(), times.getFirst() / 1_000_000.0);
-    System.out.printf("  max:  %,d ns  (%.3f ms)%n", times.getLast(), times.getLast() / 1_000_000.0);
-    System.out.printf("  p50:  %,d ns  (%.3f ms)%n", times.get(iterations / 2), times.get(iterations / 2) / 1_000_000.0);
-    System.out.printf("  p99:  %,d ns  (%.3f ms)%n", times.get((int)(iterations * 0.99)), times.get((int)(iterations * 0.99)) / 1_000_000.0);
+    System.out.printf(
+        "  min:  %,d ns  (%.3f ms)%n", times.getFirst(), times.getFirst() / 1_000_000.0);
+    System.out.printf(
+        "  max:  %,d ns  (%.3f ms)%n", times.getLast(), times.getLast() / 1_000_000.0);
+    System.out.printf(
+        "  p50:  %,d ns  (%.3f ms)%n",
+        times.get(iterations / 2), times.get(iterations / 2) / 1_000_000.0);
+    System.out.printf(
+        "  p99:  %,d ns  (%.3f ms)%n",
+        times.get((int) (iterations * 0.99)), times.get((int) (iterations * 0.99)) / 1_000_000.0);
   }
 
   @Test
@@ -160,10 +171,7 @@ class LiveBenchmark {
     for (int i = 0; i < iterations; i++) {
       long start = System.nanoTime();
       stub.ping(
-          PingRequest.newBuilder()
-              .setClientTime(toTimestamp(start))
-              .setPayload(payload)
-              .build());
+          PingRequest.newBuilder().setClientTime(toTimestamp(start)).setPayload(payload).build());
       long elapsed = System.nanoTime() - start;
       times.add(elapsed);
     }
@@ -173,10 +181,16 @@ class LiveBenchmark {
 
     System.out.println("=== LIVE PING WITH 1KB PAYLOAD (" + iterations + " iterations) ===");
     System.out.printf("  avg:  %,d ns  (%.3f ms)%n", avg, avg / 1_000_000.0);
-    System.out.printf("  min:  %,d ns  (%.3f ms)%n", times.getFirst(), times.getFirst() / 1_000_000.0);
-    System.out.printf("  max:  %,d ns  (%.3f ms)%n", times.getLast(), times.getLast() / 1_000_000.0);
-    System.out.printf("  p50:  %,d ns  (%.3f ms)%n", times.get(iterations / 2), times.get(iterations / 2) / 1_000_000.0);
-    System.out.printf("  p99:  %,d ns  (%.3f ms)%n", times.get((int)(iterations * 0.99)), times.get((int)(iterations * 0.99)) / 1_000_000.0);
+    System.out.printf(
+        "  min:  %,d ns  (%.3f ms)%n", times.getFirst(), times.getFirst() / 1_000_000.0);
+    System.out.printf(
+        "  max:  %,d ns  (%.3f ms)%n", times.getLast(), times.getLast() / 1_000_000.0);
+    System.out.printf(
+        "  p50:  %,d ns  (%.3f ms)%n",
+        times.get(iterations / 2), times.get(iterations / 2) / 1_000_000.0);
+    System.out.printf(
+        "  p99:  %,d ns  (%.3f ms)%n",
+        times.get((int) (iterations * 0.99)), times.get((int) (iterations * 0.99)) / 1_000_000.0);
   }
 
   @Test
@@ -213,7 +227,8 @@ class LiveBenchmark {
 
     var result = runStreamBenchmark(stub, 0, maxMessages, batchSize);
 
-    System.out.println("=== LIVE FLOW-CONTROLLED (" + maxMessages + " msgs, batch=" + batchSize + ") ===");
+    System.out.println(
+        "=== LIVE FLOW-CONTROLLED (" + maxMessages + " msgs, batch=" + batchSize + ") ===");
     printStreamStats(result);
   }
 
@@ -282,7 +297,10 @@ class LiveBenchmark {
     long clientElapsed = System.nanoTime() - clientStart;
 
     // Half-close client side and give the connection a moment to settle before the next test.
-    try { requestObserver.onCompleted(); } catch (Exception ignored) {}
+    try {
+      requestObserver.onCompleted();
+    } catch (Exception ignored) {
+    }
     Thread.sleep(200);
 
     var stats = statsRef.get();
@@ -290,13 +308,14 @@ class LiveBenchmark {
       // Server sent messages but the stats frame was lost (RST_STREAM from envoy).
       // Build approximate stats from client-side measurements.
       double clientSec = clientElapsed / 1_000_000_000.0;
-      stats = BenchmarkStats.newBuilder()
-          .setTotalMessages(received.get())
-          .setTotalBytes(received.get() * payloadSize)
-          .setDurationMs(clientElapsed / 1_000_000)
-          .setMessagesPerSecond(received.get() / clientSec)
-          .setMegabytesPerSecond(received.get() * payloadSize / clientSec / (1024 * 1024))
-          .build();
+      stats =
+          BenchmarkStats.newBuilder()
+              .setTotalMessages(received.get())
+              .setTotalBytes(received.get() * payloadSize)
+              .setDurationMs(clientElapsed / 1_000_000)
+              .setMessagesPerSecond(received.get() / clientSec)
+              .setMegabytesPerSecond(received.get() * payloadSize / clientSec / (1024 * 1024))
+              .build();
       System.err.println("(stats estimated from client side — server stats lost to RST_STREAM)");
     }
     assertNotNull(stats, "Should have received stats");

@@ -21,9 +21,7 @@ public final class TelemetryService {
   public int reportMetrics(String clientId, Collection<MetricData> metrics) {
     var now = Instant.now();
     var builder =
-        ReportMetricsRequest.newBuilder()
-            .setClientId(clientId)
-            .setCollectionTime(toTimestamp(now));
+        ReportMetricsRequest.newBuilder().setClientId(clientId).setCollectionTime(toTimestamp(now));
 
     for (var metric : metrics) {
       var name = metric.getName();

@@ -2,9 +2,6 @@ package com.tcn.exile.internal;
 
 import com.tcn.exile.StreamStatus;
 import com.tcn.exile.service.TelemetryService;
-import io.opentelemetry.api.GlobalOpenTelemetry;
-import io.opentelemetry.api.common.AttributeKey;
-import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
@@ -55,8 +52,7 @@ public final class MetricsManager implements AutoCloseable {
       Supplier<StreamStatus> statusSupplier) {
 
     var exporter = new GrpcMetricExporter(telemetryService, clientId);
-    var reader =
-        PeriodicMetricReader.builder(exporter).setInterval(Duration.ofSeconds(60)).build();
+    var reader = PeriodicMetricReader.builder(exporter).setInterval(Duration.ofSeconds(60)).build();
 
     var resource =
         Resource.getDefault()

@@ -16,8 +16,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * LogShipper implementation that sends structured log records to the gate via TelemetryService.
- * All exceptions are caught — telemetry must never break the application.
+ * LogShipper implementation that sends structured log records to the gate via TelemetryService. All
+ * exceptions are caught — telemetry must never break the application.
  */
 public final class GrpcLogShipper implements LogShipper {
 

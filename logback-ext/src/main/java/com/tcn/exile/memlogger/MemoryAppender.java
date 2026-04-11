@@ -17,8 +17,8 @@
 package com.tcn.exile.memlogger;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
-import ch.qos.logback.core.OutputStreamAppender;
 import ch.qos.logback.classic.spi.ThrowableProxyUtil;
+import ch.qos.logback.core.OutputStreamAppender;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -44,6 +44,7 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
    */
   public interface TraceContextExtractor {
     String traceId();
+
     String spanId();
   }
 
@@ -213,9 +214,16 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     for (LogEvent event : snapshot) {
       result.add(
           new LogEvent(
-              event.message, event.formattedMessage, event.timestamp, event.level,
-              event.loggerName, event.threadName, event.mdc, event.stackTrace,
-              event.traceId, event.spanId));
+              event.message,
+              event.formattedMessage,
+              event.timestamp,
+              event.level,
+              event.loggerName,
+              event.threadName,
+              event.mdc,
+              event.stackTrace,
+              event.traceId,
+              event.spanId));
     }
 
     return result;
@@ -280,8 +288,10 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
   public static class LogEvent {
     /** Raw log message (no pattern formatting). */
     public final String message;
+
     /** Formatted log line from the encoder pattern (for display/legacy). */
     public final String formattedMessage;
+
     public final long timestamp;
     public final String level;
     public final String loggerName;
