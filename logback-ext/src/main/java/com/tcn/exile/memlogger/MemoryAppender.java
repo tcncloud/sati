@@ -17,22 +17,42 @@
 package com.tcn.exile.memlogger;
 
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.ThrowableProxyUtil;
 import ch.qos.logback.core.OutputStreamAppender;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
-  private static final int MAX_SIZE = 100;
+  private static final int MAX_SIZE = 1000;
   private static final long MAX_EVENT_AGE_MS = 3600000; // 1 hour
   private final BlockingQueue<LogEvent> events;
-  private LogShipper shipper = null;
+  private volatile LogShipper shipper = null;
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
   private Thread cleanupThread;
+  private Thread shipperThread;
+
+  /**
+   * Pluggable trace context extractor. Called at append time to capture the current trace/span IDs.
+   * Set from the core module after OTel SDK is initialized.
+   */
+  public interface TraceContextExtractor {
+    String traceId();
+
+    String spanId();
+  }
+
+  private static volatile TraceContextExtractor traceContextExtractor;
+
+  public static void setTraceContextExtractor(TraceContextExtractor extractor) {
+    traceContextExtractor = extractor;
+  }
 
   public MemoryAppender() {
     this.events = new ArrayBlockingQueue<>(MAX_SIZE);
@@ -110,21 +130,38 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     }
     subAppend(event);
 
+    String stackTrace = null;
+    if (event.getThrowableProxy() != null) {
+      stackTrace = ThrowableProxyUtil.asString(event.getThrowableProxy());
+    }
+    Map<String, String> mdc =
+        event.getMDCPropertyMap() != null ? new HashMap<>(event.getMDCPropertyMap()) : null;
+
+    String traceId = null;
+    String spanId = null;
+    var extractor = traceContextExtractor;
+    if (extractor != null) {
+      traceId = extractor.traceId();
+      spanId = extractor.spanId();
+    }
+
     LogEvent logEvent =
-        new LogEvent(new String(this.encoder.encode(event)), System.currentTimeMillis());
+        new LogEvent(
+            event.getFormattedMessage(),
+            new String(this.encoder.encode(event)),
+            System.currentTimeMillis(),
+            event.getLevel() != null ? event.getLevel().toString() : null,
+            event.getLoggerName(),
+            event.getThreadName(),
+            mdc,
+            stackTrace,
+            traceId,
+            spanId);
 
     if (!events.offer(logEvent)) {
       // If queue is full, remove oldest and try again
       events.poll();
       events.offer(logEvent);
-    }
-
-    if (shipper != null) {
-      List<String> eventsToShip = getEventsAsList();
-      if (!eventsToShip.isEmpty()) {
-        shipper.shipLogs(eventsToShip);
-        events.clear();
-      }
     }
   }
 
@@ -135,7 +172,7 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     List<LogEvent> snapshot = new ArrayList<>(events);
 
     for (LogEvent event : snapshot) {
-      result.add(event.message);
+      result.add(event.formattedMessage != null ? event.formattedMessage : event.message);
     }
 
     return result;
@@ -156,7 +193,7 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
 
     for (LogEvent event : snapshot) {
       if (event.timestamp >= startTimeMs && event.timestamp <= endTimeMs) {
-        result.add(event.message);
+        result.add(event.formattedMessage != null ? event.formattedMessage : event.message);
       }
     }
 
@@ -175,7 +212,18 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     List<LogEvent> snapshot = new ArrayList<>(events);
 
     for (LogEvent event : snapshot) {
-      result.add(new LogEvent(event.message, event.timestamp));
+      result.add(
+          new LogEvent(
+              event.message,
+              event.formattedMessage,
+              event.timestamp,
+              event.level,
+              event.loggerName,
+              event.threadName,
+              event.mdc,
+              event.stackTrace,
+              event.traceId,
+              event.spanId));
     }
 
     return result;
@@ -185,19 +233,51 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     addInfo("Log shipper enabled");
     if (this.shipper == null) {
       this.shipper = shipper;
-      List<String> eventsToShip = getEventsAsList();
-      if (!eventsToShip.isEmpty()) {
-        shipper.shipLogs(eventsToShip);
-        events.clear();
-      }
+      startShipperThread();
     }
   }
 
   public void disableLogShipper() {
     addInfo("Log shipper disabled");
+    stopShipperThread();
     if (this.shipper != null) {
       this.shipper.stop();
       this.shipper = null;
+    }
+  }
+
+  private void startShipperThread() {
+    shipperThread =
+        new Thread(
+            () -> {
+              while (isStarted.get() && shipper != null) {
+                try {
+                  TimeUnit.SECONDS.sleep(10);
+                  drainToShipper();
+                } catch (InterruptedException e) {
+                  Thread.currentThread().interrupt();
+                  break;
+                }
+              }
+            });
+    shipperThread.setDaemon(true);
+    shipperThread.setName("exile-log-shipper");
+    shipperThread.start();
+  }
+
+  private void stopShipperThread() {
+    if (shipperThread != null) {
+      shipperThread.interrupt();
+      shipperThread = null;
+    }
+  }
+
+  private void drainToShipper() {
+    if (shipper == null || events.isEmpty()) return;
+    List<LogEvent> batch = new ArrayList<>();
+    events.drainTo(batch);
+    if (!batch.isEmpty()) {
+      shipper.shipStructuredLogs(batch);
     }
   }
 
@@ -206,12 +286,46 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
   }
 
   public static class LogEvent {
+    /** Raw log message (no pattern formatting). */
     public final String message;
+
+    /** Formatted log line from the encoder pattern (for display/legacy). */
+    public final String formattedMessage;
+
     public final long timestamp;
+    public final String level;
+    public final String loggerName;
+    public final String threadName;
+    public final Map<String, String> mdc;
+    public final String stackTrace;
+    public final String traceId;
+    public final String spanId;
 
     public LogEvent(String message, long timestamp) {
+      this(message, null, timestamp, null, null, null, null, null, null, null);
+    }
+
+    public LogEvent(
+        String message,
+        String formattedMessage,
+        long timestamp,
+        String level,
+        String loggerName,
+        String threadName,
+        Map<String, String> mdc,
+        String stackTrace,
+        String traceId,
+        String spanId) {
       this.message = message;
+      this.formattedMessage = formattedMessage;
       this.timestamp = timestamp;
+      this.level = level;
+      this.loggerName = loggerName;
+      this.threadName = threadName;
+      this.mdc = mdc;
+      this.stackTrace = stackTrace;
+      this.traceId = traceId;
+      this.spanId = spanId;
     }
   }
 }

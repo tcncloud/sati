@@ -1,0 +1,147 @@
+package com.tcn.exile.internal;
+
+import build.buf.gen.tcnapi.exile.gate.v3.LogLevel;
+import build.buf.gen.tcnapi.exile.gate.v3.LogRecord;
+import com.google.protobuf.Timestamp;
+import com.tcn.exile.memlogger.LogShipper;
+import com.tcn.exile.memlogger.MemoryAppender;
+import com.tcn.exile.service.TelemetryService;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * LogShipper implementation that sends structured log records to the gate via TelemetryService. All
+ * exceptions are caught — telemetry must never break the application.
+ */
+public final class GrpcLogShipper implements LogShipper {
+
+  private static final Logger log = LoggerFactory.getLogger(GrpcLogShipper.class);
+
+  private final TelemetryService telemetryService;
+  private final String clientId;
+
+  public GrpcLogShipper(TelemetryService telemetryService, String clientId) {
+    this.telemetryService = telemetryService;
+    this.clientId = clientId;
+  }
+
+  @Override
+  public void shipLogs(List<String> payload) {
+    // Legacy string-only path: wrap as INFO-level records.
+    var records = new ArrayList<LogRecord>();
+    var now = Timestamp.newBuilder().setSeconds(System.currentTimeMillis() / 1000).build();
+    for (var msg : payload) {
+      records.add(
+          LogRecord.newBuilder()
+              .setTime(now)
+              .setLevel(LogLevel.LOG_LEVEL_INFO)
+              .setMessage(msg)
+              .build());
+    }
+    sendRecords(records);
+  }
+
+  @Override
+  public void shipStructuredLogs(List<MemoryAppender.LogEvent> events) {
+    var records = new ArrayList<LogRecord>();
+    for (var event : events) {
+      var builder =
+          LogRecord.newBuilder()
+              .setTime(
+                  Timestamp.newBuilder()
+                      .setSeconds(event.timestamp / 1000)
+                      .setNanos((int) ((event.timestamp % 1000) * 1_000_000)))
+              .setLevel(mapLevel(event.level))
+              .setMessage(toJson(event));
+
+      if (event.loggerName != null) builder.setLoggerName(event.loggerName);
+      if (event.threadName != null) builder.setThreadName(event.threadName);
+      if (event.stackTrace != null) builder.setStackTrace(event.stackTrace);
+      if (event.mdc != null) builder.putAllMdc(event.mdc);
+      if (event.traceId != null) builder.setTraceId(event.traceId);
+      if (event.spanId != null) builder.setSpanId(event.spanId);
+
+      records.add(builder.build());
+    }
+    sendRecords(records);
+  }
+
+  /** Serialize the log event as a JSON string for structured gate-side processing. */
+  private static String toJson(MemoryAppender.LogEvent event) {
+    var map = new LinkedHashMap<String, Object>();
+    map.put(
+        "timestamp",
+        DateTimeFormatter.ISO_INSTANT.format(
+            Instant.ofEpochMilli(event.timestamp).atOffset(ZoneOffset.UTC)));
+    if (event.level != null) map.put("level", event.level);
+    if (event.loggerName != null) map.put("logger", event.loggerName);
+    if (event.message != null) map.put("message", event.message);
+    if (event.threadName != null) map.put("thread", event.threadName);
+    if (event.mdc != null && !event.mdc.isEmpty()) map.put("mdc", event.mdc);
+    if (event.stackTrace != null) map.put("stackTrace", event.stackTrace);
+    if (event.traceId != null) map.put("traceId", event.traceId);
+    if (event.spanId != null) map.put("spanId", event.spanId);
+    return toJsonString(map);
+  }
+
+  /** Minimal JSON serializer — no external dependency needed for simple maps. */
+  @SuppressWarnings("unchecked")
+  private static String toJsonString(Object obj) {
+    if (obj == null) return "null";
+    if (obj instanceof String s) return "\"" + escapeJson(s) + "\"";
+    if (obj instanceof Number n) return n.toString();
+    if (obj instanceof Boolean b) return b.toString();
+    if (obj instanceof java.util.Map<?, ?> m) {
+      var sb = new StringBuilder("{");
+      boolean first = true;
+      for (var entry : m.entrySet()) {
+        if (!first) sb.append(",");
+        sb.append("\"").append(escapeJson(entry.getKey().toString())).append("\":");
+        sb.append(toJsonString(entry.getValue()));
+        first = false;
+      }
+      return sb.append("}").toString();
+    }
+    return "\"" + escapeJson(obj.toString()) + "\"";
+  }
+
+  private static String escapeJson(String s) {
+    return s.replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t");
+  }
+
+  private void sendRecords(List<LogRecord> records) {
+    try {
+      int accepted = telemetryService.reportLogs(clientId, records);
+      log.debug("Shipped {} log records ({} accepted)", records.size(), accepted);
+    } catch (Exception e) {
+      log.debug("Failed to ship logs: {}", e.getMessage());
+    }
+  }
+
+  private static LogLevel mapLevel(String level) {
+    if (level == null) return LogLevel.LOG_LEVEL_INFO;
+    return switch (level.toUpperCase()) {
+      case "TRACE" -> LogLevel.LOG_LEVEL_TRACE;
+      case "DEBUG" -> LogLevel.LOG_LEVEL_DEBUG;
+      case "INFO" -> LogLevel.LOG_LEVEL_INFO;
+      case "WARN" -> LogLevel.LOG_LEVEL_WARN;
+      case "ERROR" -> LogLevel.LOG_LEVEL_ERROR;
+      default -> LogLevel.LOG_LEVEL_INFO;
+    };
+  }
+
+  @Override
+  public void stop() {
+    // No-op — channel lifecycle is managed by ExileClient.
+  }
+}
