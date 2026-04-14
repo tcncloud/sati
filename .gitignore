@@ -14,7 +14,7 @@ cache/durable/iris_conf.d
 
 bin
 
-workdir/*/*.db
+workdir
 java_pid*
 keystore.jks
 tmp
