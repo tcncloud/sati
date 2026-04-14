@@ -374,9 +374,11 @@ public final class WorkStreamClient implements AutoCloseable {
       }
       case WORK_ITEM -> {
         inflight.incrementAndGet();
-        // Server just consumed one credit by sending us this item.
+        // Server just consumed one credit by sending us this item. Do NOT replenish here: the
+        // plugin's availableCapacity() won't reflect this item yet (we haven't dispatched it to
+        // the virtual-thread handler). Replenishment happens after the handler completes and on
+        // the periodic timer, which together drive steady-state flow.
         outstandingCredits.decrementAndGet();
-        replenishCredits();
         workerPool.submit(() -> processWorkItem(response.getWorkItem()));
       }
       case RESULT_ACCEPTED -> {
@@ -542,7 +544,9 @@ public final class WorkStreamClient implements AutoCloseable {
         recorder.accept((System.nanoTime() - startNanos) / 1_000_000_000.0);
       }
       inflight.decrementAndGet();
-      // Periodic pull thread handles capacity signaling.
+      // Now that the plugin has finished processing this item, its availableCapacity() reflects
+      // the freed slot. Grant back credits so the gate can send another.
+      replenishCredits();
     }
   }
 
