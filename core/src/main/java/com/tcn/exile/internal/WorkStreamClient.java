@@ -10,6 +10,8 @@ import com.tcn.exile.handler.EventHandler;
 import com.tcn.exile.handler.JobHandler;
 import com.tcn.exile.model.*;
 import io.grpc.ManagedChannel;
+import io.grpc.stub.ClientCallStreamObserver;
+import io.grpc.stub.ClientResponseObserver;
 import io.grpc.stub.StreamObserver;
 import io.opentelemetry.api.GlobalOpenTelemetry;
 import io.opentelemetry.api.trace.Span;
@@ -59,6 +61,8 @@ public final class WorkStreamClient implements AutoCloseable {
 
   private final AtomicBoolean running = new AtomicBoolean(false);
   private final AtomicReference<StreamObserver<WorkRequest>> requestObserver =
+      new AtomicReference<>();
+  private final AtomicReference<ClientCallStreamObserver<WorkRequest>> responseStream =
       new AtomicReference<>();
   private final AtomicInteger inflight = new AtomicInteger(0);
   private final ExecutorService workerPool = Executors.newVirtualThreadPerTaskExecutor();
@@ -214,10 +218,32 @@ public final class WorkStreamClient implements AutoCloseable {
 
       var observer =
           stub.workStream(
-              new StreamObserver<>() {
+              new ClientResponseObserver<WorkRequest, WorkResponse>() {
+                private ClientCallStreamObserver<WorkRequest> requestStream;
+
+                @Override
+                public void beforeStart(ClientCallStreamObserver<WorkRequest> stream) {
+                  this.requestStream = stream;
+                  responseStream.set(stream);
+                  // Manual flow control: request 1 initial message to receive the
+                  // REGISTERED response. After that, we control delivery explicitly.
+                  stream.disableAutoRequestWithInitial(1);
+                }
+
                 @Override
                 public void onNext(WorkResponse response) {
                   handleResponse(response);
+                  // For WORK_ITEM: do NOT request the next message here. The item was
+                  // submitted to the virtual thread pool and hasn't completed yet.
+                  // processWorkItem's finally block calls requestNext() after the plugin
+                  // handler returns, which is when we're actually ready for more work.
+                  //
+                  // For all other response types (heartbeat, lease, registered, etc.):
+                  // they don't consume processing capacity, so request the next message
+                  // immediately.
+                  if (response.getPayloadCase() != WorkResponse.PayloadCase.WORK_ITEM) {
+                    requestStream.request(1);
+                  }
                 }
 
                 @Override
@@ -267,6 +293,7 @@ public final class WorkStreamClient implements AutoCloseable {
       latch.await();
     } finally {
       requestObserver.set(null);
+      responseStream.set(null);
       inflight.set(0);
       outstandingCredits.set(0);
       stopCreditReplenisher();
@@ -285,15 +312,30 @@ public final class WorkStreamClient implements AutoCloseable {
     if (phase != Phase.ACTIVE && phase != Phase.REGISTERING) return;
     int target = capacityTarget();
     if (target <= 0) return; // plugin has no capacity — don't grant any credits
+    // Subtract items already dispatched to virtual threads but not yet completed.
+    // Without this, outstanding + inflight can exceed target because the plugin's
+    // availableCapacity() may not reflect items that are in-flight but haven't
+    // reached the plugin's counter yet (TOCTOU race between gRPC thread and
+    // virtual thread scheduling).
+    int currentInflight = inflight.get();
+    int effectiveTarget = Math.max(0, target - currentInflight);
+    if (effectiveTarget <= 0) return;
     int outstanding = outstandingCredits.get();
-    if (outstanding >= target) return;
+    if (outstanding >= effectiveTarget) return;
     int delta;
     while (true) {
       outstanding = outstandingCredits.get();
-      if (outstanding >= target) return;
-      delta = target - outstanding;
+      if (outstanding >= effectiveTarget) return;
+      delta = effectiveTarget - outstanding;
       if (outstandingCredits.compareAndSet(outstanding, outstanding + delta)) break;
     }
+    log.debug(
+        "Pull({}) target={} inflight={} effectiveTarget={} outstanding={}",
+        delta,
+        target,
+        currentInflight,
+        effectiveTarget,
+        outstanding);
     pull(delta);
   }
 
@@ -372,6 +414,9 @@ public final class WorkStreamClient implements AutoCloseable {
         outstandingCredits.set(0);
         replenishCredits();
         startCreditReplenisher();
+        // Allow gRPC to deliver messages — request enough for the initial credit batch
+        // plus room for heartbeats, lease warnings, and other control messages.
+        requestNext(capacityTarget() + 10);
       }
       case WORK_ITEM -> {
         inflight.incrementAndGet();
@@ -546,8 +591,10 @@ public final class WorkStreamClient implements AutoCloseable {
       }
       inflight.decrementAndGet();
       // Now that the plugin has finished processing this item, its availableCapacity() reflects
-      // the freed slot. Grant back credits so the gate can send another.
+      // the freed slot. Grant back credits so the gate can send another, and allow the gRPC
+      // transport to deliver the next message.
       replenishCredits();
+      requestNext(1);
     }
   }
 
@@ -715,6 +762,14 @@ public final class WorkStreamClient implements AutoCloseable {
       if (mr != null) {
         mr.record(methodName, (System.nanoTime() - methodStart) / 1_000_000_000.0, methodSuccess);
       }
+    }
+  }
+
+  /** Allow the gRPC transport to deliver {@code n} more inbound messages. */
+  private void requestNext(int n) {
+    var stream = responseStream.get();
+    if (stream != null && n > 0) {
+      stream.request(n);
     }
   }
 
