@@ -67,6 +67,7 @@ public final class ExileClient implements AutoCloseable {
             config,
             plugin,
             plugin,
+            plugin::availableCapacity,
             builder.clientName,
             builder.clientVersion,
             builder.maxConcurrency,

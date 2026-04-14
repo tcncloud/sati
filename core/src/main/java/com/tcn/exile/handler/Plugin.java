@@ -35,4 +35,23 @@ public interface Plugin extends JobHandler, EventHandler {
   default String pluginName() {
     return getClass().getSimpleName();
   }
+
+  /**
+   * Upper bound on the number of in-flight work items the plugin is willing to accept right now.
+   *
+   * <p>The WorkStream uses this to drive credit-based flow control against the gate server: at any
+   * moment, the number of outstanding credits granted to the server (Pulls sent minus WorkItems
+   * received) is capped at {@code min(maxConcurrency, availableCapacity())}. When a plugin's
+   * internal queue fills up, it can return a smaller number — or {@code 0} — and the server will
+   * stop sending new items until capacity frees up.
+   *
+   * <p>Default: {@link Integer#MAX_VALUE}, i.e. unbounded — the pre-backpressure behavior. Plugins
+   * that want backpressure (e.g. ones with a bounded internal work queue) should override.
+   *
+   * <p>This is polled frequently (on every WorkItem received and on a periodic timer); it must be
+   * cheap and non-blocking.
+   */
+  default int availableCapacity() {
+    return Integer.MAX_VALUE;
+  }
 }
