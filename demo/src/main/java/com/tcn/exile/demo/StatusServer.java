@@ -27,9 +27,11 @@ public class StatusServer implements AutoCloseable {
 
   private final HttpServer server;
   private final ExileClientManager manager;
+  private final DemoPlugin plugin;
 
-  public StatusServer(ExileClientManager manager, int port) throws IOException {
+  public StatusServer(ExileClientManager manager, DemoPlugin plugin, int port) throws IOException {
     this.manager = manager;
+    this.plugin = plugin;
     this.server = HttpServer.create(new InetSocketAddress(port), 0);
     this.server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
 
@@ -92,6 +94,44 @@ public class StatusServer implements AutoCloseable {
         });
 
     server.createContext(
+        "/pipeline",
+        exchange -> {
+          var stats = plugin.pipelineStats();
+          var status = manager.streamStatus();
+          var sb = new StringBuilder();
+          sb.append("{\n");
+          sb.append("  \"pipeline\": {\n");
+          for (var entry : stats.entrySet()) {
+            sb.append("    \"")
+                .append(entry.getKey())
+                .append("\": ")
+                .append(entry.getValue())
+                .append(",\n");
+          }
+          sb.append("    \"availableCapacity\": ").append(plugin.availableCapacity()).append("\n");
+          sb.append("  },\n");
+          sb.append("  \"stream\": {\n");
+          if (status != null) {
+            sb.append("    \"inflight\": ").append(status.inflight()).append(",\n");
+            sb.append("    \"completedTotal\": ").append(status.completedTotal()).append(",\n");
+            sb.append("    \"failedTotal\": ").append(status.failedTotal()).append(",\n");
+            sb.append("    \"reconnectAttempts\": ")
+                .append(status.reconnectAttempts())
+                .append("\n");
+          } else {
+            sb.append("    \"status\": \"not connected\"\n");
+          }
+          sb.append("  }\n");
+          sb.append("}");
+          var body = sb.toString().getBytes(StandardCharsets.UTF_8);
+          exchange.getResponseHeaders().set("Content-Type", "application/json");
+          exchange.sendResponseHeaders(200, body.length);
+          try (var os = exchange.getResponseBody()) {
+            os.write(body);
+          }
+        });
+
+    server.createContext(
         "/",
         exchange -> {
           var body =
@@ -104,6 +144,7 @@ public class StatusServer implements AutoCloseable {
             <ul>
               <li><a href="/health">/health</a> — health check</li>
               <li><a href="/status">/status</a> — stream status (JSON)</li>
+              <li><a href="/pipeline">/pipeline</a> — pipeline backpressure stats (JSON)</li>
               <li><a href="/logs">/logs</a> — in-memory log buffer (JSON)</li>
             </ul>
           </body>

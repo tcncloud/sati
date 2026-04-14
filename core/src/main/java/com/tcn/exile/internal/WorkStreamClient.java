@@ -284,6 +284,7 @@ public final class WorkStreamClient implements AutoCloseable {
   private void replenishCredits() {
     if (phase != Phase.ACTIVE && phase != Phase.REGISTERING) return;
     int target = capacityTarget();
+    if (target <= 0) return; // plugin has no capacity — don't grant any credits
     int outstanding = outstandingCredits.get();
     if (outstanding >= target) return;
     int delta;

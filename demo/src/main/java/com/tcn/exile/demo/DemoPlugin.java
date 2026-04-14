@@ -6,6 +6,8 @@ import com.tcn.exile.model.event.*;
 import com.tcn.exile.service.ConfigService;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -13,11 +15,67 @@ import org.slf4j.LoggerFactory;
  * Demo plugin that validates config, returns stub job data, and logs events. Extends {@link
  * PluginBase} which provides default implementations for logs, diagnostics, info, shutdown, and log
  * level control.
+ *
+ * <p>Simulates a slow backend by sleeping on each event, with a bounded pipeline controlled by a
+ * semaphore. The {@link #availableCapacity()} override tells sati how many more events we can
+ * accept, which drives credit-based backpressure against the gate server.
  */
 public class DemoPlugin extends PluginBase {
 
   private static final Logger log = LoggerFactory.getLogger(DemoPlugin.class);
   private volatile boolean configured = false;
+
+  // Simulated processing pipeline — bounded at maxDepth concurrent events.
+  private final int maxDepth;
+  private final int processingDelayMs;
+  private final Semaphore pipeline;
+  private final AtomicLong eventsReceived = new AtomicLong();
+  private final AtomicLong eventsCompleted = new AtomicLong();
+  private final AtomicLong eventsFailed = new AtomicLong();
+
+  public DemoPlugin() {
+    this(10, 50); // default: 10 concurrent slots, 50ms simulated processing
+  }
+
+  public DemoPlugin(int maxDepth, int processingDelayMs) {
+    this.maxDepth = maxDepth;
+    this.processingDelayMs = processingDelayMs;
+    this.pipeline = new Semaphore(maxDepth);
+  }
+
+  /** Returns how many more events we can accept right now. Drives sati's credit flow control. */
+  @Override
+  public int availableCapacity() {
+    if (!configured) return 0;
+    return pipeline.availablePermits();
+  }
+
+  /** Pipeline stats for the status endpoint. */
+  public Map<String, Object> pipelineStats() {
+    return Map.of(
+        "maxDepth", maxDepth,
+        "availablePermits", pipeline.availablePermits(),
+        "received", eventsReceived.get(),
+        "completed", eventsCompleted.get(),
+        "failed", eventsFailed.get(),
+        "inPipeline", eventsReceived.get() - eventsCompleted.get() - eventsFailed.get(),
+        "processingDelayMs", processingDelayMs);
+  }
+
+  /** Simulate slow processing: acquire a pipeline slot, sleep, release. */
+  private void simulateProcessing(String eventType, String id) throws Exception {
+    eventsReceived.incrementAndGet();
+    pipeline.acquire();
+    try {
+      Thread.sleep(processingDelayMs);
+      eventsCompleted.incrementAndGet();
+    } catch (Exception e) {
+      eventsFailed.incrementAndGet();
+      throw e;
+    } finally {
+      pipeline.release();
+    }
+  }
 
   // --- Config ---
 
@@ -111,64 +169,41 @@ public class DemoPlugin extends PluginBase {
     return Map.of("result", "ok", "logic", logicName);
   }
 
-  // --- Events ---
+  // --- Events (simulated slow processing with bounded pipeline) ---
 
   @Override
-  public void onAgentCall(AgentCallEvent event) {
-    log.info(
-        "AgentCall: callSid={} type={} agent={} talk={}s",
-        event.callSid(),
-        event.callType(),
-        event.partnerAgentId(),
-        event.talkDuration().toSeconds());
+  public void onAgentCall(AgentCallEvent event) throws Exception {
+    log.info("AgentCall: callSid={} type={}", event.callSid(), event.callType());
+    simulateProcessing("AgentCall", String.valueOf(event.callSid()));
   }
 
   @Override
-  public void onTelephonyResult(TelephonyResultEvent event) {
-    log.info(
-        "TelephonyResult: callSid={} type={} status={} outcome={} phone={}",
-        event.callSid(),
-        event.callType(),
-        event.status(),
-        event.outcomeCategory(),
-        event.phoneNumber());
+  public void onTelephonyResult(TelephonyResultEvent event) throws Exception {
+    log.info("TelephonyResult: callSid={} status={}", event.callSid(), event.status());
+    simulateProcessing("TelephonyResult", String.valueOf(event.callSid()));
   }
 
   @Override
-  public void onAgentResponse(AgentResponseEvent event) {
-    log.info(
-        "AgentResponse: callSid={} agent={} key={} value={}",
-        event.callSid(),
-        event.partnerAgentId(),
-        event.responseKey(),
-        event.responseValue());
+  public void onAgentResponse(AgentResponseEvent event) throws Exception {
+    log.info("AgentResponse: callSid={} key={}", event.callSid(), event.responseKey());
+    simulateProcessing("AgentResponse", String.valueOf(event.callSid()));
   }
 
   @Override
-  public void onTransferInstance(TransferInstanceEvent event) {
-    log.info(
-        "TransferInstance: id={} type={} result={}",
-        event.transferInstanceId(),
-        event.transferType(),
-        event.transferResult());
+  public void onTransferInstance(TransferInstanceEvent event) throws Exception {
+    log.info("TransferInstance: id={}", event.transferInstanceId());
+    simulateProcessing("TransferInstance", String.valueOf(event.transferInstanceId()));
   }
 
   @Override
-  public void onCallRecording(CallRecordingEvent event) {
-    log.info(
-        "CallRecording: id={} callSid={} duration={}s",
-        event.recordingId(),
-        event.callSid(),
-        event.duration().toSeconds());
+  public void onCallRecording(CallRecordingEvent event) throws Exception {
+    log.info("CallRecording: id={} callSid={}", event.recordingId(), event.callSid());
+    simulateProcessing("CallRecording", String.valueOf(event.callSid()));
   }
 
   @Override
-  public void onTask(TaskEvent event) {
-    log.info(
-        "Task: sid={} pool={} record={} status={}",
-        event.taskSid(),
-        event.poolId(),
-        event.recordId(),
-        event.status());
+  public void onTask(TaskEvent event) throws Exception {
+    log.info("Task: sid={} status={}", event.taskSid(), event.status());
+    simulateProcessing("Task", String.valueOf(event.taskSid()));
   }
 }

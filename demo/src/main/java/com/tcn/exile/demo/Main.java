@@ -44,18 +44,33 @@ public class Main {
   public static void main(String[] args) throws Exception {
     int port = Integer.parseInt(System.getenv().getOrDefault("PORT", "8080"));
     String configDir = System.getenv().getOrDefault("CONFIG_DIR", "");
+    int maxConcurrency = Integer.parseInt(System.getenv().getOrDefault("MAX_CONCURRENCY", "20"));
+    int maxDepth = Integer.parseInt(System.getenv().getOrDefault("MAX_DEPTH", "10"));
+    int delayMs = Integer.parseInt(System.getenv().getOrDefault("PROCESSING_DELAY_MS", "50"));
 
     log.info("Starting sati-demo v{}", VERSION);
+    log.info(
+        "Pipeline config: maxConcurrency={}, maxDepth={}, processingDelayMs={}",
+        maxConcurrency,
+        maxDepth,
+        delayMs);
+
+    var plugin = new DemoPlugin(maxDepth, delayMs);
 
     // Build the client manager. It watches for config file changes,
     // creates/destroys the ExileClient automatically, and rotates
     // certificates before they expire.
+    //
+    // The capacityProvider tells sati how many more events the plugin can accept.
+    // This drives credit-based flow control: sati only requests items from the
+    // gate server when the plugin has room, preventing unbounded virtual thread pileup.
     var builder =
         ExileClientManager.builder()
             .clientName("sati-demo")
             .clientVersion(VERSION)
-            .maxConcurrency(5)
-            .plugin(new DemoPlugin());
+            .maxConcurrency(maxConcurrency)
+            .capacityProvider(plugin::availableCapacity)
+            .plugin(plugin);
 
     if (!configDir.isEmpty()) {
       builder.watchDirs(List.of(Path.of(configDir)));
@@ -64,7 +79,7 @@ public class Main {
     var manager = builder.build();
 
     // Start the status HTTP server.
-    var statusServer = new StatusServer(manager, port);
+    var statusServer = new StatusServer(manager, plugin, port);
     statusServer.start();
 
     // Start watching for config and managing the client.

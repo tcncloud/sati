@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.IntSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,6 +38,7 @@ public final class ExileClientManager implements AutoCloseable {
   private final String clientName;
   private final String clientVersion;
   private final int maxConcurrency;
+  private final IntSupplier capacityProvider;
   private final Plugin plugin;
   private final List<Path> watchDirs;
   private final int certRotationHours;
@@ -51,6 +53,7 @@ public final class ExileClientManager implements AutoCloseable {
     this.clientName = builder.clientName;
     this.clientVersion = builder.clientVersion;
     this.maxConcurrency = builder.maxConcurrency;
+    this.capacityProvider = builder.capacityProvider;
     this.plugin = builder.plugin;
     this.watchDirs = builder.watchDirs;
     this.certRotationHours = builder.certRotationHours;
@@ -131,14 +134,17 @@ public final class ExileClientManager implements AutoCloseable {
     destroyClient();
 
     try {
-      activeClient =
+      var clientBuilder =
           ExileClient.builder()
               .config(config)
               .clientName(clientName)
               .clientVersion(clientVersion)
               .maxConcurrency(maxConcurrency)
-              .plugin(plugin)
-              .build();
+              .plugin(plugin);
+      if (capacityProvider != null) {
+        clientBuilder.capacityProvider(capacityProvider);
+      }
+      activeClient = clientBuilder.build();
       activeClient.start();
       activeConfig = config;
       activeOrg = newOrg;
@@ -185,6 +191,7 @@ public final class ExileClientManager implements AutoCloseable {
     private String clientName = "sati";
     private String clientVersion = "unknown";
     private int maxConcurrency = 100;
+    private IntSupplier capacityProvider;
     private Plugin plugin;
     private List<Path> watchDirs;
     private int certRotationHours = 1;
@@ -203,6 +210,15 @@ public final class ExileClientManager implements AutoCloseable {
 
     public Builder maxConcurrency(int maxConcurrency) {
       this.maxConcurrency = maxConcurrency;
+      return this;
+    }
+
+    /**
+     * Custom capacity provider that controls how many work items sati requests from the gate. If
+     * not set, falls back to {@link Plugin#availableCapacity()}.
+     */
+    public Builder capacityProvider(IntSupplier capacityProvider) {
+      this.capacityProvider = capacityProvider;
       return this;
     }
 

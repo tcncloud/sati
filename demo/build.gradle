@@ -8,6 +8,13 @@ application {
 	mainClass = 'com.tcn.exile.demo.Main'
 }
 
+run {
+	// Forward environment variables to the demo JVM
+	environment System.getenv()
+	// Run from the project root so relative paths (workdir/config) resolve correctly
+	workingDir = rootProject.projectDir
+}
+
 shadowJar {
 	mergeServiceFiles()
 }

@@ -19,6 +19,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.IntSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,12 +63,14 @@ public final class ExileClient implements AutoCloseable {
     this.plugin = builder.plugin;
     this.configPollInterval = builder.configPollInterval;
 
+    IntSupplier capacity =
+        builder.capacityProvider != null ? builder.capacityProvider : plugin::availableCapacity;
     this.workStream =
         new WorkStreamClient(
             config,
             plugin,
             plugin,
-            plugin::availableCapacity,
+            capacity,
             builder.clientName,
             builder.clientVersion,
             builder.maxConcurrency,
@@ -263,6 +266,7 @@ public final class ExileClient implements AutoCloseable {
     private String clientName = "sati";
     private String clientVersion = "unknown";
     private int maxConcurrency = 5;
+    private IntSupplier capacityProvider;
     private List<build.buf.gen.tcnapi.exile.gate.v3.WorkType> capabilities = new ArrayList<>();
     private Duration configPollInterval = Duration.ofSeconds(10);
 
@@ -292,6 +296,17 @@ public final class ExileClient implements AutoCloseable {
     public Builder maxConcurrency(int maxConcurrency) {
       if (maxConcurrency < 1) throw new IllegalArgumentException("maxConcurrency must be >= 1");
       this.maxConcurrency = maxConcurrency;
+      return this;
+    }
+
+    /**
+     * Custom capacity provider that controls how many work items sati requests from the gate. The
+     * supplier should return the number of additional items the plugin can accept right now. If not
+     * set, falls back to {@link Plugin#availableCapacity()}. The value is capped by {@link
+     * #maxConcurrency}.
+     */
+    public Builder capacityProvider(IntSupplier capacityProvider) {
+      this.capacityProvider = capacityProvider;
       return this;
     }
 
