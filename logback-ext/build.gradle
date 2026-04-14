@@ -12,12 +12,12 @@ dependencies {
 	implementation 'org.slf4j:slf4j-api:2.0.17'
 
 	// Logback dependencies
-	api 'ch.qos.logback:logback-classic:1.5.25'
-	api 'ch.qos.logback:logback-core:1.5.25'
+	api 'ch.qos.logback:logback-classic:1.5.32'
+	api 'ch.qos.logback:logback-core:1.5.32'
 
 	// Testing
-	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.10.0'
-	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.10.0'
+	testImplementation 'org.junit.jupiter:junit-jupiter-api:5.14.3'
+	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.14.3'
 }
 
 test {

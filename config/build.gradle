@@ -7,5 +7,5 @@ dependencies {
 	api(project(':core'))
 
 	// File watching — the only external dependency beyond core.
-	implementation("io.methvin:directory-watcher:0.18.0")
+	implementation("io.methvin:directory-watcher:0.19.1")
 }

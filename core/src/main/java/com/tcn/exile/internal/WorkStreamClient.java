@@ -28,9 +28,6 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -67,13 +64,7 @@ public final class WorkStreamClient implements AutoCloseable {
   private final AtomicInteger inflight = new AtomicInteger(0);
   private final ExecutorService workerPool = Executors.newVirtualThreadPerTaskExecutor();
 
-  // Credit-based flow control mirror. Tracks credits we have granted the server via Pull
-  // messages that have not yet been consumed by an incoming WorkItem. When this drops below the
-  // plugin's reported {@code availableCapacity()} we top it up; if the plugin reports 0 we stop
-  // sending Pulls and the gate backs off automatically.
   private final AtomicInteger outstandingCredits = new AtomicInteger(0);
-  private volatile ScheduledExecutorService creditReplenishExecutor;
-  private volatile ScheduledFuture<?> creditReplenishTask;
 
   // Maps work_id → SpanContext so async responses (ResultAccepted, etc.) can log with trace
   // context.
@@ -296,47 +287,8 @@ public final class WorkStreamClient implements AutoCloseable {
       responseStream.set(null);
       inflight.set(0);
       outstandingCredits.set(0);
-      stopCreditReplenisher();
       // Channel is reused across reconnects — only shut down on close().
     }
-  }
-
-  // ── Credit-based flow control ──────────────────────────────────────────────
-
-  /**
-   * Top up the server's remaining credit balance so it matches the plugin's current willingness to
-   * accept work, capped by {@code maxConcurrency}. Called on every WorkItem received and on a
-   * periodic timer so credits can flow back even while the server is idle waiting.
-   */
-  private void replenishCredits() {
-    if (phase != Phase.ACTIVE && phase != Phase.REGISTERING) return;
-    int target = capacityTarget();
-    if (target <= 0) return; // plugin has no capacity — don't grant any credits
-    // Subtract items already dispatched to virtual threads but not yet completed.
-    // Without this, outstanding + inflight can exceed target because the plugin's
-    // availableCapacity() may not reflect items that are in-flight but haven't
-    // reached the plugin's counter yet (TOCTOU race between gRPC thread and
-    // virtual thread scheduling).
-    int currentInflight = inflight.get();
-    int effectiveTarget = Math.max(0, target - currentInflight);
-    if (effectiveTarget <= 0) return;
-    int outstanding = outstandingCredits.get();
-    if (outstanding >= effectiveTarget) return;
-    int delta;
-    while (true) {
-      outstanding = outstandingCredits.get();
-      if (outstanding >= effectiveTarget) return;
-      delta = effectiveTarget - outstanding;
-      if (outstandingCredits.compareAndSet(outstanding, outstanding + delta)) break;
-    }
-    log.debug(
-        "Pull({}) target={} inflight={} effectiveTarget={} outstanding={}",
-        delta,
-        target,
-        currentInflight,
-        effectiveTarget,
-        outstanding);
-    pull(delta);
   }
 
   private int capacityTarget() {
@@ -350,39 +302,6 @@ public final class WorkStreamClient implements AutoCloseable {
     if (cap < 0) cap = 0;
     int bound = maxConcurrency > 0 ? maxConcurrency : Integer.MAX_VALUE;
     return Math.min(bound, cap);
-  }
-
-  private void startCreditReplenisher() {
-    stopCreditReplenisher();
-    var exec =
-        Executors.newSingleThreadScheduledExecutor(
-            r -> {
-              Thread t = new Thread(r, "exile-credit-replenisher");
-              t.setDaemon(true);
-              return t;
-            });
-    creditReplenishExecutor = exec;
-    creditReplenishTask =
-        exec.scheduleAtFixedRate(
-            () -> {
-              try {
-                replenishCredits();
-              } catch (Throwable t) {
-                log.warn("credit replenish failed: {}", t.toString());
-              }
-            },
-            1,
-            1,
-            TimeUnit.SECONDS);
-  }
-
-  private void stopCreditReplenisher() {
-    var task = creditReplenishTask;
-    if (task != null) task.cancel(false);
-    creditReplenishTask = null;
-    var exec = creditReplenishExecutor;
-    if (exec != null) exec.shutdownNow();
-    creditReplenishExecutor = null;
   }
 
   private void handleResponse(WorkResponse response) {
@@ -409,21 +328,20 @@ public final class WorkStreamClient implements AutoCloseable {
             reg.getHeartbeatInterval().getSeconds(),
             reg.getDefaultLease().getSeconds(),
             reg.getMaxInflight());
-        // Grant the initial batch of credits. The credit refill loop keeps the server's
-        // remaining-credit count in sync with the plugin's reported availableCapacity().
+        // Tell the server how many items to generate, and allow gRPC to deliver them.
+        // After each item completes, processWorkItem sends Pull(1) + requestNext(1)
+        // to keep the pipeline full.
+        int initialCapacity = capacityTarget();
         outstandingCredits.set(0);
-        replenishCredits();
-        startCreditReplenisher();
-        // Allow gRPC to deliver messages — request enough for the initial credit batch
-        // plus room for heartbeats, lease warnings, and other control messages.
-        requestNext(capacityTarget() + 10);
+        if (initialCapacity > 0) {
+          pull(initialCapacity);
+          outstandingCredits.set(initialCapacity);
+        }
+        // Request enough gRPC deliveries for the initial batch plus control messages.
+        requestNext(initialCapacity + 10);
       }
       case WORK_ITEM -> {
         inflight.incrementAndGet();
-        // Server just consumed one credit by sending us this item. Do NOT replenish here: the
-        // plugin's availableCapacity() won't reflect this item yet (we haven't dispatched it to
-        // the virtual-thread handler). Replenishment happens after the handler completes and on
-        // the periodic timer, which together drive steady-state flow.
         outstandingCredits.decrementAndGet();
         workerPool.submit(() -> processWorkItem(response.getWorkItem()));
       }
@@ -590,10 +508,8 @@ public final class WorkStreamClient implements AutoCloseable {
         recorder.accept((System.nanoTime() - startNanos) / 1_000_000_000.0);
       }
       inflight.decrementAndGet();
-      // Now that the plugin has finished processing this item, its availableCapacity() reflects
-      // the freed slot. Grant back credits so the gate can send another, and allow the gRPC
-      // transport to deliver the next message.
-      replenishCredits();
+      // Item done — tell the server to generate one more, and allow gRPC to deliver it.
+      pull(1);
       requestNext(1);
     }
   }
@@ -803,7 +719,6 @@ public final class WorkStreamClient implements AutoCloseable {
   public void close() {
     running.set(false);
     phase = Phase.CLOSED;
-    stopCreditReplenisher();
     if (streamThread != null) streamThread.interrupt();
     var observer = requestObserver.getAndSet(null);
     if (observer != null) {
