@@ -10,7 +10,7 @@ buildscript {
 			force 'org.apache.logging.log4j:log4j-core:2.25.4'
 			force 'org.apache.logging.log4j:log4j-api:2.25.4'
 			force 'commons-io:commons-io:2.19.0'
-			force 'org.codehaus.plexus:plexus-utils:4.0.2'
+			force 'org.codehaus.plexus:plexus-utils:4.0.3'
 		}
 	}
 }
