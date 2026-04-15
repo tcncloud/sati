@@ -199,6 +199,78 @@ public final class MetricsManager implements AutoCloseable {
     methodDuration.record(durationSeconds, attrs);
   }
 
+  /**
+   * Register gauges exposing the adaptive controller's internal state. Called once by {@link
+   * com.tcn.exile.ExileClient} after the adaptive instance is constructed. No-op when the caller
+   * disabled adaptive mode — in that case there's nothing to observe.
+   */
+  public void registerAdaptiveGauges(AdaptiveCapacity adaptive) {
+    meter
+        .gaugeBuilder("exile.adaptive.limit")
+        .ofLongs()
+        .setDescription("Current adaptive controller target (work items in flight)")
+        .setUnit("1")
+        .buildWithCallback(obs -> obs.record(adaptive.limit()));
+
+    meter
+        .gaugeBuilder("exile.adaptive.job_p95_ms")
+        .setDescription("Job p95 latency observed by the adaptive controller (sliding window)")
+        .setUnit("ms")
+        .buildWithCallback(obs -> obs.record(adaptive.jobP95Nanos() / 1_000_000.0));
+
+    meter
+        .gaugeBuilder("exile.adaptive.job_ema_ms")
+        .setDescription("Job EMA latency observed by the adaptive controller")
+        .setUnit("ms")
+        .buildWithCallback(obs -> obs.record(adaptive.jobEmaNanos() / 1_000_000.0));
+
+    meter
+        .gaugeBuilder("exile.adaptive.decaying_min_ms")
+        .setDescription("Decaying minimum job latency used by the Vegas-style gradient")
+        .setUnit("ms")
+        .buildWithCallback(obs -> obs.record(adaptive.decayingMinNanos() / 1_000_000.0));
+
+    meter
+        .gaugeBuilder("exile.adaptive.slo_gradient")
+        .setDescription("SLO gradient at last recompute (SLO / jobP95, clamped 0.5..1.0)")
+        .setUnit("1")
+        .buildWithCallback(obs -> obs.record(adaptive.lastSloGradient()));
+
+    meter
+        .gaugeBuilder("exile.adaptive.min_gradient")
+        .setDescription("Min gradient at last recompute (decayingMin / jobEMA, clamped 0.5..1.0)")
+        .setUnit("1")
+        .buildWithCallback(obs -> obs.record(adaptive.lastMinGradient()));
+
+    meter
+        .gaugeBuilder("exile.adaptive.resource_gradient")
+        .setDescription(
+            "Resource gradient at last recompute (min across plugin-declared resources)")
+        .setUnit("1")
+        .buildWithCallback(obs -> obs.record(adaptive.lastResourceGradient()));
+
+    meter
+        .gaugeBuilder("exile.adaptive.effective_ceiling")
+        .ofLongs()
+        .setDescription(
+            "Effective ceiling: min(maxLimit, minimum hardMax across declared resources)")
+        .setUnit("1")
+        .buildWithCallback(obs -> obs.record(adaptive.effectiveCeiling()));
+
+    meter
+        .counterBuilder("exile.adaptive.errors")
+        .setDescription("Cumulative plugin errors observed by the adaptive controller")
+        .setUnit("1")
+        .buildWithCallback(obs -> obs.record(adaptive.errorCount()));
+
+    log.info(
+        "Adaptive concurrency gauges registered (limit={}, min={}, max={}, ceiling={})",
+        adaptive.limit(),
+        adaptive.minLimit(),
+        adaptive.maxLimit(),
+        adaptive.effectiveCeiling());
+  }
+
   @Override
   public void close() {
     openTelemetry.close();
