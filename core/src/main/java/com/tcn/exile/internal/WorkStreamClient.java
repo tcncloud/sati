@@ -87,11 +87,21 @@ public final class WorkStreamClient implements AutoCloseable {
   private volatile java.util.function.DoubleConsumer reconnectRecorder;
   private volatile boolean lastDisconnectGraceful;
   private volatile MethodRecorder methodRecorder;
+  private volatile java.util.function.DoubleConsumer jobDurationRecorder;
+  private volatile java.util.function.DoubleConsumer eventDurationRecorder;
+  private volatile CompletionRecorder jobCompletionRecorder;
+  private volatile CompletionRecorder eventCompletionRecorder;
 
   /** Callback to record per-method metrics (name, duration, success). */
   @FunctionalInterface
   public interface MethodRecorder {
     void record(String method, double durationSeconds, boolean success);
+  }
+
+  /** Callback to record work-item completion latency with success/failure. */
+  @FunctionalInterface
+  public interface CompletionRecorder {
+    void record(long nanos, boolean success);
   }
 
   public WorkStreamClient(
@@ -157,6 +167,19 @@ public final class WorkStreamClient implements AutoCloseable {
     log.debug("Creating gRPC channel to {}:{}", config.apiHostname(), config.apiPort());
     channel = ChannelFactory.create(config);
     log.debug("Channel created");
+    streamThread =
+        Thread.ofPlatform().name("exile-work-stream").daemon(true).start(this::reconnectLoop);
+  }
+
+  /**
+   * Start with a pre-built channel (package-private for testing). Skips ChannelFactory so tests can
+   * use InProcessChannelBuilder.
+   */
+  void start(ManagedChannel testChannel) {
+    if (!running.compareAndSet(false, true)) {
+      throw new IllegalStateException("Already started");
+    }
+    channel = testChannel;
     streamThread =
         Thread.ofPlatform().name("exile-work-stream").daemon(true).start(this::reconnectLoop);
   }
@@ -407,6 +430,26 @@ public final class WorkStreamClient implements AutoCloseable {
     this.reconnectRecorder = recorder;
   }
 
+  /** Set a callback to record job completion duration (in seconds). */
+  public void setJobDurationRecorder(java.util.function.DoubleConsumer recorder) {
+    this.jobDurationRecorder = recorder;
+  }
+
+  /** Set a callback to record event completion duration (in seconds). */
+  public void setEventDurationRecorder(java.util.function.DoubleConsumer recorder) {
+    this.eventDurationRecorder = recorder;
+  }
+
+  /** Set a callback to record job completion latency with success/failure signal. */
+  public void setJobCompletionRecorder(CompletionRecorder recorder) {
+    this.jobCompletionRecorder = recorder;
+  }
+
+  /** Set a callback to record event completion latency with success/failure signal. */
+  public void setEventCompletionRecorder(CompletionRecorder recorder) {
+    this.eventCompletionRecorder = recorder;
+  }
+
   private static final Tracer tracer = GlobalOpenTelemetry.getTracer("com.tcn.exile.sati", "1.0.0");
 
   /** Run a block with the span context of a work item temporarily set as current. */
@@ -463,6 +506,7 @@ public final class WorkStreamClient implements AutoCloseable {
     Span span = spanBuilder.startSpan();
     workSpanContexts.put(workId, span.getSpanContext());
 
+    boolean itemSuccess = false;
     try (Scope ignored = span.makeCurrent()) {
       MDC.put("traceId", span.getSpanContext().getTraceId());
       MDC.put("spanId", span.getSpanContext().getSpanId());
@@ -473,6 +517,7 @@ public final class WorkStreamClient implements AutoCloseable {
         dispatchEvent(item);
         send(WorkRequest.newBuilder().setAck(Ack.newBuilder().addWorkIds(workId)).build());
       }
+      itemSuccess = true;
       completedTotal.incrementAndGet();
     } catch (Exception e) {
       span.setStatus(StatusCode.ERROR, e.getMessage());
@@ -503,14 +548,32 @@ public final class WorkStreamClient implements AutoCloseable {
       if (item.getCategory() != WorkCategory.WORK_CATEGORY_JOB) {
         workSpanContexts.remove(workId);
       }
+
+      long elapsedNanos = System.nanoTime() - startNanos;
+      double elapsedSec = elapsedNanos / 1_000_000_000.0;
+
+      // Existing unified recorder (backward compat).
       var recorder = durationRecorder;
       if (recorder != null) {
-        recorder.accept((System.nanoTime() - startNanos) / 1_000_000_000.0);
+        recorder.accept(elapsedSec);
       }
+
+      // Category-aware recorders.
+      if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB) {
+        var jr = jobCompletionRecorder;
+        if (jr != null) jr.record(elapsedNanos, itemSuccess);
+        var jd = jobDurationRecorder;
+        if (jd != null) jd.accept(elapsedSec);
+      } else {
+        var er = eventCompletionRecorder;
+        if (er != null) er.record(elapsedNanos, itemSuccess);
+        var ed = eventDurationRecorder;
+        if (ed != null) ed.accept(elapsedSec);
+      }
+
       inflight.decrementAndGet();
-      // Item done — tell the server to generate one more, and allow gRPC to deliver it.
-      pull(1);
-      requestNext(1);
+      // Refill credits to the current capacity target instead of a hardcoded pull(1).
+      refillToTarget();
     }
   }
 
@@ -678,6 +741,22 @@ public final class WorkStreamClient implements AutoCloseable {
       if (mr != null) {
         mr.record(methodName, (System.nanoTime() - methodStart) / 1_000_000_000.0, methodSuccess);
       }
+    }
+  }
+
+  /**
+   * Refill gRPC credits and server Pulls up to the current capacity target. Called after each
+   * work-item completion. If the controller has grown the target, this pulls the delta in one shot;
+   * if it has shrunk, this does nothing and lets in-flight drain naturally.
+   */
+  private void refillToTarget() {
+    int target = capacityTarget();
+    int outstanding = outstandingCredits.get();
+    int delta = target - outstanding;
+    if (delta > 0) {
+      pull(delta);
+      requestNext(delta);
+      outstandingCredits.addAndGet(delta);
     }
   }
 
