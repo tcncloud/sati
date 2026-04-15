@@ -1,6 +1,7 @@
 package com.tcn.exile.handler;
 
 import com.tcn.exile.service.ConfigService;
+import java.util.List;
 
 /**
  * The integration point for CRM plugins. Implementations provide job handling, event handling, and
@@ -53,5 +54,36 @@ public interface Plugin extends JobHandler, EventHandler {
    */
   default int availableCapacity() {
     return Integer.MAX_VALUE;
+  }
+
+  /**
+   * Optional: declare structural resource limits the plugin operates under.
+   *
+   * <p>The adaptive concurrency controller uses these to:
+   *
+   * <ul>
+   *   <li>Clamp its target concurrency to the minimum {@code hardMax} across all declared resources
+   *       (conservative: assumes any job may need any resource).
+   *   <li>Preemptively shed concurrency as {@code currentUsage} approaches {@code hardMax}, when
+   *       {@code currentUsage} is reported.
+   * </ul>
+   *
+   * <p>Default: empty list — no structural caps known, the controller uses only latency-based
+   * signals.
+   *
+   * <p>Implementations should:
+   *
+   * <ul>
+   *   <li>Return quickly (called from the controller recompute path, roughly every 25 job
+   *       completions or every 500 ms).
+   *   <li>Track {@code currentUsage} via an {@link java.util.concurrent.atomic.AtomicInteger}
+   *       incremented on resource lease and decremented on release. Don't poll the underlying pool
+   *       — that's usually expensive.
+   * </ul>
+   *
+   * @return list of known resource limits; order insignificant; may be empty.
+   */
+  default List<ResourceLimit> resourceLimits() {
+    return List.of();
   }
 }
