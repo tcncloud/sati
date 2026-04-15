@@ -118,7 +118,8 @@ public final class MetricsManager implements AutoCloseable {
         .gaugeBuilder("exile.work.phase")
         .ofLongs()
         .setDescription(
-            "WorkStream phase (0=IDLE, 1=CONNECTING, 2=REGISTERING, 3=ACTIVE, 4=RECONNECTING, 5=CLOSED)")
+            "WorkStream phase (0=IDLE, 1=CONNECTING, 2=REGISTERING, 3=ACTIVE, 4=RECONNECTING,"
+                + " 5=CLOSED, 6=DRAINING)")
         .setUnit("1")
         .buildWithCallback(obs -> obs.record(statusSupplier.get().phase().ordinal()));
 

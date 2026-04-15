@@ -47,6 +47,13 @@ public final class WorkStreamClient implements AutoCloseable {
 
   private static final Logger log = LoggerFactory.getLogger(WorkStreamClient.class);
 
+  /**
+   * Default bound on drain-on-close. Long enough for normal plugin latencies, short enough that a
+   * wedged plugin can't hold the JVM open indefinitely.
+   */
+  public static final java.time.Duration DEFAULT_SHUTDOWN_DRAIN_TIMEOUT =
+      java.time.Duration.ofSeconds(30);
+
   private final ExileConfig config;
   private final JobHandler jobHandler;
   private final EventHandler eventHandler;
@@ -55,8 +62,22 @@ public final class WorkStreamClient implements AutoCloseable {
   private final String clientVersion;
   private final int maxConcurrency;
   private final List<WorkType> capabilities;
+  private final java.time.Duration shutdownDrainTimeout;
 
   private final AtomicBoolean running = new AtomicBoolean(false);
+
+  /**
+   * Set to {@code true} on the first call to {@link #close()}. While draining:
+   *
+   * <ul>
+   *   <li>{@link #refillToTarget()} stops sending {@code Pull} — the server's dispatch stops.
+   *   <li>The request observer stays live so in-flight plugin handlers can send Result/Ack.
+   *   <li>The receive loop continues reading until the server's {@code onCompleted} closes it,
+   *       delivering any ResultAccepted/NackAccepted the server sends.
+   * </ul>
+   */
+  private final AtomicBoolean draining = new AtomicBoolean(false);
+
   private final AtomicReference<StreamObserver<WorkRequest>> requestObserver =
       new AtomicReference<>();
   private final AtomicReference<ClientCallStreamObserver<WorkRequest>> responseStream =
@@ -120,7 +141,8 @@ public final class WorkStreamClient implements AutoCloseable {
         clientName,
         clientVersion,
         maxConcurrency,
-        capabilities);
+        capabilities,
+        DEFAULT_SHUTDOWN_DRAIN_TIMEOUT);
   }
 
   /**
@@ -136,6 +158,32 @@ public final class WorkStreamClient implements AutoCloseable {
       String clientVersion,
       int maxConcurrency,
       List<WorkType> capabilities) {
+    this(
+        config,
+        jobHandler,
+        eventHandler,
+        capacityProvider,
+        clientName,
+        clientVersion,
+        maxConcurrency,
+        capabilities,
+        DEFAULT_SHUTDOWN_DRAIN_TIMEOUT);
+  }
+
+  /**
+   * Full constructor including the drain-on-close timeout. See {@link
+   * com.tcn.exile.ExileClient.Builder#shutdownDrainTimeout} for semantics.
+   */
+  public WorkStreamClient(
+      ExileConfig config,
+      JobHandler jobHandler,
+      EventHandler eventHandler,
+      IntSupplier capacityProvider,
+      String clientName,
+      String clientVersion,
+      int maxConcurrency,
+      List<WorkType> capabilities,
+      java.time.Duration shutdownDrainTimeout) {
     this.config = config;
     this.jobHandler = jobHandler;
     this.eventHandler = eventHandler;
@@ -144,6 +192,8 @@ public final class WorkStreamClient implements AutoCloseable {
     this.clientVersion = clientVersion;
     this.maxConcurrency = maxConcurrency;
     this.capabilities = capabilities;
+    this.shutdownDrainTimeout =
+        shutdownDrainTimeout != null ? shutdownDrainTimeout : DEFAULT_SHUTDOWN_DRAIN_TIMEOUT;
   }
 
   /** Returns a snapshot of the stream's current state. */
@@ -748,8 +798,15 @@ public final class WorkStreamClient implements AutoCloseable {
    * Refill gRPC credits and server Pulls up to the current capacity target. Called after each
    * work-item completion. If the controller has grown the target, this pulls the delta in one shot;
    * if it has shrunk, this does nothing and lets in-flight drain naturally.
+   *
+   * <p>While {@link #draining} is set, no Pulls are sent — the server stops dispatching new items,
+   * so the in-flight set monotonically drains. Results and Acks for work already in flight still
+   * flow through {@link #send(WorkRequest)}.
    */
   private void refillToTarget() {
+    if (draining.get()) {
+      return;
+    }
     int target = capacityTarget();
     int outstanding = outstandingCredits.get();
     int delta = target - outstanding;
@@ -794,11 +851,85 @@ public final class WorkStreamClient implements AutoCloseable {
     }
   }
 
+  /**
+   * Graceful shutdown. Stops pulling new work, waits up to {@link #shutdownDrainTimeout} for
+   * in-flight plugin handlers to finish and send their Results/Acks, then half-closes the stream
+   * and tears down the channel. Safe to call multiple times.
+   *
+   * <p>Sequence (differences from a naive close):
+   *
+   * <ol>
+   *   <li>Flip {@code draining} — {@link #refillToTarget} stops issuing Pulls, so the server's
+   *       event poller stops dispatching to this client.
+   *   <li>Set {@code running=false} so the reconnect loop won't respawn the stream if the server
+   *       half-closes during drain.
+   *   <li>Submit a drain task to an ephemeral single-thread executor, bounded by {@link
+   *       #shutdownDrainTimeout}. The task calls {@code workerPool.close()} which waits for
+   *       in-flight plugin handlers. Handler completion runs the normal finally block, which sends
+   *       Result/Ack via the still-live request observer.
+   *   <li>If the timeout elapses, force {@code workerPool.shutdownNow()} — pending tasks are
+   *       cancelled. Anything that didn't drain in time becomes a server-side lease expiry and will
+   *       be re-delivered on the next connect.
+   *   <li>Half-close the outbound stream via {@code onCompleted}, then shutdown the channel.
+   * </ol>
+   */
   @Override
   public void close() {
+    if (!draining.compareAndSet(false, true)) {
+      // Already closing — wait for the first caller to finish.
+      return;
+    }
+    phase = Phase.DRAINING;
     running.set(false);
-    phase = Phase.CLOSED;
-    if (streamThread != null) streamThread.interrupt();
+
+    int remaining = inflight.get();
+    log.info(
+        "WorkStream draining (inflight={}, timeout={}s)",
+        remaining,
+        shutdownDrainTimeout.toSeconds());
+
+    // Run the drain itself on a dedicated thread so the calling thread's interrupt status
+    // doesn't accidentally kill the wait. Bounded by shutdownDrainTimeout.
+    var drainer =
+        java.util.concurrent.Executors.newSingleThreadExecutor(
+            r -> {
+              var t = new Thread(r, "exile-work-stream-drain");
+              t.setDaemon(true);
+              return t;
+            });
+    var drainDone =
+        drainer.submit(
+            () -> {
+              workerPool.close();
+              return null;
+            });
+    drainer.shutdown();
+
+    boolean drained;
+    try {
+      drainDone.get(shutdownDrainTimeout.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+      drained = true;
+    } catch (java.util.concurrent.TimeoutException e) {
+      log.warn(
+          "WorkStream drain timed out after {}s with {} items still in flight — forcing shutdown."
+              + " Unfinished items will be re-delivered by the server after lease expiry.",
+          shutdownDrainTimeout.toSeconds(),
+          inflight.get());
+      workerPool.shutdownNow();
+      drained = false;
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      workerPool.shutdownNow();
+      drained = false;
+    } catch (java.util.concurrent.ExecutionException e) {
+      log.warn("WorkStream drain failed: {}", e.getCause() != null ? e.getCause() : e);
+      drained = false;
+    } finally {
+      drainer.shutdownNow();
+    }
+
+    // Now half-close the outbound side and release the observer. After this any late Result/Ack
+    // attempt is a no-op via the null-guard in send().
     var observer = requestObserver.getAndSet(null);
     if (observer != null) {
       try {
@@ -806,7 +937,18 @@ public final class WorkStreamClient implements AutoCloseable {
       } catch (Exception ignored) {
       }
     }
-    workerPool.close();
+
+    // Interrupt the reconnect loop so it unblocks from latch.await() promptly.
+    if (streamThread != null) streamThread.interrupt();
+
+    phase = Phase.CLOSED;
     if (channel != null) ChannelFactory.shutdown(channel);
+
+    log.info(
+        "WorkStream closed (drained={}, remaining_at_start={}, completed_total={}, failed_total={})",
+        drained,
+        remaining,
+        completedTotal.get(),
+        failedTotal.get());
   }
 }

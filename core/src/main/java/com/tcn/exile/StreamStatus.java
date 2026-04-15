@@ -39,7 +39,14 @@ public record StreamStatus(
     /** Stream disconnected, waiting to reconnect (backoff). */
     RECONNECTING,
     /** Client has been closed. */
-    CLOSED
+    CLOSED,
+    /**
+     * Graceful shutdown in progress: no new Pulls are sent, in-flight work is allowed to complete,
+     * and Results/Acks still flow until either the worker pool drains or the drain timeout elapses.
+     * Appended here (ordinal 6) to preserve existing ordinal values for dashboard consumers relying
+     * on the numeric `exile.work.phase` metric.
+     */
+    DRAINING
   }
 
   /** True if the stream is connected and processing work. */

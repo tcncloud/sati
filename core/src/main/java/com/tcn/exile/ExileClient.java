@@ -79,7 +79,8 @@ public final class ExileClient implements AutoCloseable {
             builder.clientName,
             builder.clientVersion,
             builder.maxConcurrency,
-            builder.capabilities);
+            builder.capabilities,
+            builder.shutdownDrainTimeout);
 
     this.serviceChannel = ChannelFactory.create(config);
     var services = ServiceFactory.create(serviceChannel);
@@ -354,6 +355,8 @@ public final class ExileClient implements AutoCloseable {
     private IntSupplier capacityProvider;
     private List<build.buf.gen.tcnapi.exile.gate.v3.WorkType> capabilities = new ArrayList<>();
     private Duration configPollInterval = Duration.ofSeconds(10);
+    private Duration shutdownDrainTimeout =
+        com.tcn.exile.internal.WorkStreamClient.DEFAULT_SHUTDOWN_DRAIN_TIMEOUT;
 
     private Builder() {}
 
@@ -428,6 +431,26 @@ public final class ExileClient implements AutoCloseable {
     /** How often to poll the gate for config updates. Default: 10 seconds. */
     public Builder configPollInterval(Duration interval) {
       this.configPollInterval = Objects.requireNonNull(interval);
+      return this;
+    }
+
+    /**
+     * Maximum time {@link ExileClient#close()} will wait for in-flight work items to finish before
+     * forcing shutdown. During this window:
+     *
+     * <ul>
+     *   <li>No new {@code Pull} messages are sent, so the gate stops dispatching work.
+     *   <li>Plugin handlers that were already running complete normally and their Result/Ack
+     *       messages flow back to the gate.
+     *   <li>If the timeout elapses the worker pool is forcibly shut down; unfinished items will be
+     *       re-delivered by the gate after server-side lease expiry.
+     * </ul>
+     *
+     * <p>Default: 30 seconds. Setting {@link Duration#ZERO} disables the drain (legacy behaviour —
+     * in-flight handlers run but their results may be lost).
+     */
+    public Builder shutdownDrainTimeout(Duration timeout) {
+      this.shutdownDrainTimeout = Objects.requireNonNull(timeout);
       return this;
     }
 
