@@ -85,10 +85,31 @@ jq '.scenarios."mixed-steady".throughput' baseline.json
 jq '.scenarios."mixed-steady".throughput' after-c1.json
 ```
 
-## Current state (as of 2026-04-15)
+## Baseline (2026-04-15 — before any S/C issue lands)
 
-Baseline numbers will be recorded here once the first run completes — see
-`benchmarks/results/baseline-<date>.json`.
+60 s per scenario, `maxConcurrency=5` (current sati default), plugin latency
+10 ms/job and 5 ms/event, ±jitter. Full report: `baseline-2026-04-15.json`.
+
+| Scenario                | jobs/s | events/s | job p95 | event p95 |
+|-------------------------|-------:|---------:|--------:|----------:|
+| `burst-events-10k`      | 0      | 993.2    | —       | 6 ms      |
+| `events-ramp-200rps`    | 0      | 199.9    | —       | 6 ms      |
+| `mixed-steady`          | 95.0   | 499.2    | 14 ms   | 6 ms      |
+| `sustained-jobs-100rps` | 95.3   | 0        | 14 ms   | —         |
+
+### Reading the baseline
+
+- Jobs sustain ~95/s against a 100/s injection target — client is keeping up
+  at this rate and latency.
+- Events reach ~993/s against a 1000/s target in `burst-events-10k` despite
+  the 500 ms idle backoff, because the synthetic generator produces events in
+  100 ms chunks that keep the 32-item batches saturated. The real-world
+  sparse-events pattern (where the queue regularly has < 32 items waiting)
+  isn't exercised by this scenario set yet — adding a `sparse-events-5rps`
+  scenario would illuminate the S3 fix more directly.
+- No scenario here saturates the `maxConcurrency=5` cap because the plugin
+  latency is too low. Rerun with `EVENT_LATENCY_MS=200` (or inject `info` /
+  `search_records` jobs at higher rates) to see the ceiling.
 
 ## Faithfulness caveat
 
