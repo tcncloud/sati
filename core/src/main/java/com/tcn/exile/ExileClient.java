@@ -293,12 +293,14 @@ public final class ExileClient implements AutoCloseable {
       return new CapacityChoice(builder.capacityProvider, null);
     }
     if (builder.adaptiveEnabled) {
-      var adaptive =
-          new AdaptiveCapacity(
-              builder.minConcurrency,
-              builder.initialConcurrency,
-              builder.maxConcurrency,
-              plugin::resourceLimits);
+      // Clamp the bounds so a caller setting only maxConcurrency (or only
+      // minConcurrency) doesn't collide with the other defaults.
+      //   min        = clamp(min,     1,      max)
+      //   initial    = clamp(initial, min,    max)
+      int max = builder.maxConcurrency;
+      int min = Math.max(1, Math.min(builder.minConcurrency, max));
+      int initial = Math.max(min, Math.min(builder.initialConcurrency, max));
+      var adaptive = new AdaptiveCapacity(min, initial, max, plugin::resourceLimits);
       return new CapacityChoice(adaptive, adaptive);
     }
     return new CapacityChoice(plugin::availableCapacity, null);
