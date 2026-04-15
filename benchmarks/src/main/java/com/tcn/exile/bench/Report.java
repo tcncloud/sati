@@ -37,6 +37,7 @@ final class Report {
     long totalJobs;
     long totalEvents;
     Map<String, Object> serverStats;
+    Map<String, Object> adaptive;
 
     Scenario(String name) {
       this.name = name;
@@ -94,6 +95,10 @@ final class Report {
     if (s.serverStats != null) {
       sb.append(",\n").append(pad).append("  \"server_stats\": ");
       writeMap(sb, s.serverStats, indent + 2);
+    }
+    if (s.adaptive != null) {
+      sb.append(",\n").append(pad).append("  \"adaptive\": ");
+      writeMap(sb, s.adaptive, indent + 2);
     }
     sb.append("\n").append(pad).append("}");
   }
