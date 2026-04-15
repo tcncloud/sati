@@ -164,6 +164,82 @@ class AdaptiveCapacityTest {
     assertEquals(Duration.ofMillis(500).toNanos(), SLO_NANOS);
   }
 
+  // --- Regression: min-gradient collapse on heterogeneous workloads ---
+  //
+  // These tests cover the bug reproduced live against finvi: a single sub-ms
+  // sample pinned decayingMin at its bit-shift fixed-point, the min-gradient
+  // permanently floored at 0.5, and the limit halved every recompute until
+  // it collapsed to minLimit. Fixed by replacing the running decaying min
+  // with p5 of the ring buffer clamped up to a 1 ms noise floor.
+
+  /** A single very-fast sample (cache hit) must not permanently pin the "fast case". */
+  @Test
+  void singleSubMsOutlierDoesNotPinFastCase() {
+    var a = new AdaptiveCapacity(1, 50, 200, List::of);
+    // One sub-ms sample followed by many normal-latency samples.
+    a.recordJobCompletion(100_000L, true); // 0.1 ms (cache hit)
+    feed(a, 20 * MS, 200);
+    // decayingMinNanos() now returns max(p5, 1 ms). p5 of a window with 99%
+    // of samples at 20 ms and 1 at 0.1 ms is 20 ms (the one outlier sits far
+    // below p5). fastCase >= 1 ms from the noise floor regardless.
+    assertTrue(
+        a.decayingMinNanos() >= MIN_GRADIENT_NOISE_FLOOR_NANOS,
+        "fast-case should be clamped above the noise floor; got "
+            + a.decayingMinNanos() / 1_000_000
+            + "ms");
+    assertTrue(
+        a.decayingMinNanos() >= 10 * MS,
+        "fast-case (p5) should reflect the majority workload, not the single outlier; got "
+            + a.decayingMinNanos() / 1_000_000
+            + "ms");
+  }
+
+  /**
+   * Heterogeneous workload: 30 % cache hits at 0.1 ms and 70 % real work at 20 ms, with plenty of
+   * SLO headroom and no errors. The pre-fix controller collapsed the limit to 1 over ~100 samples
+   * because min-gradient pinned at 0.5 every recompute. Post-fix the limit should stay near the
+   * initial value.
+   */
+  @Test
+  void heterogeneousWorkloadDoesNotCollapseToMinLimit() {
+    var a = new AdaptiveCapacity(1, 50, 200, List::of);
+    // 500 samples: 30% sub-ms (cache hits), 70% at 20ms (real DB work). Alternating so the
+    // ring buffer sees both consistently.
+    for (int i = 0; i < 500; i++) {
+      long sample = (i % 10 < 3) ? 100_000L /* 0.1 ms */ : 20 * MS;
+      a.recordJobCompletion(sample, true);
+    }
+    assertTrue(
+        a.limit() > 1,
+        "limit should not collapse to minLimit on a heterogeneous workload with SLO"
+            + " headroom; got limit="
+            + a.limit()
+            + " (ema="
+            + a.jobEmaNanos() / 1_000_000
+            + "ms, p95="
+            + a.jobP95Nanos() / 1_000_000
+            + "ms, fastCase="
+            + a.decayingMinNanos() / 1_000_000
+            + "ms, minG="
+            + a.lastMinGradient()
+            + ")");
+    // SLO comfortable (way under 500 ms), so sloGradient should be 1.0 —
+    // min-gradient is the only thing that could have sheared.
+    assertEquals(1.0, a.lastSloGradient(), 1e-9);
+  }
+
+  /**
+   * Regression lock-in: 100 % cache-hit workload (every sample ≤ 1 ms). The noise floor should keep
+   * the min-gradient near 1.0 by treating all samples as equally "fast" relative to the floor,
+   * avoiding a degenerate shed on a plugin that's genuinely always fast.
+   */
+  @Test
+  void allSubMsSamplesDoNotCollapseLimit() {
+    var a = new AdaptiveCapacity(1, 50, 200, List::of);
+    feed(a, 500_000L /* 0.5 ms */, 500);
+    assertTrue(a.limit() > 1, "uniformly fast workload should not shed; got limit=" + a.limit());
+  }
+
   // --- Helper ---
 
   private static void feed(AdaptiveCapacity a, long nanos, int count) {
