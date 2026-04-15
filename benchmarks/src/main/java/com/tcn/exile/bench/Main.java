@@ -121,6 +121,34 @@ public final class Main {
             String.format(Locale.ROOT, "%.1f", rs.eventsPerSec),
             rs.jobLatencyMsP50P95P99Max[1],
             rs.eventLatencyMsP50P95P99Max[1]);
+        client
+            .adaptiveSnapshot()
+            .ifPresent(
+                snap -> {
+                  log.info(
+                      "  adaptive: limit={} ceiling={} p95={}ms ema={}ms min={}ms"
+                          + "  sloG={} minG={} resG={} errors={}",
+                      snap.limit(),
+                      snap.effectiveCeiling(),
+                      snap.jobP95Millis(),
+                      snap.jobEmaMillis(),
+                      snap.decayingMinMillis(),
+                      String.format(Locale.ROOT, "%.2f", snap.sloGradient()),
+                      String.format(Locale.ROOT, "%.2f", snap.minGradient()),
+                      String.format(Locale.ROOT, "%.2f", snap.resourceGradient()),
+                      snap.errorCount());
+                  rs.adaptive =
+                      java.util.Map.of(
+                          "limit", (Object) snap.limit(),
+                          "effective_ceiling", (Object) snap.effectiveCeiling(),
+                          "job_p95_ms", (Object) snap.jobP95Millis(),
+                          "job_ema_ms", (Object) snap.jobEmaMillis(),
+                          "decaying_min_ms", (Object) snap.decayingMinMillis(),
+                          "slo_gradient", (Object) snap.sloGradient(),
+                          "min_gradient", (Object) snap.minGradient(),
+                          "resource_gradient", (Object) snap.resourceGradient(),
+                          "errors", (Object) snap.errorCount());
+                });
       }
     } finally {
       client.close();

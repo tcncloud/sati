@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -212,6 +213,35 @@ public final class ExileClient implements AutoCloseable {
 
   public StreamStatus streamStatus() {
     return workStream.status();
+  }
+
+  /**
+   * Snapshot of the adaptive concurrency controller's current state, for plugin diagnostics,
+   * dashboards, and custom metric export. Returns empty when adaptive is disabled — either the
+   * caller passed an explicit {@link Builder#capacityProvider} or called {@code adaptive(false)}.
+   *
+   * <p>Polling this is cheap: all reads are from {@code volatile} fields or {@code AtomicLong}s.
+   * Safe to call from any thread, including plugin handler virtual threads.
+   */
+  public Optional<AdaptiveSnapshot> adaptiveSnapshot() {
+    var a = adaptive;
+    if (a == null) {
+      return Optional.empty();
+    }
+    return Optional.of(
+        new AdaptiveSnapshot(
+            a.limit(),
+            a.minLimit(),
+            a.maxLimit(),
+            a.effectiveCeiling(),
+            a.jobP95Nanos(),
+            a.jobEmaNanos(),
+            a.decayingMinNanos(),
+            a.lastSloGradient(),
+            a.lastMinGradient(),
+            a.lastResourceGradient(),
+            a.errorCount(),
+            a.sampleCount()));
   }
 
   public ExileConfig config() {
