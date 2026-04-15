@@ -1,0 +1,22 @@
+plugins {
+	id("application")
+}
+
+application {
+	mainClass = "com.tcn.exile.bench.Main"
+}
+
+dependencies {
+	implementation(project(":core"))
+	implementation("io.grpc:grpc-netty-shaded:${grpcVersion}")
+	implementation("ch.qos.logback:logback-classic:1.5.18")
+}
+
+// Not a published artifact — disable the publish tasks that allprojects { ... }
+// in the root build applies to every subproject.
+tasks.withType(AbstractPublishToMaven).configureEach { enabled = false }
+
+run {
+	// Accept CLI args via `./gradlew :benchmarks:run --args="..."`
+	standardInput = System.in
+}
