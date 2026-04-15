@@ -44,6 +44,6 @@ class StreamStatusTest {
 
   @Test
   void phaseEnumValues() {
-    assertEquals(6, StreamStatus.Phase.values().length);
+    assertEquals(7, StreamStatus.Phase.values().length, "add DRAINING in v3.2");
   }
 }
