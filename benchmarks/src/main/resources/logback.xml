@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+	<appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>%d{HH:mm:ss.SSS} %-5level %logger{32} - %msg%n</pattern>
+		</encoder>
+	</appender>
+
+	<!-- Silence gRPC netty frame-level logs that flood stdout. -->
+	<logger name="io.grpc.netty.shaded" level="INFO"/>
+	<logger name="io.grpc" level="INFO"/>
+
+	<!-- sati client internals stay at INFO; per-item result-accepted debug is noisy. -->
+	<logger name="com.tcn.exile.internal.WorkStreamClient" level="INFO"/>
+
+	<root level="INFO">
+		<appender-ref ref="CONSOLE"/>
+	</root>
+</configuration>
