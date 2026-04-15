@@ -5,7 +5,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -22,8 +21,11 @@ import org.slf4j.LoggerFactory;
  *
  * <ul>
  *   <li><b>SLO gradient</b>: {@code min(1, SLO / jobP95)} — absolute 500 ms budget.
- *   <li><b>Min gradient</b>: {@code min(1, decayingMinJob / jobEMA)} — Vegas-style relative signal
- *       detecting queueing buildup.
+ *   <li><b>Min gradient</b>: {@code min(1, fastCase / jobEMA)} — Vegas-style relative signal
+ *       detecting queueing buildup. {@code fastCase} is {@code max(p5, 1 ms)} off the job-latency
+ *       ring buffer — a resilient "realistic fast-case" that can't be pinned by a single
+ *       sub-millisecond outlier (cache hits, empty lists, fast-fails) the way a true decaying
+ *       minimum could.
  *   <li><b>Resource gradient</b>: derived from any declared {@link ResourceLimit} that reports
  *       {@code currentUsage}; sheds as utilization climbs past 70 %.
  * </ul>
@@ -52,6 +54,22 @@ public final class AdaptiveCapacity implements IntSupplier {
   static final double UTIL_SHED_START = 0.70;
   static final double UTIL_SHED_FULL = 1.00;
 
+  /**
+   * "Fast-case" reference point for the min-gradient, as a percentile of the recent job latency
+   * ring buffer. p5 resists single-outlier pinning (you need ≥ 5 % of the window to be at that
+   * speed for p5 to move there) while still tracking the genuine fast-case of a diverse workload.
+   */
+  static final double FAST_CASE_PERCENTILE = 0.05;
+
+  /**
+   * Minimum "fast-case" latency the min-gradient will consider. Sub-millisecond job handlers (cache
+   * hits, empty results) are not representative of the plugin's real throughput capacity, so
+   * treating them as the fast-case causes the min-gradient to permanently floor at its 0.5 cap —
+   * the controller then halves the limit every recompute until it collapses to {@code minLimit}.
+   * Clamping the fast-case up to this floor eliminates that degeneracy.
+   */
+  static final long MIN_GRADIENT_NOISE_FLOOR_NANOS = 1_000_000L; // 1 ms
+
   private final int minLimit;
   private final int maxLimit;
   private final Supplier<List<ResourceLimit>> resourceSupplier;
@@ -59,7 +77,6 @@ public final class AdaptiveCapacity implements IntSupplier {
   private volatile int limit;
 
   private final RingBuffer jobLatencies = new RingBuffer(WINDOW);
-  private final AtomicLong decayingMinJob = new AtomicLong(Long.MAX_VALUE);
   private volatile double emaJobRtt;
   private final AtomicInteger jobSamples = new AtomicInteger();
   private final AtomicInteger errorCount = new AtomicInteger();
@@ -108,7 +125,6 @@ public final class AdaptiveCapacity implements IntSupplier {
     if (nanos < 0) nanos = 0;
     jobLatencies.add(nanos);
     updateEma(nanos);
-    updateDecayingMin(nanos);
 
     int n = jobSamples.incrementAndGet();
     if (n >= MIN_SAMPLES && n % RECOMPUTE_EVERY == 0) {
@@ -127,16 +143,15 @@ public final class AdaptiveCapacity implements IntSupplier {
   }
 
   /**
-   * Updates the decaying minimum. The previous value drifts upward by ~0.1 % per sample (added
-   * {@code prev >> 10}) before being replaced if the new sample is lower. This lets a single
-   * exceptionally-fast early sample age out over time instead of pinning the min forever.
+   * The "fast-case" job latency used by the min-gradient: the 5th-percentile of the recent ring
+   * buffer, clamped up to {@link #MIN_GRADIENT_NOISE_FLOOR_NANOS}. Single sub-millisecond outliers
+   * can't pin this the way a true running minimum can. Returns {@code 0} before the ring buffer has
+   * any samples — callers must handle that case.
    */
-  private void updateDecayingMin(long sample) {
-    decayingMinJob.updateAndGet(
-        prev -> {
-          long drifted = (prev == Long.MAX_VALUE) ? Long.MAX_VALUE : prev + (prev >> 10);
-          return Math.min(drifted, sample);
-        });
+  private long fastCaseNanos() {
+    long p5 = jobLatencies.percentile(FAST_CASE_PERCENTILE);
+    if (p5 <= 0) return 0;
+    return Math.max(p5, MIN_GRADIENT_NOISE_FLOOR_NANOS);
   }
 
   private void onError() {
@@ -146,17 +161,30 @@ public final class AdaptiveCapacity implements IntSupplier {
 
   private void recompute() {
     long p95 = jobLatencies.percentile(0.95);
+    long p5 = jobLatencies.percentile(FAST_CASE_PERCENTILE);
     double ema = emaJobRtt;
     if (p95 <= 0 || ema <= 0) {
       return;
     }
-    long minRtt = decayingMinJob.get();
-    if (minRtt == Long.MAX_VALUE) {
-      minRtt = p95; // no observation yet — neutral value
-    }
+    long fastCase = Math.max(p5 > 0 ? p5 : p95, MIN_GRADIENT_NOISE_FLOOR_NANOS);
 
     double sloG = clamp((double) SLO_NANOS / p95, GRADIENT_FLOOR, 1.0);
-    double minG = clamp((double) minRtt / ema, GRADIENT_FLOOR, 1.0);
+
+    // Homogeneity guard: min-gradient is the Vegas-style "queueing detector" — it assumes
+    // the fast-case latency is a meaningful reference for the EMA. That assumption holds for
+    // homogeneous workloads (every call does roughly the same work), but not for plugins that
+    // mix sub-ms cache hits with tens-of-ms JDBC calls: the ratio then reflects workload
+    // variance rather than queueing. We detect that by comparing p5 to p95 — when p5/p95 is
+    // below the gradient floor (i.e. the ratio would peg at 0.5 regardless of EMA) we skip
+    // the signal and let the SLO/resource gradients drive the limit alone.
+    double homogeneity = (double) p5 / (double) p95;
+    double minG;
+    if (homogeneity < GRADIENT_FLOOR) {
+      minG = 1.0; // workload too heterogeneous; trust SLO + resource signals instead.
+    } else {
+      minG = clamp((double) fastCase / ema, GRADIENT_FLOOR, 1.0);
+    }
+
     double resG = computeResourceGradient();
     double gradient = Math.min(Math.min(sloG, minG), resG);
 
@@ -173,13 +201,15 @@ public final class AdaptiveCapacity implements IntSupplier {
     limit = clamped;
     if (log.isDebugEnabled() && old != clamped) {
       log.debug(
-          "adaptive limit {} -> {} (p95={}ms, ema={}ms, min={}ms, sloG={}, minG={}, resG={},"
-              + " ceiling={})",
+          "adaptive limit {} -> {} (p95={}ms, p5={}ms, ema={}ms, fastCase={}ms, homogeneity={},"
+              + " sloG={}, minG={}, resG={}, ceiling={})",
           old,
           clamped,
           p95 / 1_000_000,
+          p5 / 1_000_000,
           (long) ema / 1_000_000,
-          minRtt / 1_000_000,
+          fastCase / 1_000_000,
+          String.format("%.2f", homogeneity),
           String.format("%.2f", sloG),
           String.format("%.2f", minG),
           String.format("%.2f", resG),
@@ -249,9 +279,14 @@ public final class AdaptiveCapacity implements IntSupplier {
     return (long) emaJobRtt;
   }
 
+  /**
+   * Returns the "fast-case" latency used by the min-gradient — p5 of the recent job latencies,
+   * clamped up to a 1 ms noise floor. Named {@code decayingMinNanos} for backwards compatibility
+   * with {@link com.tcn.exile.AdaptiveSnapshot} (this method was originally a literal decaying
+   * minimum; it was replaced with p5-plus-floor to eliminate the single-outlier pin pathology).
+   */
   public long decayingMinNanos() {
-    long v = decayingMinJob.get();
-    return v == Long.MAX_VALUE ? 0 : v;
+    return fastCaseNanos();
   }
 
   public double lastSloGradient() {
