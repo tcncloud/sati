@@ -1,6 +1,7 @@
 package com.tcn.exile;
 
 import com.tcn.exile.handler.Plugin;
+import com.tcn.exile.internal.AdaptiveCapacity;
 import com.tcn.exile.internal.ChannelFactory;
 import com.tcn.exile.internal.GrpcLogShipper;
 import com.tcn.exile.internal.MetricsManager;
@@ -52,6 +53,7 @@ public final class ExileClient implements AutoCloseable {
   private final JourneyService journeyService;
   private final TelemetryService telemetryService;
   private final String telemetryClientId;
+  private final AdaptiveCapacity adaptive; // null when caller overrode or disabled
   private volatile MetricsManager metricsManager;
 
   private volatile ConfigService.ClientConfiguration lastConfig;
@@ -63,8 +65,10 @@ public final class ExileClient implements AutoCloseable {
     this.plugin = builder.plugin;
     this.configPollInterval = builder.configPollInterval;
 
-    IntSupplier capacity =
-        builder.capacityProvider != null ? builder.capacityProvider : plugin::availableCapacity;
+    var choice = chooseCapacityProvider(builder, plugin);
+    IntSupplier capacity = choice.provider();
+    this.adaptive = choice.adaptive();
+
     this.workStream =
         new WorkStreamClient(
             config,
@@ -183,6 +187,16 @@ public final class ExileClient implements AutoCloseable {
         workStream.setMethodRecorder(metricsManager::recordMethodCall);
         workStream.setReconnectRecorder(metricsManager::recordReconnectDuration);
 
+        // Feed job completions into the adaptive controller (if active) and
+        // register the corresponding OTel gauges so dashboards can see the
+        // controller's state. Events are deliberately a no-op — they don't
+        // drive the job-SLO signal.
+        if (adaptive != null) {
+          workStream.setJobCompletionRecorder(adaptive::recordJobCompletion);
+          workStream.setEventCompletionRecorder(adaptive::recordEventCompletion);
+          metricsManager.registerAdaptiveGauges(adaptive);
+        }
+
         log.info("Plugin {} ready, starting WorkStream", plugin.pluginName());
         workStream.start();
       }
@@ -260,12 +274,51 @@ public final class ExileClient implements AutoCloseable {
     return new Builder();
   }
 
+  /**
+   * Picks the capacity provider based on builder configuration. Precedence (highest first):
+   *
+   * <ol>
+   *   <li>Explicit {@link Builder#capacityProvider} — caller knows what they want.
+   *   <li>{@link Builder#adaptive} enabled (default) → build an {@link AdaptiveCapacity} bound to
+   *       {@code [minConcurrency, initialConcurrency, maxConcurrency]} and the plugin's declared
+   *       resource limits.
+   *   <li>{@code adaptive(false)} opt-out → fall back to {@link Plugin#availableCapacity()}.
+   * </ol>
+   *
+   * <p>Package-private so {@link com.tcn.exile} tests can exercise the selection logic without
+   * going through a live {@link ChannelFactory}.
+   */
+  static CapacityChoice chooseCapacityProvider(Builder builder, Plugin plugin) {
+    if (builder.capacityProvider != null) {
+      return new CapacityChoice(builder.capacityProvider, null);
+    }
+    if (builder.adaptiveEnabled) {
+      var adaptive =
+          new AdaptiveCapacity(
+              builder.minConcurrency,
+              builder.initialConcurrency,
+              builder.maxConcurrency,
+              plugin::resourceLimits);
+      return new CapacityChoice(adaptive, adaptive);
+    }
+    return new CapacityChoice(plugin::availableCapacity, null);
+  }
+
+  /** Result of {@link #chooseCapacityProvider}: the provider and (when adaptive) the controller. */
+  record CapacityChoice(IntSupplier provider, AdaptiveCapacity adaptive) {}
+
   public static final class Builder {
     private ExileConfig config;
     private Plugin plugin;
     private String clientName = "sati";
     private String clientVersion = "unknown";
-    private int maxConcurrency = 5;
+    // Concurrency bounds. maxConcurrency was 5 pre-C4; raised to 100 to match the
+    // server-advertised Registered.max_inflight. With AdaptiveCapacity on by
+    // default, this is now a safety ceiling, not the operating point.
+    private int minConcurrency = 1;
+    private int initialConcurrency = 10;
+    private int maxConcurrency = 100;
+    private boolean adaptiveEnabled = true;
     private IntSupplier capacityProvider;
     private List<build.buf.gen.tcnapi.exile.gate.v3.WorkType> capabilities = new ArrayList<>();
     private Duration configPollInterval = Duration.ofSeconds(10);
@@ -296,6 +349,36 @@ public final class ExileClient implements AutoCloseable {
     public Builder maxConcurrency(int maxConcurrency) {
       if (maxConcurrency < 1) throw new IllegalArgumentException("maxConcurrency must be >= 1");
       this.maxConcurrency = maxConcurrency;
+      return this;
+    }
+
+    /** Lower bound of the adaptive controller's limit. Default: 1. */
+    public Builder minConcurrency(int n) {
+      if (n < 1) throw new IllegalArgumentException("minConcurrency must be >= 1");
+      this.minConcurrency = n;
+      return this;
+    }
+
+    /**
+     * Starting value of the adaptive controller's limit before enough samples accumulate. Default:
+     * 10. Must satisfy {@code minConcurrency <= initialConcurrency <= maxConcurrency} — validated
+     * lazily when the controller is constructed.
+     */
+    public Builder initialConcurrency(int n) {
+      if (n < 1) throw new IllegalArgumentException("initialConcurrency must be >= 1");
+      this.initialConcurrency = n;
+      return this;
+    }
+
+    /**
+     * Enable or disable the adaptive concurrency controller. When {@code true} (default) an {@link
+     * AdaptiveCapacity} is used as the capacity provider unless the caller provided one explicitly
+     * via {@link #capacityProvider}. When {@code false} the fallback is {@link
+     * Plugin#availableCapacity()}, which preserves pre-C4 behaviour. Useful for deterministic
+     * testing or when the plugin already has its own controller.
+     */
+    public Builder adaptive(boolean enabled) {
+      this.adaptiveEnabled = enabled;
       return this;
     }
 
