@@ -55,6 +55,7 @@ public final class ExileClient implements AutoCloseable {
   private final TelemetryService telemetryService;
   private final String telemetryClientId;
   private final AdaptiveCapacity adaptive; // null when caller overrode or disabled
+  private final double tracingSamplingFraction;
   private volatile MetricsManager metricsManager;
 
   private volatile ConfigService.ClientConfiguration lastConfig;
@@ -65,6 +66,7 @@ public final class ExileClient implements AutoCloseable {
     this.config = builder.config;
     this.plugin = builder.plugin;
     this.configPollInterval = builder.configPollInterval;
+    this.tracingSamplingFraction = builder.tracingSamplingFraction;
 
     var choice = chooseCapacityProvider(builder, plugin);
     IntSupplier capacity = choice.provider();
@@ -184,7 +186,8 @@ public final class ExileClient implements AutoCloseable {
                 telemetryClientId,
                 newConfig.orgId(),
                 config.certificateName(),
-                workStream::status);
+                workStream::status,
+                tracingSamplingFraction);
         workStream.setDurationRecorder(metricsManager::recordWorkDuration);
         workStream.setMethodRecorder(metricsManager::recordMethodCall);
         workStream.setReconnectRecorder(metricsManager::recordReconnectDuration);
@@ -357,6 +360,7 @@ public final class ExileClient implements AutoCloseable {
     private Duration configPollInterval = Duration.ofSeconds(10);
     private Duration shutdownDrainTimeout =
         com.tcn.exile.internal.WorkStreamClient.DEFAULT_SHUTDOWN_DRAIN_TIMEOUT;
+    private double tracingSamplingFraction = 0.0;
 
     private Builder() {}
 
@@ -451,6 +455,25 @@ public final class ExileClient implements AutoCloseable {
      */
     public Builder shutdownDrainTimeout(Duration timeout) {
       this.shutdownDrainTimeout = Objects.requireNonNull(timeout);
+      return this;
+    }
+
+    /**
+     * Fraction of traces to sample and export to GCP Cloud Trace. {@code 0.0} (default) disables
+     * tracing entirely — no GCP client is instantiated, no spans are exported, plugins that don't
+     * opt in pay nothing. {@code 1.0} samples every trace, appropriate for dev. Production usage
+     * should use a small fraction (e.g. {@code 0.01}–{@code 0.1}) to stay under Cloud Trace
+     * ingestion limits. The sampler is {@code ParentBased(TraceIdRatioBased(fraction))}, so spans
+     * already sampled upstream (by the exile gatev3 server) are always exported regardless of the
+     * fraction here.
+     *
+     * @throws IllegalArgumentException if {@code fraction} is outside [0.0, 1.0]
+     */
+    public Builder tracingSamplingFraction(double fraction) {
+      if (fraction < 0.0 || fraction > 1.0) {
+        throw new IllegalArgumentException("tracingSamplingFraction must be in [0.0, 1.0]");
+      }
+      this.tracingSamplingFraction = fraction;
       return this;
     }
 
