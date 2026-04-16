@@ -1,5 +1,7 @@
 package com.tcn.exile.internal;
 
+import com.google.cloud.opentelemetry.trace.TraceConfiguration;
+import com.google.cloud.opentelemetry.trace.TraceExporter;
 import com.tcn.exile.StreamStatus;
 import com.tcn.exile.service.TelemetryService;
 import io.opentelemetry.api.common.AttributeKey;
@@ -7,11 +9,16 @@ import io.opentelemetry.api.common.Attributes;
 import io.opentelemetry.api.metrics.DoubleHistogram;
 import io.opentelemetry.api.metrics.LongCounter;
 import io.opentelemetry.api.metrics.Meter;
+import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.metrics.SdkMeterProvider;
 import io.opentelemetry.sdk.metrics.export.PeriodicMetricReader;
 import io.opentelemetry.sdk.resources.Resource;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.SdkTracerProviderBuilder;
+import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
+import io.opentelemetry.sdk.trace.export.SpanExporter;
+import io.opentelemetry.sdk.trace.samplers.Sampler;
 import java.lang.management.ManagementFactory;
 import java.time.Duration;
 import java.util.function.Supplier;
@@ -50,6 +57,26 @@ public final class MetricsManager implements AutoCloseable {
       String orgId,
       String certificateName,
       Supplier<StreamStatus> statusSupplier) {
+    this(telemetryService, clientId, orgId, certificateName, statusSupplier, 0.0);
+  }
+
+  /**
+   * Tracing-aware constructor.
+   *
+   * @param tracingSamplingFraction 0.0 → no spans exported (TracerProvider runs with {@link
+   *     Sampler#alwaysOff()} and no exporter is instantiated). {@code 0 < f ≤ 1.0} → install a
+   *     {@link TraceExporter GCP Cloud Trace exporter} as a {@link BatchSpanProcessor} and use
+   *     {@code ParentBased(TraceIdRatioBased(f))} for head-sampling. Any exporter construction
+   *     failure (missing GCP credentials, misconfigured project, etc.) is logged and downgraded to
+   *     "no exporter" rather than aborting MetricsManager startup.
+   */
+  public MetricsManager(
+      TelemetryService telemetryService,
+      String clientId,
+      String orgId,
+      String certificateName,
+      Supplier<StreamStatus> statusSupplier,
+      double tracingSamplingFraction) {
 
     var exporter = new GrpcMetricExporter(telemetryService, clientId);
     var reader = PeriodicMetricReader.builder(exporter).setInterval(Duration.ofSeconds(60)).build();
@@ -66,8 +93,27 @@ public final class MetricsManager implements AutoCloseable {
     this.meterProvider =
         SdkMeterProvider.builder().setResource(resource).registerMetricReader(reader).build();
 
-    // TracerProvider generates valid trace/span IDs for log correlation.
-    var tracerProvider = SdkTracerProvider.builder().setResource(resource).build();
+    // TracerProvider: always built so spans can be created for log correlation, but only
+    // attached to an exporter when the caller opted into tracing via tracingSamplingFraction.
+    SdkTracerProviderBuilder tracerBuilder = SdkTracerProvider.builder().setResource(resource);
+    if (tracingSamplingFraction > 0.0) {
+      SpanExporter spanExporter = tryBuildCloudTraceExporter();
+      if (spanExporter != null) {
+        tracerBuilder
+            .addSpanProcessor(BatchSpanProcessor.builder(spanExporter).build())
+            .setSampler(Sampler.parentBased(Sampler.traceIdRatioBased(tracingSamplingFraction)));
+        log.info(
+            "Tracing enabled: GCP Cloud Trace exporter, sampling fraction={}",
+            tracingSamplingFraction);
+      } else {
+        // Exporter failed to construct — keep the TracerProvider but drop every span by
+        // sampling at 0. The caller still gets valid trace IDs for MDC correlation.
+        tracerBuilder.setSampler(Sampler.alwaysOff());
+      }
+    } else {
+      tracerBuilder.setSampler(Sampler.alwaysOff());
+    }
+    var tracerProvider = tracerBuilder.build();
 
     var sdkBuilder =
         OpenTelemetrySdk.builder()
@@ -181,6 +227,29 @@ public final class MetricsManager implements AutoCloseable {
   /** The OTel Meter for plugin developers to create custom instruments. */
   public Meter meter() {
     return meter;
+  }
+
+  /**
+   * The OTel Tracer for plugin developers to create their own spans. When the caller did not enable
+   * tracing (sampling fraction = 0) this still returns a valid no-op tracer; plugin code can use it
+   * unconditionally.
+   */
+  public Tracer tracer() {
+    return openTelemetry.getTracer("com.tcn.exile.sati.plugin");
+  }
+
+  /**
+   * Build the GCP Cloud Trace exporter. Returns {@code null} (and logs a warning) if GCP
+   * credentials or project detection fails — this is not fatal; tracing is downgraded to no-op and
+   * everything else continues to work.
+   */
+  private static SpanExporter tryBuildCloudTraceExporter() {
+    try {
+      return TraceExporter.createWithConfiguration(TraceConfiguration.builder().build());
+    } catch (Exception e) {
+      log.warn("Could not create GCP Cloud Trace exporter ({}). Tracing disabled.", e.getMessage());
+      return null;
+    }
   }
 
   /** Record the duration of a completed work item. Called from WorkStreamClient. */
