@@ -1,0 +1,10 @@
+plugins {
+	id("java-library")
+	id("maven-publish")
+}
+
+dependencies {
+	api(project(':core'))
+	api(project(':config'))
+	api(project(':logback-ext'))
+}
