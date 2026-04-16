@@ -38,6 +38,7 @@ public final class ExileClientManager implements AutoCloseable {
   private final String clientName;
   private final String clientVersion;
   private final int maxConcurrency;
+  private final double tracingSamplingFraction;
   private final IntSupplier capacityProvider;
   private final Plugin plugin;
   private final List<Path> watchDirs;
@@ -53,6 +54,7 @@ public final class ExileClientManager implements AutoCloseable {
     this.clientName = builder.clientName;
     this.clientVersion = builder.clientVersion;
     this.maxConcurrency = builder.maxConcurrency;
+    this.tracingSamplingFraction = builder.tracingSamplingFraction;
     this.capacityProvider = builder.capacityProvider;
     this.plugin = builder.plugin;
     this.watchDirs = builder.watchDirs;
@@ -140,6 +142,7 @@ public final class ExileClientManager implements AutoCloseable {
               .clientName(clientName)
               .clientVersion(clientVersion)
               .maxConcurrency(maxConcurrency)
+              .tracingSamplingFraction(tracingSamplingFraction)
               .plugin(plugin);
       if (capacityProvider != null) {
         clientBuilder.capacityProvider(capacityProvider);
@@ -191,6 +194,7 @@ public final class ExileClientManager implements AutoCloseable {
     private String clientName = "sati";
     private String clientVersion = "unknown";
     private int maxConcurrency = 100;
+    private double tracingSamplingFraction = 0.0;
     private IntSupplier capacityProvider;
     private Plugin plugin;
     private List<Path> watchDirs;
@@ -210,6 +214,21 @@ public final class ExileClientManager implements AutoCloseable {
 
     public Builder maxConcurrency(int maxConcurrency) {
       this.maxConcurrency = maxConcurrency;
+      return this;
+    }
+
+    /**
+     * Fraction of traces to sample and export to GCP Cloud Trace. Forwarded to {@link
+     * com.tcn.exile.ExileClient.Builder#tracingSamplingFraction(double)} — see that method for full
+     * semantics. Default {@code 0.0} (tracing disabled, no GCP client instantiated).
+     *
+     * @throws IllegalArgumentException if {@code fraction} is outside {@code [0.0, 1.0]}
+     */
+    public Builder tracingSamplingFraction(double fraction) {
+      if (fraction < 0.0 || fraction > 1.0) {
+        throw new IllegalArgumentException("tracingSamplingFraction must be in [0.0, 1.0]");
+      }
+      this.tracingSamplingFraction = fraction;
       return this;
     }
 
