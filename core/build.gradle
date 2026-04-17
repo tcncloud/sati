@@ -34,7 +34,7 @@ dependencies {
 	implementation("com.google.cloud.opentelemetry:exporter-trace:0.36.0")
 
 	// PKCS#1 → PKCS#8 key conversion for mTLS
-	implementation("org.bouncycastle:bcpkix-jdk18on:1.83")
+	implementation("org.bouncycastle:bcpkix-jdk18on:1.84")
 
 	// In-memory log buffer for listTenantLogs/setLogLevel
 	implementation(project(':logback-ext'))
