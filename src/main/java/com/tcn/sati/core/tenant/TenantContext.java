@@ -2,28 +2,31 @@ package com.tcn.sati.core.tenant;
 
 import com.tcn.sati.config.BackendType;
 import com.tcn.sati.config.SatiConfig;
-import com.tcn.sati.core.job.JobProcessor;
+import com.tcn.sati.core.AdaptiveSnapshot;
+import com.tcn.sati.infra.adaptive.AdaptiveCapacity;
 import com.tcn.sati.infra.backend.TenantBackendClient;
 import com.tcn.sati.infra.backend.rest.RestBackendClient;
-import com.tcn.sati.infra.gate.EventStreamClient;
+import com.tcn.sati.infra.executor.PriorityExecutor;
 import com.tcn.sati.infra.gate.GateClient;
-import com.tcn.sati.infra.gate.JobQueueClient;
+import com.tcn.sati.infra.gate.WorkStreamClient;
+import com.tcn.sati.infra.logging.GrpcLogShipper;
+import com.tcn.sati.infra.logging.MemoryLogAppender;
+import com.tcn.sati.infra.metrics.MetricsManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Instant;
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Encapsulates all resources for a single tenant.
- * 
+ *
  * Each tenant has its own:
  * - GateClient (gRPC connection to Exile/Gate)
- * - JobQueueClient (receives jobs from Gate with ACK support)
- * - EventStreamClient (receives events from Gate with ACK support)
- * - JobProcessor (executes jobs)
+ * - WorkStreamClient (v3 unified bidirectional stream for jobs and events)
  * - TenantBackendClient (database/API connection)
  * - ScheduledExecutorService (for tenant-specific tasks)
  */
@@ -39,10 +42,24 @@ public class TenantContext implements AutoCloseable {
 
     private GateClient gateClient;
     private TenantBackendClient backendClient;
-    private JobProcessor jobProcessor;
-    private JobQueueClient jobQueueClient;
-    private EventStreamClient eventStreamClient;
+    private WorkStreamClient workStreamClient;
     private ScheduledExecutorService scheduler;
+    private MetricsManager metricsManager;
+    private GrpcLogShipper logShipper;
+    private PriorityExecutor priorityExecutor;
+    private AdaptiveCapacity adaptive;
+
+    // Optional priority executor config (set before start())
+    private int priorityPoolSize = 0;
+    private int priorityMaxLowDepth = 100;
+
+    // Optional adaptive concurrency config (set before start())
+    private boolean adaptiveEnabled = true;
+    private int minConcurrency = 1;
+    private int initialConcurrency = 10;
+    private int maxConcurrency = 100;
+    private java.time.Duration shutdownDrainTimeout = java.time.Duration.ofSeconds(30);
+    private double tracingSamplingFraction = 0.0;
 
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Instant createdAt = Instant.now();
@@ -116,30 +133,54 @@ public class TenantContext implements AutoCloseable {
                         "JDBC backend requires custom client injection via SatiApp.builder().backendClient()");
             }
 
-            // 4. Note: For JDBC backends using custom clients,
-            // gate config polling should be wired up in Main.java after start().
-
-            // 5. Initialize Job and Event Processing (new APIs with ACK support)
+            // 4. Initialize WorkStream (v3 unified bidirectional stream)
             if (gateClient != null) {
-                this.jobProcessor = new JobProcessor(backendClient, gateClient, 20, appName, appVersion);
+                this.workStreamClient = new WorkStreamClient(
+                        gateClient, backendClient, appName, appVersion, maxConcurrency);
+                workStreamClient.setShutdownDrainTimeout(shutdownDrainTimeout);
+                workStreamClient.start();
+                log.info("Tenant {}: WorkStream started", tenantKey);
+            }
 
-                // Job queue - bidirectional stream with acknowledgment
-                this.jobQueueClient = new JobQueueClient(gateClient, job -> {
-                    try {
-                        jobProcessor.processJob(job);
-                        return true; // ACK on success
-                    } catch (Exception e) {
-                        log.error("Job processing failed: {}", e.getMessage());
-                        return false; // Don't ACK - will be redelivered
+            // 5. Initialize telemetry (metrics + log shipping)
+            if (gateClient != null && workStreamClient != null) {
+                String clientId = tenantKey + "-" + UUID.randomUUID().toString().substring(0, 8);
+                String orgId = config.org() != null ? config.org() : tenantKey;
+                String certName = tenantKey;
+                try {
+                    this.metricsManager = new MetricsManager(gateClient, clientId, orgId, certName,
+                            workStreamClient, tracingSamplingFraction);
+                    workStreamClient.setDurationRecorder(metricsManager::recordWorkDuration);
+                    workStreamClient.setReconnectRecorder(metricsManager::recordReconnectDuration);
+                    workStreamClient.setMethodRecorder(metricsManager::recordMethodCall);
+
+                    // Create PriorityExecutor if configured (needs meter from MetricsManager)
+                    if (priorityPoolSize > 0) {
+                        this.priorityExecutor = new PriorityExecutor(
+                                priorityPoolSize, priorityMaxLowDepth, metricsManager.meter());
+                        workStreamClient.setPriorityExecutor(priorityExecutor);
+                        log.info("Tenant {}: PriorityExecutor started (pool={}, maxLow={})",
+                                tenantKey, priorityPoolSize, priorityMaxLowDepth);
                     }
-                });
-                this.jobQueueClient.start();
 
-                // Event stream - handles agent calls, telephony results, etc.
-                this.eventStreamClient = new EventStreamClient(gateClient, backendClient);
-                this.eventStreamClient.start();
-
-                log.info("Tenant {}: Job queue and event stream started", tenantKey);
+                    // Create AdaptiveCapacity if enabled
+                    if (adaptiveEnabled) {
+                        final TenantBackendClient bc = backendClient;
+                        this.adaptive = new AdaptiveCapacity(minConcurrency, initialConcurrency, maxConcurrency,
+                                bc::resourceLimits);
+                        workStreamClient.setAdaptiveCapacity(adaptive);
+                        log.info("Tenant {}: AdaptiveCapacity started (min={}, initial={}, max={})",
+                                tenantKey, minConcurrency, initialConcurrency, maxConcurrency);
+                    }
+                } catch (Exception e) {
+                    log.warn("Tenant {}: Failed to initialize MetricsManager: {}", tenantKey, e.getMessage());
+                }
+                try {
+                    this.logShipper = new GrpcLogShipper(gateClient, clientId);
+                    MemoryLogAppender.enableLogShipper(logShipper);
+                } catch (Exception e) {
+                    log.warn("Tenant {}: Failed to initialize log shipping: {}", tenantKey, e.getMessage());
+                }
             }
 
             log.info("Tenant {} started successfully", tenantKey);
@@ -187,6 +228,45 @@ public class TenantContext implements AutoCloseable {
         return circuitBreaker;
     }
 
+    /** Configure priority execution. Must be called before start(). */
+    public void setPriorityExecutorConfig(int poolSize, int maxLowDepth) {
+        this.priorityPoolSize = poolSize;
+        this.priorityMaxLowDepth = maxLowDepth;
+    }
+
+    public PriorityExecutor getPriorityExecutor() {
+        return priorityExecutor;
+    }
+
+    /** Configure adaptive concurrency. Must be called before start(). */
+    public void setAdaptiveConfig(boolean enabled, int min, int initial, int max) {
+        this.adaptiveEnabled = enabled;
+        this.minConcurrency = min;
+        this.initialConcurrency = initial;
+        this.maxConcurrency = max;
+    }
+
+    /** Configure graceful drain timeout. Must be called before start(). */
+    public void setShutdownDrainTimeout(java.time.Duration timeout) {
+        this.shutdownDrainTimeout = timeout;
+    }
+
+    /** Configure GCP Cloud Trace sampling fraction (0.0 = disabled). Must be called before start(). */
+    public void setTracingSamplingFraction(double fraction) {
+        this.tracingSamplingFraction = fraction;
+    }
+
+    /** Get the current adaptive concurrency snapshot (empty if adaptive is disabled or not yet started). */
+    public java.util.Optional<AdaptiveSnapshot> adaptiveSnapshot() {
+        var a = adaptive;
+        if (a == null) return java.util.Optional.empty();
+        return java.util.Optional.of(new AdaptiveSnapshot(
+                a.limit(), a.minLimit(), a.maxLimit(), a.effectiveCeiling(),
+                a.jobP95Nanos(), a.jobEmaNanos(), a.decayingMinNanos(),
+                a.lastSloGradient(), a.lastMinGradient(), a.lastResourceGradient(),
+                a.errorCount(), a.sampleCount()));
+    }
+
     // ========== Getters ==========
 
     public String getTenantKey() {
@@ -201,16 +281,8 @@ public class TenantContext implements AutoCloseable {
         return backendClient;
     }
 
-    public JobProcessor getJobProcessor() {
-        return jobProcessor;
-    }
-
-    public JobQueueClient getJobQueueClient() {
-        return jobQueueClient;
-    }
-
-    public EventStreamClient getEventStreamClient() {
-        return eventStreamClient;
+    public WorkStreamClient getWorkStreamClient() {
+        return workStreamClient;
     }
 
     public boolean isRunning() {
@@ -234,11 +306,9 @@ public class TenantContext implements AutoCloseable {
                 running.get(),
                 gateClient != null && gateClient.isChannelActive(),
                 backendClient != null && backendClient.isConnected(),
-                jobQueueClient != null && jobQueueClient.isConnected(),
-                eventStreamClient != null && eventStreamClient.isRunning(),
-                jobProcessor != null ? jobProcessor.getProcessedJobs() : 0,
-                jobProcessor != null ? jobProcessor.getFailedJobs() : 0,
-                eventStreamClient != null ? eventStreamClient.getEventsProcessed() : 0,
+                workStreamClient != null && workStreamClient.isConnected(),
+                workStreamClient != null ? workStreamClient.getCompletedTotal() : 0,
+                workStreamClient != null ? workStreamClient.getFailedTotal() : 0,
                 createdAt.toString());
     }
 
@@ -247,11 +317,9 @@ public class TenantContext implements AutoCloseable {
             boolean running,
             boolean gateConnected,
             boolean backendConnected,
-            boolean jobQueueConnected,
-            boolean eventStreamRunning,
-            long processedJobs,
-            long failedJobs,
-            long processedEvents,
+            boolean workStreamConnected,
+            long completedWork,
+            long failedWork,
             String createdAt) {
     }
 
@@ -264,21 +332,13 @@ public class TenantContext implements AutoCloseable {
         log.info("Tenant {}: Reconnecting Gate...", tenantKey);
 
         // Close existing Gate resources
-        if (eventStreamClient != null) {
+        if (workStreamClient != null) {
             try {
-                eventStreamClient.close();
+                workStreamClient.close();
             } catch (Exception e) {
-                log.warn("Error closing event stream", e);
+                log.warn("Error closing work stream", e);
             }
-            eventStreamClient = null;
-        }
-        if (jobQueueClient != null) {
-            try {
-                jobQueueClient.close();
-            } catch (Exception e) {
-                log.warn("Error closing job queue", e);
-            }
-            jobQueueClient = null;
+            workStreamClient = null;
         }
         if (gateClient != null) {
             try {
@@ -301,21 +361,26 @@ public class TenantContext implements AutoCloseable {
             // Restart config polling (populates org name, config name, etc.)
             gateClient.startConfigPolling();
 
-            // Recreate job queue and event stream
-            if (jobProcessor != null && backendClient != null) {
-                this.jobQueueClient = new JobQueueClient(gateClient, job -> {
-                    try {
-                        jobProcessor.processJob(job);
-                        return true;
-                    } catch (Exception e) {
-                        log.error("Job processing failed: {}", e.getMessage());
-                        return false;
-                    }
-                });
-                this.jobQueueClient.start();
+            // Recreate WorkStream
+            if (backendClient != null) {
+                this.workStreamClient = new WorkStreamClient(
+                        gateClient, backendClient, appName, appVersion, maxConcurrency);
+                workStreamClient.setShutdownDrainTimeout(shutdownDrainTimeout);
 
-                this.eventStreamClient = new EventStreamClient(gateClient, backendClient);
-                this.eventStreamClient.start();
+                // Re-wire metric recorders and PriorityExecutor if they survived the reconnect
+                if (metricsManager != null) {
+                    workStreamClient.setDurationRecorder(metricsManager::recordWorkDuration);
+                    workStreamClient.setReconnectRecorder(metricsManager::recordReconnectDuration);
+                    workStreamClient.setMethodRecorder(metricsManager::recordMethodCall);
+                }
+                if (priorityExecutor != null) {
+                    workStreamClient.setPriorityExecutor(priorityExecutor);
+                }
+                if (adaptive != null) {
+                    workStreamClient.setAdaptiveCapacity(adaptive);
+                }
+
+                workStreamClient.start();
             }
 
             log.info("Tenant {}: Gate reconnected successfully", tenantKey);
@@ -327,28 +392,28 @@ public class TenantContext implements AutoCloseable {
         log.info("Shutting down tenant: {}", tenantKey);
         running.set(false);
 
-        // Close in reverse order of creation
-        if (eventStreamClient != null) {
+        MemoryLogAppender.disableLogShipper();
+
+        // Drain WorkStream first — blocks until in-flight work completes (up to drain timeout).
+        // PriorityExecutor must stay alive during drain since it processes the in-flight items.
+        if (workStreamClient != null) {
             try {
-                eventStreamClient.close();
+                workStreamClient.close();
             } catch (Exception e) {
-                log.warn("Error closing event stream for {}", tenantKey, e);
+                log.warn("Error closing work stream for {}", tenantKey, e);
             }
         }
 
-        if (jobQueueClient != null) {
-            try {
-                jobQueueClient.close();
-            } catch (Exception e) {
-                log.warn("Error closing job queue for {}", tenantKey, e);
-            }
+        // Now safe to shut down PriorityExecutor — no new work will be submitted.
+        if (priorityExecutor != null) {
+            priorityExecutor.shutdown();
         }
 
-        if (jobProcessor != null) {
+        if (metricsManager != null) {
             try {
-                jobProcessor.close();
+                metricsManager.close();
             } catch (Exception e) {
-                log.warn("Error closing job processor for {}", tenantKey, e);
+                log.warn("Error closing metrics manager for {}", tenantKey, e);
             }
         }
 

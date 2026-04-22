@@ -21,7 +21,7 @@ public class SkillsService {
 
         public List<SkillInfo> listSkills() {
                 var resp = gate.listSkills(
-                                build.buf.gen.tcnapi.exile.gate.v2.ListSkillsRequest.newBuilder().build());
+                                build.buf.gen.tcnapi.exile.gate.v3.ListSkillsRequest.newBuilder().build());
                 return resp.getSkillsList().stream()
                                 .map(this::toSkillInfo)
                                 .collect(Collectors.toList());
@@ -29,7 +29,7 @@ public class SkillsService {
 
         public List<SkillInfo> listAgentSkills(String agentId) {
                 var resp = gate.listAgentSkills(
-                                build.buf.gen.tcnapi.exile.gate.v2.ListAgentSkillsRequest.newBuilder()
+                                build.buf.gen.tcnapi.exile.gate.v3.ListAgentSkillsRequest.newBuilder()
                                                 .setPartnerAgentId(agentId).build());
                 return resp.getSkillsList().stream()
                                 .map(this::toSkillInfo)
@@ -37,30 +37,30 @@ public class SkillsService {
         }
 
         public SuccessResult assignSkill(String agentId, AssignSkillRequest request) {
-                gate.assignAgentSkill(
-                                build.buf.gen.tcnapi.exile.gate.v2.AssignAgentSkillRequest.newBuilder()
-                                                .setPartnerAgentId(agentId)
-                                                .setSkillId(request.skillId)
-                                                .setProficiency(request.proficiency)
-                                                .build());
+                var reqBuilder = build.buf.gen.tcnapi.exile.gate.v3.AssignAgentSkillRequest.newBuilder()
+                                .setPartnerAgentId(agentId)
+                                .setSkillId(request.skillId);
+                if (request.proficiency != null)
+                        reqBuilder.setProficiency(request.proficiency);
+                gate.assignAgentSkill(reqBuilder.build());
                 return new SuccessResult();
         }
 
         public SuccessResult unassignSkill(String agentId, UnassignSkillRequest request) {
                 gate.unassignAgentSkill(
-                                build.buf.gen.tcnapi.exile.gate.v2.UnassignAgentSkillRequest.newBuilder()
+                                build.buf.gen.tcnapi.exile.gate.v3.UnassignAgentSkillRequest.newBuilder()
                                                 .setPartnerAgentId(agentId)
                                                 .setSkillId(request.skillId)
                                                 .build());
                 return new SuccessResult();
         }
 
-        protected SkillInfo toSkillInfo(build.buf.gen.tcnapi.exile.gate.v2.Skill s) {
+        protected SkillInfo toSkillInfo(build.buf.gen.tcnapi.exile.gate.v3.Skill s) {
                 var info = new SkillInfo();
                 info.skillId = s.getSkillId();
                 info.name = s.getName();
                 info.description = s.getDescription();
-                info.proficiency = s.getProficiency();
+                info.proficiency = s.hasProficiency() ? s.getProficiency() : null;
                 return info;
         }
 }

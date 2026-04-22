@@ -21,7 +21,7 @@ public class ScrubListService {
 
     public List<ScrubListEntry> list() {
         var resp = gate.listScrubLists(
-                build.buf.gen.tcnapi.exile.gate.v2.ListScrubListsRequest.newBuilder().build());
+                build.buf.gen.tcnapi.exile.gate.v3.ListScrubListsRequest.newBuilder().build());
         List<ScrubListEntry> result = new ArrayList<>();
         for (var s : resp.getScrubListsList()) {
             var entry = new ScrubListEntry();
@@ -34,26 +34,29 @@ public class ScrubListService {
     }
 
     public SuccessResult upsertEntry(String scrubListId, UpsertScrubEntryRequest request) {
-        var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.UpdateScrubListEntryRequest.newBuilder()
-                .setScrubListId(scrubListId)
+        var entryBuilder = build.buf.gen.tcnapi.exile.gate.v3.ScrubListEntry.newBuilder()
                 .setContent(request.content);
         if (request.expiration_date != null) {
             Instant exp = Instant.parse(request.expiration_date);
-            reqBuilder.setExpiration(com.google.protobuf.Timestamp.newBuilder()
+            entryBuilder.setExpiration(com.google.protobuf.Timestamp.newBuilder()
                     .setSeconds(exp.getEpochSecond()).setNanos(exp.getNano()));
         }
         if (request.notes != null)
-            reqBuilder.setNotes(com.google.protobuf.StringValue.of(request.notes));
+            entryBuilder.setNotes(request.notes);
         if (request.country_code != null)
-            reqBuilder.setCountryCode(com.google.protobuf.StringValue.of(request.country_code));
+            entryBuilder.setCountryCode(request.country_code);
 
-        gate.updateScrubListEntry(reqBuilder.build());
+        gate.updateEntry(
+                build.buf.gen.tcnapi.exile.gate.v3.UpdateEntryRequest.newBuilder()
+                        .setScrubListId(scrubListId)
+                        .setEntry(entryBuilder.build())
+                        .build());
         return new SuccessResult();
     }
 
     public SuccessResult deleteEntry(String scrubListId, String content) {
-        gate.removeScrubListEntries(
-                build.buf.gen.tcnapi.exile.gate.v2.RemoveScrubListEntriesRequest.newBuilder()
+        gate.removeEntries(
+                build.buf.gen.tcnapi.exile.gate.v3.RemoveEntriesRequest.newBuilder()
                         .setScrubListId(scrubListId)
                         .addEntries(content)
                         .build());

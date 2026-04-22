@@ -37,6 +37,8 @@ import java.util.concurrent.atomic.AtomicReference;
 public abstract class JdbcBackendClient implements TenantBackendClient {
     private static final Logger log = LoggerFactory.getLogger(JdbcBackendClient.class);
 
+    protected static final int QUERY_TIMEOUT_SECONDS = 120;
+
     private final AtomicReference<HikariDataSource> dataSourceRef = new AtomicReference<>();
     private final AtomicInteger connectionFailureCount = new AtomicInteger(0);
     private final ExecutorService initExecutor;
@@ -178,14 +180,10 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
             return;
         }
 
-        currentBackendConfig = backendConfig;
-        connectionFailureCount.set(0);
-
-        // Close existing datasource
-        closeDataSource();
-
-        // Initialize new datasource asynchronously
-        // Use explicit URL if provided, otherwise let subclass build it
+        // Initialize new datasource asynchronously.
+        // Do NOT close the existing datasource first — initializeDataSource does a
+        // swap-then-close so the old pool keeps serving until the new one is verified.
+        // currentBackendConfig is updated only on success inside initializeDataSource.
         String jdbcUrl = backendConfig.getEffectiveJdbcUrl();
         if (jdbcUrl == null) {
             jdbcUrl = buildJdbcUrl(backendConfig);
@@ -246,26 +244,28 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
             HikariDataSource ds = new HikariDataSource(hc);
 
-            // Test connection
+            // Test connection before swapping — keeps old pool alive if new one is bad.
             try (Connection testConn = ds.getConnection()) {
                 if (testConn.isValid(5)) {
-                    log.info("✅ Database connection successful!");
+                    log.info("Database connection successful, swapping pool");
 
                     HikariDataSource oldDs = dataSourceRef.getAndSet(ds);
                     if (oldDs != null && !oldDs.isClosed()) {
                         oldDs.close();
                     }
 
+                    // Only mark config as accepted after a verified connection.
+                    currentBackendConfig = backendConfig;
                     connectionFailureCount.set(0);
                 } else {
-                    log.error("Database connection test failed");
+                    log.error("Database connection test failed — keeping existing pool");
                     connectionFailureCount.incrementAndGet();
                     ds.close();
                 }
             }
 
         } catch (Exception e) {
-            log.error("Failed to initialize datasource: {}", e.getMessage(), e);
+            log.error("Failed to initialize datasource: {} — keeping existing pool", e.getMessage(), e);
             connectionFailureCount.incrementAndGet();
         }
     }
@@ -286,8 +286,23 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
         return ds;
     }
 
+    /** Returns the current priority datasource, or null if not yet configured. */
+    protected HikariDataSource getDataSource() {
+        return dataSourceRef.get();
+    }
+
     protected Connection getConnection() throws SQLException {
         return getDataSourceOrThrow().getConnection();
+    }
+
+    /**
+     * Returns a connection from the bulk pool.
+     * Default: same as getConnection(). Override in subclasses for split-pool routing.
+     * Bulk operations: ListPools, GetPoolRecords, AgentCall, TelephonyResult,
+     * AgentResponse, Task, CallRecording.
+     */
+    protected Connection getBulkConnection() throws SQLException {
+        return getConnection();
     }
 
     // ========== Pool Operations ==========
@@ -296,15 +311,16 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
     public List<PoolInfo> listPools() {
         List<PoolInfo> pools = new ArrayList<>();
 
-        try (Connection con = getConnection();
-                var ps = con.prepareStatement(getListPoolsSql());
-                var rs = ps.executeQuery()) {
-
-            while (rs.next()) {
-                pools.add(new PoolInfo(
-                        rs.getString("PoolID"),
-                        rs.getString("PoolName"),
-                        rs.getString("Status")));
+        try (Connection con = getBulkConnection();
+                var ps = con.prepareStatement(getListPoolsSql())) {
+            ps.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
+            try (var rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    pools.add(new PoolInfo(
+                            rs.getString("PoolID"),
+                            rs.getString("PoolName"),
+                            rs.getString("Status")));
+                }
             }
         } catch (SQLException e) {
             log.error("Failed to list pools", e);
@@ -318,7 +334,7 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
     public PoolStatus getPoolStatus(String poolId) {
         try (Connection con = getConnection();
                 var ps = con.prepareStatement(getPoolStatusSql())) {
-
+            ps.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             ps.setString(1, poolId);
             try (var rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -343,9 +359,9 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
         int pageSize = 100;
         int offset = page * pageSize;
 
-        try (Connection con = getConnection();
+        try (Connection con = getBulkConnection();
                 var ps = con.prepareStatement(getPoolRecordsSql())) {
-
+            ps.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             ps.setInt(1, pageSize);
             ps.setString(2, poolId);
             ps.setInt(3, offset);
@@ -383,9 +399,9 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
         log.info("Handling telephony result for callSid: {}", result.callSid);
 
-        try (Connection con = getConnection();
+        try (Connection con = getBulkConnection();
                 var stmt = con.prepareStatement(getTelephonyResultSql())) {
-
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             Map<String, Object> payload = new HashMap<>();
             payload.put("call_sid", result.callSid);
             payload.put("call_type", result.callType);
@@ -427,9 +443,9 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
     public void handleTask(ExileTask task) {
         log.info("Handling task: {} for pool: {}", task.taskSid, task.poolId);
 
-        try (Connection con = getConnection();
+        try (Connection con = getBulkConnection();
                 var stmt = con.prepareStatement(getTaskSql())) {
-
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             Map<String, Object> payload = new HashMap<>();
             payload.put("task_sid", task.taskSid);
             payload.put("task_group_sid", task.taskGroupSid);
@@ -457,9 +473,9 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
     public String handleAgentCall(AgentCall call) {
         log.info("Handling agent call: {} for callSid: {}", call.agentCallSid, call.callSid);
 
-        try (Connection con = getConnection();
+        try (Connection con = getBulkConnection();
                 var stmt = con.prepareStatement(getAgentCallSql())) {
-
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             Map<String, Object> payload = new HashMap<>();
             payload.put("agent_call_sid", call.agentCallSid);
             payload.put("call_sid", call.callSid);
@@ -501,9 +517,9 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
     public void handleAgentResponse(AgentResponse response) {
         log.info("Handling agent response: {} key: {}", response.agentCallResponseSid, response.responseKey);
 
-        try (Connection con = getConnection();
+        try (Connection con = getBulkConnection();
                 var stmt = con.prepareStatement(getAgentResponseSql())) {
-
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             Map<String, Object> payload = new HashMap<>();
             payload.put("agent_call_response_sid", response.agentCallResponseSid);
             payload.put("call_sid", response.callSid);
@@ -534,9 +550,9 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
     public void handleTransferInstance(TransferInstance transfer) {
         log.info("Handling transfer instance: {}", transfer.transferInstanceId);
 
-        try (Connection con = getConnection();
+        try (Connection con = getBulkConnection();
                 var stmt = con.prepareStatement(getTransferInstanceSql())) {
-
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             Map<String, Object> payload = new HashMap<>();
             payload.put("transfer_instance_id", transfer.transferInstanceId);
             payload.put("client_sid", transfer.clientSid);
@@ -574,9 +590,9 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
     public void handleCallRecording(CallRecording recording) {
         log.info("Handling call recording: {} for callSid: {}", recording.recordingId, recording.callSid);
 
-        try (Connection con = getConnection();
+        try (Connection con = getBulkConnection();
                 var stmt = con.prepareStatement(getCallRecordingSql())) {
-
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             Map<String, Object> payload = new HashMap<>();
             payload.put("recording_id", recording.recordingId);
             payload.put("call_sid", recording.callSid);
@@ -670,7 +686,7 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getPopAccountSql())) {
-
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             Map<String, Object> payload = new HashMap<>();
             payload.put("recordId", request.recordId);
             payload.put("userId", request.userId);
@@ -699,7 +715,7 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getSearchRecordsSql())) {
-
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             Map<String, Object> payload = new HashMap<>();
             payload.put("lookupType", request.lookupType);
             payload.put("lookupValue", request.lookupValue);
@@ -736,7 +752,7 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getReadFieldsSql())) {
-
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             Map<String, Object> payload = new HashMap<>();
             payload.put("recordId", request.recordId);
             payload.put("fields", request.fieldNames);
@@ -782,7 +798,7 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getWriteFieldsSql())) {
-
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             Map<String, Object> payload = new HashMap<>();
             payload.put("recordId", request.recordId);
             payload.put("fields", request.fields);
@@ -804,7 +820,7 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getCreatePaymentSql())) {
-
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             Map<String, Object> payload = new HashMap<>();
             payload.put("recordId", request.recordId);
             payload.put("paymentId", request.paymentId);
@@ -827,7 +843,7 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
         try (Connection con = getConnection();
                 var stmt = con.prepareStatement(getExecuteLogicSql())) {
-
+            stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             Map<String, Object> payload = new HashMap<>();
             payload.put("logicBlockId", request.logicBlockId);
             payload.put("logicBlockParams", request.logicBlockParams);
@@ -869,6 +885,20 @@ public abstract class JdbcBackendClient implements TenantBackendClient {
 
     public int getConnectionFailureCount() {
         return connectionFailureCount.get();
+    }
+
+    /**
+     * Reports idle connections as available capacity for Gate flow control.
+     * Subclasses with multiple pools (e.g. priority + bulk) should override to sum
+     * idle counts across all pools.
+     */
+    @Override
+    public int availableCapacity() {
+        HikariDataSource ds = dataSourceRef.get();
+        if (ds == null || ds.isClosed() || ds.getHikariPoolMXBean() == null) {
+            return 0;
+        }
+        return ds.getHikariPoolMXBean().getIdleConnections();
     }
 
     /**

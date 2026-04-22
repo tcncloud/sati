@@ -67,6 +67,15 @@ dependencies {
     // Database (connection pooling only - JDBC drivers provided by consuming apps)
     implementation 'com.zaxxer:HikariCP:5.1.0'
 
+    // OpenTelemetry (tracing + metrics)
+    implementation 'io.opentelemetry:opentelemetry-api:1.61.0'
+    implementation 'io.opentelemetry:opentelemetry-sdk:1.61.0'
+    implementation 'io.opentelemetry:opentelemetry-sdk-metrics:1.61.0'
+    implementation 'io.opentelemetry:opentelemetry-sdk-trace:1.61.0'
+
+    // GCP Cloud Trace exporter (opt-in; only activated when tracingSamplingFraction > 0)
+    implementation 'com.google.cloud.opentelemetry:exporter-trace:0.36.0'
+
     // Exile API (Generated Protos)
     api "build.buf.gen:tcn_exileapi_grpc_java:${exileapiGrpcVersion}"
     api "build.buf.gen:tcn_exileapi_protocolbuffers_java:${exileapiProtobufVersion}"

@@ -100,6 +100,37 @@ public interface TenantBackendClient extends AutoCloseable {
      */
     boolean isConnected();
 
+    /**
+     * Upper bound on the number of additional work items this backend can accept right now.
+     *
+     * Used by WorkStreamClient for credit-based flow control against Gate: the number of
+     * outstanding Pull credits is capped at this value. When the backend is saturated
+     * (e.g. DB connection pools exhausted), return a smaller number or 0 to pause delivery.
+     *
+     * Default: unbounded. Override in implementations that have finite capacity (e.g. JDBC
+     * backends can return total idle connections across all pools).
+     *
+     * Must be cheap and non-blocking — it is polled on every completed work item.
+     */
+    default int availableCapacity() {
+        return Integer.MAX_VALUE;
+    }
+
+    /**
+     * Declare structural resource caps for the adaptive concurrency controller.
+     *
+     * Each entry provides a hardMax ceiling and optional live currentUsage. The controller uses
+     * the minimum hardMax as a concurrency ceiling and computes a resource gradient from utilization.
+     *
+     * Default: empty list (no resource limits declared). Override in implementations that have
+     * finite resources (e.g. JDBC backends can report their connection pool size and utilization).
+     *
+     * Must be cheap and non-blocking — called on every recompute cycle (~every 25 job completions).
+     */
+    default java.util.List<ResourceLimit> resourceLimits() {
+        return java.util.List.of();
+    }
+
     // ========== DTOs ==========
 
     public static class PoolInfo {

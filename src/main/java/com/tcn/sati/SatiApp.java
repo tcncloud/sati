@@ -8,6 +8,8 @@ import io.javalin.http.staticfiles.Location;
 import com.tcn.sati.core.tenant.TenantContext;
 import com.tcn.sati.core.tenant.TenantManager;
 import com.tcn.sati.infra.backend.TenantBackendClient;
+import com.tcn.sati.infra.metrics.ApiMetricsRecorder;
+import com.tcn.sati.infra.metrics.TenantApiMetrics;
 import io.javalin.Javalin;
 import io.javalin.openapi.plugin.OpenApiPlugin;
 import io.javalin.openapi.plugin.swagger.SwaggerPlugin;
@@ -56,8 +58,16 @@ public class SatiApp {
     private final String appName;
     private final String appVersion;
     private final boolean multiTenant;
+    private final int priorityPoolSize;
+    private final int priorityMaxLowDepth;
     private final Supplier<List<TenantManager.TenantConfig>> tenantDiscovery;
     private final long discoveryIntervalSeconds;
+    private final boolean adaptiveEnabled;
+    private final int minConcurrency;
+    private final int initialConcurrency;
+    private final int maxConcurrency;
+    private final java.time.Duration shutdownDrainTimeout;
+    private final double tracingSamplingFraction;
 
     // Optional service override factories (can provide custom constructors)
     private final java.util.function.Function<com.tcn.sati.infra.gate.GateClient, TransferService> transferServiceFactory;
@@ -69,6 +79,7 @@ public class SatiApp {
     private final java.util.function.Function<com.tcn.sati.infra.gate.GateClient, JourneyBufferService> journeyBufferServiceFactory;
 
     private Javalin app;
+    private final TenantApiMetrics apiMetrics = new TenantApiMetrics();
 
     // Single-tenant mode resources
     private TenantContext singleTenantContext;
@@ -92,6 +103,14 @@ public class SatiApp {
         this.nclRulesetServiceFactory = builder.nclRulesetServiceFactory;
         this.voiceRecordingServiceFactory = builder.voiceRecordingServiceFactory;
         this.journeyBufferServiceFactory = builder.journeyBufferServiceFactory;
+        this.priorityPoolSize = builder.priorityPoolSize;
+        this.priorityMaxLowDepth = builder.priorityMaxLowDepth;
+        this.adaptiveEnabled = builder.adaptiveEnabled;
+        this.minConcurrency = builder.minConcurrency;
+        this.initialConcurrency = builder.initialConcurrency;
+        this.maxConcurrency = builder.maxConcurrency;
+        this.shutdownDrainTimeout = builder.shutdownDrainTimeout;
+        this.tracingSamplingFraction = builder.tracingSamplingFraction;
     }
 
     /**
@@ -127,6 +146,9 @@ public class SatiApp {
                 pluginConfig.setUiPath("/swagger");
             }));
         });
+
+        // Register API metrics recorder BEFORE any routes so all endpoints are instrumented.
+        ApiMetricsRecorder.register(app, apiMetrics);
 
         // Redirect root to dashboard
         app.get("/", ctx -> ctx.redirect("/index.html"));
@@ -217,6 +239,12 @@ public class SatiApp {
             singleTenantContext = new TenantContext(tenantKey, config, backendType,
                     null, appName, appVersion);
         }
+        if (priorityPoolSize > 0) {
+            singleTenantContext.setPriorityExecutorConfig(priorityPoolSize, priorityMaxLowDepth);
+        }
+        singleTenantContext.setAdaptiveConfig(adaptiveEnabled, minConcurrency, initialConcurrency, maxConcurrency);
+        singleTenantContext.setShutdownDrainTimeout(shutdownDrainTimeout);
+        singleTenantContext.setTracingSamplingFraction(tracingSamplingFraction);
         singleTenantContext.start();
 
         log.info("Single-tenant mode: tenant '{}' started", tenantKey);
@@ -267,12 +295,15 @@ public class SatiApp {
         });
 
         // Admin routes (dashboard APIs)
-        AdminRoutes.register(app, singleTenantContext, config,
-                singleTenantContext::reconnectGate, appVersion);
+        AdminRoutes.register(app, singleTenantContext, null, config,
+                singleTenantContext::reconnectGate, appVersion, apiMetrics);
     }
 
     private void registerMultiTenantRoutes() {
         OrgRoutes.register(app, tenantManager);
+        // Admin routes: tenant-manager-aware. Status/performance return aggregate views;
+        // per-tenant drill-down via /api/admin/tenants/{key}/*.
+        AdminRoutes.register(app, null, tenantManager, null, null, appVersion, apiMetrics);
     }
 
     // ========== Getters ==========
@@ -320,6 +351,14 @@ public class SatiApp {
         private boolean multiTenant = false;
         private Supplier<List<TenantManager.TenantConfig>> tenantDiscovery;
         private long discoveryIntervalSeconds = 30;
+        private int priorityPoolSize = 0;     // 0 = disabled
+        private int priorityMaxLowDepth = 100;
+        private boolean adaptiveEnabled = true;
+        private int minConcurrency = 1;
+        private int initialConcurrency = 10;
+        private int maxConcurrency = 100;
+        private java.time.Duration shutdownDrainTimeout = java.time.Duration.ofSeconds(30);
+        private double tracingSamplingFraction = 0.0;
 
         // Service override factories
         private java.util.function.Function<com.tcn.sati.infra.gate.GateClient, TransferService> transferServiceFactory;
@@ -381,6 +420,55 @@ public class SatiApp {
          */
         public Builder discoveryIntervalSeconds(long seconds) {
             this.discoveryIntervalSeconds = seconds;
+            return this;
+        }
+
+        /**
+         * Enable priority execution with the given thread pool size and max concurrent LOW items.
+         * HIGH-priority work (interactive jobs) is served before LOW-priority work (events).
+         */
+        public Builder priorityExecutor(int poolSize, int maxLowDepth) {
+            this.priorityPoolSize = poolSize;
+            this.priorityMaxLowDepth = maxLowDepth;
+            return this;
+        }
+
+        /** Enable or disable the adaptive concurrency controller (default: enabled). */
+        public Builder adaptive(boolean enabled) {
+            this.adaptiveEnabled = enabled;
+            return this;
+        }
+
+        /** Minimum concurrency limit for the adaptive controller (default: 1). */
+        public Builder minConcurrency(int n) {
+            this.minConcurrency = n;
+            return this;
+        }
+
+        /** Initial concurrency limit before the adaptive controller has enough samples (default: 10). */
+        public Builder initialConcurrency(int n) {
+            this.initialConcurrency = n;
+            return this;
+        }
+
+        /** Maximum concurrency limit for the adaptive controller (default: 100). */
+        public Builder maxConcurrency(int n) {
+            this.maxConcurrency = n;
+            return this;
+        }
+
+        /** Graceful drain timeout on shutdown (default: 30s). */
+        public Builder shutdownDrainTimeout(java.time.Duration d) {
+            this.shutdownDrainTimeout = d;
+            return this;
+        }
+
+        /**
+         * GCP Cloud Trace sampling fraction (0.0 = disabled, 1.0 = 100%; default: 0.0).
+         * When > 0, spans are exported to GCP Cloud Trace. Requires Application Default Credentials.
+         */
+        public Builder tracingSamplingFraction(double fraction) {
+            this.tracingSamplingFraction = fraction;
             return this;
         }
 

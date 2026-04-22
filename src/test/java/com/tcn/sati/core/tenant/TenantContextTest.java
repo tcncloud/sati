@@ -121,8 +121,7 @@ class TenantContextTest {
         assertSame(backend, ctx.getBackendClient());
         // No Gate, so these should be null
         assertNull(ctx.getGateClient());
-        assertNull(ctx.getJobQueueClient());
-        assertNull(ctx.getEventStreamClient());
+        assertNull(ctx.getWorkStreamClient());
 
         ctx.close();
 

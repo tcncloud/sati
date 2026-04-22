@@ -31,7 +31,7 @@ public class AgentService {
     // ========== Business Logic (override these) ==========
 
     public List<AgentInfo> listAgents(ListAgentsRequest request) {
-        var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.ListAgentsRequest.newBuilder();
+        var reqBuilder = build.buf.gen.tcnapi.exile.gate.v3.ListAgentsRequest.newBuilder();
         if (request.loggedIn != null) {
             reqBuilder.setLoggedIn(request.loggedIn);
         }
@@ -40,22 +40,20 @@ public class AgentService {
             if (!normalized.startsWith("AGENT_STATE_")) {
                 normalized = "AGENT_STATE_" + normalized;
             }
-            reqBuilder.setState(build.buf.gen.tcnapi.exile.gate.v2.AgentState.valueOf(normalized));
+            reqBuilder.setState(build.buf.gen.tcnapi.exile.gate.v3.AgentState.valueOf(normalized));
         }
-        reqBuilder.setFetchRecordingStatus(request.fetchRecordingStatus);
+        reqBuilder.setIncludeRecordingStatus(request.fetchRecordingStatus);
 
-        var results = gate.listAgents(reqBuilder.build());
+        var resp = gate.listAgents(reqBuilder.build());
         List<AgentInfo> agents = new ArrayList<>();
-        while (results.hasNext()) {
-            var resp = results.next();
-            var a = resp.getAgent();
+        for (var a : resp.getAgentsList()) {
             agents.add(toAgentInfo(a, request.fetchRecordingStatus));
         }
         return agents;
     }
 
     public AgentInfo upsertAgent(UpsertAgentRequest request) {
-        var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.UpsertAgentRequest.newBuilder()
+        var reqBuilder = build.buf.gen.tcnapi.exile.gate.v3.UpsertAgentRequest.newBuilder()
                 .setUsername(request.username);
         if (request.firstName != null)
             reqBuilder.setFirstName(request.firstName);
@@ -63,28 +61,37 @@ public class AgentService {
             reqBuilder.setLastName(request.lastName);
         if (request.partnerAgentId != null)
             reqBuilder.setPartnerAgentId(request.partnerAgentId);
-        if (request.password != null)
-            reqBuilder.setPassword(request.password);
 
         var resp = gate.upsertAgent(reqBuilder.build());
+
+        // v3 moved password to a separate SetAgentCredentials RPC
+        if (request.password != null && !request.password.isBlank()) {
+            gate.setAgentCredentials(
+                    build.buf.gen.tcnapi.exile.gate.v3.SetAgentCredentialsRequest.newBuilder()
+                            .setPartnerAgentId(resp.getAgent().getPartnerAgentId())
+                            .setPassword(request.password)
+                            .build());
+        }
+
         return toAgentInfo(resp.getAgent(), false);
     }
 
     public AgentStateInfo getAgentState(String agentId) {
         var resp = gate.getAgentStatus(
-                build.buf.gen.tcnapi.exile.gate.v2.GetAgentStatusRequest.newBuilder()
+                build.buf.gen.tcnapi.exile.gate.v3.GetAgentStatusRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
 
         var result = new AgentStateInfo();
         result.userId = resp.getPartnerAgentId();
         result.agentState = resp.getAgentState().name();
-        result.currentSessionId = resp.getCurrentSessionId() != 0 ? resp.getCurrentSessionId() : null;
-        result.agentIsMuted = resp.getAgentIsMuted();
+        String sid = resp.getCurrentSessionId();
+        result.currentSessionId = (sid != null && !sid.isEmpty()) ? Long.parseLong(sid) : null;
+        result.agentIsMuted = resp.getIsMuted();
         result.isRecording = resp.getIsRecording();
         if (resp.hasConnectedParty()) {
             var cp = resp.getConnectedParty();
             var cpDto = new AgentDto.ConnectedParty();
-            cpDto.callSid = cp.getCallSid();
+            cpDto.callSid = String.valueOf(cp.getCallSid());
             cpDto.callType = cp.getCallType().name().replace("CALL_TYPE_", "").toLowerCase();
             cpDto.inbound = cp.getIsInbound();
             result.connectedParty = cpDto;
@@ -94,9 +101,9 @@ public class AgentService {
 
     public SuccessResult updateAgentState(String agentId, String state, String reason) {
         String normalized = state.startsWith("AGENT_STATE_") ? state : "AGENT_STATE_" + state;
-        var agentState = build.buf.gen.tcnapi.exile.gate.v2.AgentState.valueOf(normalized);
+        var agentState = build.buf.gen.tcnapi.exile.gate.v3.AgentState.valueOf(normalized);
 
-        var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.UpdateAgentStatusRequest.newBuilder()
+        var reqBuilder = build.buf.gen.tcnapi.exile.gate.v3.UpdateAgentStatusRequest.newBuilder()
                 .setPartnerAgentId(agentId)
                 .setNewState(agentState);
         if (reason != null)
@@ -107,100 +114,111 @@ public class AgentService {
     }
 
     public DialResult dial(String agentId, DialRequest request) {
-        var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.DialRequest.newBuilder()
+        var reqBuilder = build.buf.gen.tcnapi.exile.gate.v3.DialRequest.newBuilder()
                 .setPartnerAgentId(agentId)
                 .setPhoneNumber(request.phoneNumber);
         if (request.callerId != null)
-            reqBuilder.setCallerId(com.google.protobuf.StringValue.of(request.callerId));
+            reqBuilder.setCallerId(request.callerId);
         if (request.poolId != null)
-            reqBuilder.setPoolId(com.google.protobuf.StringValue.of(request.poolId));
+            reqBuilder.setPoolId(request.poolId);
         if (request.recordId != null)
-            reqBuilder.setRecordId(com.google.protobuf.StringValue.of(request.recordId));
+            reqBuilder.setRecordId(request.recordId);
         if (request.rulesetName != null)
-            reqBuilder.setRulesetName(com.google.protobuf.StringValue.of(request.rulesetName));
+            reqBuilder.setRulesetName(request.rulesetName);
         if (request.skipComplianceChecks != null)
             reqBuilder.setSkipComplianceChecks(request.skipComplianceChecks);
         if (request.recordCall != null)
-            reqBuilder.setRecordCall(com.google.protobuf.BoolValue.of(request.recordCall));
+            reqBuilder.setRecordCall(request.recordCall);
 
         var resp = gate.dial(reqBuilder.build());
         var result = new DialResult();
         result.phoneNumber = resp.getPhoneNumber();
         result.callerId = resp.getCallerId();
-        result.callSid = Long.parseLong(resp.getCallSid());
+        result.callSid = resp.getCallSid();
         result.callType = resp.getCallType().name().replace("CALL_TYPE_", "").toLowerCase();
         result.orgId = resp.getOrgId();
         result.partnerAgentId = resp.getPartnerAgentId();
         result.attempted = resp.getAttempted();
         result.status = resp.getStatus();
-        result.callerSid = Long.parseLong(resp.getCallerSid());
+        result.callerSid = null; // not present in v3 DialResponse
         return result;
     }
 
     public RecordingStatus getRecordingStatus(String agentId) {
         var resp = gate.getRecordingStatus(
-                build.buf.gen.tcnapi.exile.gate.v2.GetRecordingStatusRequest.newBuilder()
+                build.buf.gen.tcnapi.exile.gate.v3.GetRecordingStatusRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
         return new RecordingStatus(resp.getIsRecording());
     }
 
     public RecordingStatus startRecording(String agentId) {
         gate.startCallRecording(
-                build.buf.gen.tcnapi.exile.gate.v2.StartCallRecordingRequest.newBuilder()
+                build.buf.gen.tcnapi.exile.gate.v3.StartCallRecordingRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
         return new RecordingStatus(true);
     }
 
     public RecordingStatus stopRecording(String agentId) {
         gate.stopCallRecording(
-                build.buf.gen.tcnapi.exile.gate.v2.StopCallRecordingRequest.newBuilder()
+                build.buf.gen.tcnapi.exile.gate.v3.StopCallRecordingRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
         return new RecordingStatus(false);
     }
 
     public Object listPauseCodes(String agentId) {
         var resp = gate.listHuntGroupPauseCodes(
-                build.buf.gen.tcnapi.exile.gate.v2.ListHuntGroupPauseCodesRequest.newBuilder()
+                build.buf.gen.tcnapi.exile.gate.v3.ListHuntGroupPauseCodesRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
         return resp.getPauseCodesList();
     }
 
     public SuccessResult simpleHold(String agentId) {
-        gate.putCallOnSimpleHold(
-                build.buf.gen.tcnapi.exile.gate.v2.PutCallOnSimpleHoldRequest.newBuilder()
-                        .setPartnerAgentId(agentId).build());
+        gate.setHoldState(
+                build.buf.gen.tcnapi.exile.gate.v3.SetHoldStateRequest.newBuilder()
+                        .setPartnerAgentId(agentId)
+                        .setTarget(build.buf.gen.tcnapi.exile.gate.v3.SetHoldStateRequest.HoldTarget.HOLD_TARGET_CALL)
+                        .setAction(build.buf.gen.tcnapi.exile.gate.v3.SetHoldStateRequest.HoldAction.HOLD_ACTION_HOLD)
+                        .build());
         return new SuccessResult();
     }
 
     public SuccessResult simpleUnhold(String agentId) {
-        gate.takeCallOffSimpleHold(
-                build.buf.gen.tcnapi.exile.gate.v2.TakeCallOffSimpleHoldRequest.newBuilder()
-                        .setPartnerAgentId(agentId).build());
+        gate.setHoldState(
+                build.buf.gen.tcnapi.exile.gate.v3.SetHoldStateRequest.newBuilder()
+                        .setPartnerAgentId(agentId)
+                        .setTarget(build.buf.gen.tcnapi.exile.gate.v3.SetHoldStateRequest.HoldTarget.HOLD_TARGET_CALL)
+                        .setAction(build.buf.gen.tcnapi.exile.gate.v3.SetHoldStateRequest.HoldAction.HOLD_ACTION_UNHOLD)
+                        .build());
         return new SuccessResult();
     }
 
     public SuccessResult mute(String agentId) {
         gate.muteAgent(
-                build.buf.gen.tcnapi.exile.gate.v2.MuteAgentRequest.newBuilder()
+                build.buf.gen.tcnapi.exile.gate.v3.MuteAgentRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
         return new SuccessResult();
     }
 
     public SuccessResult unmute(String agentId) {
         gate.unmuteAgent(
-                build.buf.gen.tcnapi.exile.gate.v2.UnmuteAgentRequest.newBuilder()
+                build.buf.gen.tcnapi.exile.gate.v3.UnmuteAgentRequest.newBuilder()
                         .setPartnerAgentId(agentId).build());
         return new SuccessResult();
     }
 
     public SuccessResult addCallResponse(String agentId, CallResponseRequest request) {
-        var reqBuilder = build.buf.gen.tcnapi.exile.gate.v2.AddAgentCallResponseRequest.newBuilder()
+        var reqBuilder = build.buf.gen.tcnapi.exile.gate.v3.AddAgentCallResponseRequest.newBuilder()
                 .setPartnerAgentId(agentId)
-                .setCallSid(request.callSid)
+                .setCallSid(Long.parseLong(request.callSid))
                 .setKey(request.key)
                 .setValue(request.value);
+        if (request.callType != null && !request.callType.isBlank()) {
+            String ct = request.callType.toUpperCase();
+            if (!ct.startsWith("CALL_TYPE_")) ct = "CALL_TYPE_" + ct;
+            reqBuilder.setCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType.valueOf(ct));
+        }
         if (request.currentSessionId != null)
-            reqBuilder.setCurrentSessionId(request.currentSessionId);
+            reqBuilder.setCurrentSessionId(String.valueOf(request.currentSessionId));
 
         gate.addAgentCallResponse(reqBuilder.build());
         return new SuccessResult();
@@ -208,7 +226,7 @@ public class AgentService {
 
     // ========== Helpers ==========
 
-    protected AgentInfo toAgentInfo(build.buf.gen.tcnapi.exile.gate.v2.Agent a, boolean fetchRecordingStatus) {
+    protected AgentInfo toAgentInfo(build.buf.gen.tcnapi.exile.gate.v3.Agent a, boolean fetchRecordingStatus) {
         var info = new AgentInfo();
         info.userId = a.getUserId();
         info.orgId = a.getOrgId();
@@ -216,14 +234,15 @@ public class AgentService {
         info.username = a.getUsername();
         info.firstName = a.getFirstName();
         info.lastName = a.getLastName();
-        info.currentSessionId = a.getCurrentSessionId() != 0 ? a.getCurrentSessionId() : null;
+        String sid = a.getCurrentSessionId();
+        info.currentSessionId = (sid != null && !sid.isEmpty()) ? Long.parseLong(sid) : null;
         info.agentState = a.getAgentState().name();
         info.isLoggedIn = a.getIsLoggedIn();
         info.isRecording = fetchRecordingStatus ? a.getIsRecording() : null;
-        info.agentIsMuted = a.getAgentIsMuted();
+        info.agentIsMuted = a.getIsMuted();
         if (a.hasConnectedParty()) {
             var cp = new AgentDto.ConnectedParty();
-            cp.callSid = a.getConnectedParty().getCallSid();
+            cp.callSid = String.valueOf(a.getConnectedParty().getCallSid());
             cp.callType = a.getConnectedParty().getCallType().name().replace("CALL_TYPE_", "").toLowerCase();
             cp.inbound = a.getConnectedParty().getIsInbound();
             info.connectedParty = cp;

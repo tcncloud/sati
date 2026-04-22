@@ -13,8 +13,8 @@ public class NCLRulesetService {
     }
 
     public Object listNames() {
-        var resp = gate.listNCLRulesetNames(
-                build.buf.gen.tcnapi.exile.gate.v2.ListNCLRulesetNamesRequest.newBuilder().build());
+        var resp = gate.listComplianceRulesets(
+                build.buf.gen.tcnapi.exile.gate.v3.ListComplianceRulesetsRequest.newBuilder().build());
         return resp.getRulesetNamesList();
     }
 }
