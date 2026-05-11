@@ -25,4 +25,6 @@ public record TelephonyResultEvent(
     Instant updateTime,
     Instant startTime,
     Instant endTime,
-    List<TaskData> taskData) {}
+    List<TaskData> taskData,
+    long oldCallSid,
+    CallType oldCallType) {}
