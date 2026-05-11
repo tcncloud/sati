@@ -257,7 +257,8 @@ public final class ProtoConverter {
         toInstant(tr.getEndTime()),
         toTaskData(tr.getTaskDataList()),
         tr.hasOldCallSid() ? tr.getOldCallSid() : 0L,
-        tr.hasOldCallType() ? toCallType(tr.getOldCallType()) : null);
+        tr.hasOldCallType() ? toCallType(tr.getOldCallType()) : null,
+        tr.hasTaskWaitingUntil() ? toInstant(tr.getTaskWaitingUntil()) : null);
   }
 
   public static AgentResponseEvent toAgentResponseEvent(
