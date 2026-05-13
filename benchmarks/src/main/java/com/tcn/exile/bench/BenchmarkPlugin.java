@@ -74,14 +74,16 @@ public final class BenchmarkPlugin extends PluginBase {
   }
 
   @Override
-  public List<Field> getRecordFields(String poolId, String recordId, List<String> fieldNames)
+  public List<Field> getRecordFields(
+      String poolId, String recordId, List<String> fieldNames, List<Filter> filters)
       throws Exception {
     doJob();
     return List.of();
   }
 
   @Override
-  public boolean setRecordFields(String poolId, String recordId, List<Field> fields)
+  public boolean setRecordFields(
+      String poolId, String recordId, List<Field> fields, List<Filter> filters)
       throws Exception {
     doJob();
     return true;
@@ -95,7 +97,14 @@ public final class BenchmarkPlugin extends PluginBase {
   }
 
   @Override
-  public DataRecord popAccount(String poolId, String recordId) throws Exception {
+  public DataRecord popAccount(
+      String poolId,
+      String recordId,
+      String partnerAgentId,
+      long callSid,
+      CallType callType,
+      List<Filter> filters)
+      throws Exception {
     doJob();
     return new DataRecord(poolId, recordId, Map.of());
   }
