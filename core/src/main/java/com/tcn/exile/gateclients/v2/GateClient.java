@@ -20,6 +20,7 @@ import build.buf.gen.tcnapi.exile.gate.v2.*;
 import com.tcn.exile.config.Config;
 import com.tcn.exile.gateclients.UnconfiguredException;
 import com.tcn.exile.log.LogCategory;
+import com.tcn.exile.log.RateLimitedErrorLogger;
 import com.tcn.exile.log.StructuredLogger;
 import com.tcn.exile.models.OrgInfo;
 import io.grpc.ManagedChannel;
@@ -30,6 +31,20 @@ import java.util.concurrent.TimeUnit;
 public class GateClient extends GateClientAbstract {
   private static final StructuredLogger log = new StructuredLogger(GateClient.class);
   private static final int DEFAULT_TIMEOUT_SECONDS = 30;
+  // Shared with downstream consumers (e.g. plugins) that wrap GateClient calls — see
+  // RateLimitedErrorLogger javadoc. Exposed via getGrpcErrorRateLimiter() so callers can suppress
+  // their own stack-trace logging in lockstep with this one.
+  private static final RateLimitedErrorLogger GRPC_ERROR_RATE_LIMITER =
+      new RateLimitedErrorLogger(60_000L);
+
+  /**
+   * @return the shared rate limiter used to suppress repeated gRPC error logs. Callers wrapping
+   *     gRPC invocations from this client can use this to keep their own catch-block logging in
+   *     sync, so a single failure mode produces one report per minute across all layers.
+   */
+  public static RateLimitedErrorLogger getGrpcErrorRateLimiter() {
+    return GRPC_ERROR_RATE_LIMITER;
+  }
 
   public GateClient(String tenant, Config currentConfig) {
     super(tenant, currentConfig);
@@ -71,13 +86,20 @@ public class GateClient extends GateClientAbstract {
         throw new RuntimeException(
             "Connection issue during " + operationName + ", please retry", e);
       }
-      log.error(
-          LogCategory.GRPC,
-          "GrpcError",
-          "gRPC error during %s operation: %s (%s)",
-          operationName,
-          e.getMessage(),
-          e.getStatus().getCode());
+      String rateLimitKey = operationName + "|" + e.getStatus().getCode() + "|" + e.getMessage();
+      if (GRPC_ERROR_RATE_LIMITER.shouldLogFull(rateLimitKey)) {
+        long suppressed = GRPC_ERROR_RATE_LIMITER.pollSuppressedCount(rateLimitKey);
+        log.error(
+            LogCategory.GRPC,
+            "GrpcError",
+            "gRPC error during %s operation: %s (%s)%s",
+            operationName,
+            e.getMessage(),
+            e.getStatus().getCode(),
+            suppressed > 0
+                ? " (suppressed " + suppressed + " identical errors in last 60s)"
+                : "");
+      }
       throw new RuntimeException("Failed to execute " + operationName, e);
     } catch (Exception e) {
       log.error(

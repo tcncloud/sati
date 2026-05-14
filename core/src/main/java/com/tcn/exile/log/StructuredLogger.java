@@ -97,6 +97,9 @@ public class StructuredLogger {
             category.getValue(), action, args.length > 0 ? String.format(message, args) : message);
 
     switch (level) {
+      case "TRACE":
+        logger.trace(formattedMessage);
+        break;
       case "DEBUG":
         logger.debug(formattedMessage);
         break;
@@ -112,6 +115,19 @@ public class StructuredLogger {
       default:
         logger.info(formattedMessage);
     }
+  }
+
+  /**
+   * Logs a trace message. Use for very high-volume diagnostic detail (per-call channel checks,
+   * per-iteration loop traces, etc.) that should not appear at DEBUG.
+   *
+   * @param category The log category
+   * @param action The action being performed
+   * @param message The log message
+   * @param args The message arguments
+   */
+  public void trace(LogCategory category, String action, String message, Object... args) {
+    log(category, "TRACE", action, message, args);
   }
 
   /**
