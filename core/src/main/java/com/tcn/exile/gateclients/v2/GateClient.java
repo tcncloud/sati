@@ -96,9 +96,7 @@ public class GateClient extends GateClientAbstract {
             operationName,
             e.getMessage(),
             e.getStatus().getCode(),
-            suppressed > 0
-                ? " (suppressed " + suppressed + " identical errors in last 60s)"
-                : "");
+            suppressed > 0 ? " (suppressed " + suppressed + " identical errors in last 60s)" : "");
       }
       throw new RuntimeException("Failed to execute " + operationName, e);
     } catch (Exception e) {

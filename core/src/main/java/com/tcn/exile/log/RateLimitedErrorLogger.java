@@ -31,8 +31,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * return {@code false} and silently increment a suppressed counter. When the next "log full" fires,
  * {@link #pollSuppressedCount(String)} reports how many were dropped so the operator sees a count.
  *
- * <p>This is best-effort: a small number of races at the window boundary can produce slightly
- * more than one log per window. That is intentional — correctness is more important than precision.
+ * <p>This is best-effort: a small number of races at the window boundary can produce slightly more
+ * than one log per window. That is intentional — correctness is more important than precision.
  */
 public final class RateLimitedErrorLogger {
   private final long windowMs;
