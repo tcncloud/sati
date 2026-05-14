@@ -1,0 +1,13 @@
+<!--
+  Logback include providing the sati version as a pattern token and a context property.
+
+  Usage in your logback.xml:
+    <include resource="logback-sati.xml"/>
+    ...
+    <pattern>... [sati=%satiVersion] ...</pattern>
+-->
+<included>
+  <conversionRule conversionWord="satiVersion"
+                  converterClass="com.tcn.exile.logger.SatiVersionConverter"/>
+  <property scope="context" name="SATI_VERSION" value="%satiVersion"/>
+</included>
