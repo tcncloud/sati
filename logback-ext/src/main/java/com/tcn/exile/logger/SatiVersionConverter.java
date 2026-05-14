@@ -21,9 +21,9 @@ import ch.qos.logback.classic.spi.ILoggingEvent;
 
 /**
  * Logback pattern converter that emits the sati library version on every log line so deployments
- * remain self-identifying after truncation, filtering, or concatenation. Register via the
- * companion {@code logback-sati.xml} include resource and reference as {@code %satiVersion} in
- * your encoder pattern.
+ * remain self-identifying after truncation, filtering, or concatenation. Register via the companion
+ * {@code logback-sati.xml} include resource and reference as {@code %satiVersion} in your encoder
+ * pattern.
  */
 public final class SatiVersionConverter extends ClassicConverter {
   @Override

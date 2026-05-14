@@ -56,8 +56,8 @@ package com.tcn.exile.logger;
 
 /** Generated at build time from gradle project.version. Do not edit. */
 public final class Version {
-  private Version() {}
-  public static final String VALUE = "${versionValue}";
+private Version() {}
+public static final String VALUE = "${versionValue}";
 }
 """
 	}
