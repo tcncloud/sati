@@ -467,7 +467,9 @@ public abstract class GateClientAbstract {
             afterUnlock - getChannelStartTime);
       }
     } else {
-      log.debug(
+      // TRACE: fires on every gRPC call (~250+/sec under load) — has diagnostic value
+      // only when investigating channel churn, so keep below DEBUG.
+      log.trace(
           "getChannel no new channel needed, returning localChannel null: {}, isShutdown: {}, isTerminated: {}",
           localChannel == null,
           localChannel.isShutdown(),
