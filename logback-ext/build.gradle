@@ -65,3 +65,6 @@ public static final String VALUE = "${versionValue}";
 
 sourceSets.main.java.srcDirs += generatedSrcDir
 tasks.named('compileJava') { dependsOn generateVersionTask }
+// Spotless reads the generated Version.java as input; without an explicit dependency
+// Gradle 8.8+ flags the implicit ordering as a validation error during release builds.
+tasks.named('spotlessJava') { dependsOn generateVersionTask }

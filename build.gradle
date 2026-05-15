@@ -72,6 +72,10 @@ allprojects {
 			endWithNewline()
 		}
 		java {
+			// Skip generated sources (e.g. logback-ext's Version.java) — they are produced
+			// at build time and should not be linted. Avoids implicit-dependency validation
+			// errors on Gradle 8.8+.
+			targetExclude '**/build/generated/**'
 			googleJavaFormat()
 			formatAnnotations()
 			licenseHeader('''/*
