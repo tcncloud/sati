@@ -672,8 +672,7 @@ public final class WorkStreamClient implements AutoCloseable {
         }
         case GET_RECORD_FIELDS -> {
           var task = item.getGetRecordFields();
-          var filters =
-              task.getFiltersList().stream().map(ProtoConverter::toFilter).toList();
+          var filters = task.getFiltersList().stream().map(ProtoConverter::toFilter).toList();
           var fields =
               jobHandler.getRecordFields(
                   task.getPoolId(), task.getRecordId(), task.getFieldNamesList(), filters);
@@ -684,8 +683,7 @@ public final class WorkStreamClient implements AutoCloseable {
         case SET_RECORD_FIELDS -> {
           var task = item.getSetRecordFields();
           var fields = task.getFieldsList().stream().map(ProtoConverter::toField).toList();
-          var filters =
-              task.getFiltersList().stream().map(ProtoConverter::toFilter).toList();
+          var filters = task.getFiltersList().stream().map(ProtoConverter::toFilter).toList();
           var ok =
               jobHandler.setRecordFields(task.getPoolId(), task.getRecordId(), fields, filters);
           b.setSetRecordFields(SetRecordFieldsResult.newBuilder().setSuccess(ok));
@@ -700,8 +698,7 @@ public final class WorkStreamClient implements AutoCloseable {
         }
         case POP_ACCOUNT -> {
           var task = item.getPopAccount();
-          var filters =
-              task.getFiltersList().stream().map(ProtoConverter::toFilter).toList();
+          var filters = task.getFiltersList().stream().map(ProtoConverter::toFilter).toList();
           var record =
               jobHandler.popAccount(
                   task.getPoolId(),

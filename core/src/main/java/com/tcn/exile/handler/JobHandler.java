@@ -41,8 +41,7 @@ public interface JobHandler {
   }
 
   default boolean setRecordFields(
-      String poolId, String recordId, List<Field> fields, List<Filter> filters)
-      throws Exception {
+      String poolId, String recordId, List<Field> fields, List<Filter> filters) throws Exception {
     throw new UnsupportedOperationException("setRecordFields not implemented");
   }
 
