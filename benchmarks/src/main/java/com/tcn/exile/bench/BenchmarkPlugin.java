@@ -83,8 +83,7 @@ public final class BenchmarkPlugin extends PluginBase {
 
   @Override
   public boolean setRecordFields(
-      String poolId, String recordId, List<Field> fields, List<Filter> filters)
-      throws Exception {
+      String poolId, String recordId, List<Field> fields, List<Filter> filters) throws Exception {
     doJob();
     return true;
   }
