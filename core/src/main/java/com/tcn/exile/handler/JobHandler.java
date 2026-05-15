@@ -34,13 +34,14 @@ public interface JobHandler {
     throw new UnsupportedOperationException("searchRecords not implemented");
   }
 
-  default List<Field> getRecordFields(String poolId, String recordId, List<String> fieldNames)
+  default List<Field> getRecordFields(
+      String poolId, String recordId, List<String> fieldNames, List<Filter> filters)
       throws Exception {
     throw new UnsupportedOperationException("getRecordFields not implemented");
   }
 
-  default boolean setRecordFields(String poolId, String recordId, List<Field> fields)
-      throws Exception {
+  default boolean setRecordFields(
+      String poolId, String recordId, List<Field> fields, List<Filter> filters) throws Exception {
     throw new UnsupportedOperationException("setRecordFields not implemented");
   }
 
@@ -49,7 +50,14 @@ public interface JobHandler {
     throw new UnsupportedOperationException("createPayment not implemented");
   }
 
-  default DataRecord popAccount(String poolId, String recordId) throws Exception {
+  default DataRecord popAccount(
+      String poolId,
+      String recordId,
+      String partnerAgentId,
+      long callSid,
+      CallType callType,
+      List<Filter> filters)
+      throws Exception {
     throw new UnsupportedOperationException("popAccount not implemented");
   }
 

@@ -137,8 +137,14 @@ public class DemoPlugin extends PluginBase {
   }
 
   @Override
-  public List<Field> getRecordFields(String poolId, String recordId, List<String> fieldNames) {
-    log.info("getRecordFields called for {}/{} fields={}", poolId, recordId, fieldNames);
+  public List<Field> getRecordFields(
+      String poolId, String recordId, List<String> fieldNames, List<Filter> filters) {
+    log.info(
+        "getRecordFields called for {}/{} fields={} filters={}",
+        poolId,
+        recordId,
+        fieldNames,
+        filters);
     return List.of(
         new Field("first_name", "John", poolId, recordId),
         new Field("last_name", "Doe", poolId, recordId),
@@ -146,8 +152,14 @@ public class DemoPlugin extends PluginBase {
   }
 
   @Override
-  public boolean setRecordFields(String poolId, String recordId, List<Field> fields) {
-    log.info("setRecordFields called for {}/{} with {} fields", poolId, recordId, fields.size());
+  public boolean setRecordFields(
+      String poolId, String recordId, List<Field> fields, List<Filter> filters) {
+    log.info(
+        "setRecordFields called for {}/{} with {} fields, filters={}",
+        poolId,
+        recordId,
+        fields.size(),
+        filters);
     return true;
   }
 
@@ -158,8 +170,21 @@ public class DemoPlugin extends PluginBase {
   }
 
   @Override
-  public DataRecord popAccount(String poolId, String recordId) {
-    log.info("popAccount called for {}/{}", poolId, recordId);
+  public DataRecord popAccount(
+      String poolId,
+      String recordId,
+      String partnerAgentId,
+      long callSid,
+      CallType callType,
+      List<Filter> filters) {
+    log.info(
+        "popAccount called for {}/{} agent={} callSid={} callType={} filters={}",
+        poolId,
+        recordId,
+        partnerAgentId,
+        callSid,
+        callType,
+        filters);
     return new DataRecord(poolId, recordId, Map.of("name", "Popped Account", "status", "active"));
   }
 
