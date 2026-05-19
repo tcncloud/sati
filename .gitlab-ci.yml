@@ -1,0 +1,74 @@
+stages:
+  - build
+  - package
+
+build:
+  image: eclipse-temurin:21-jdk
+  stage: build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "master"
+  cache:
+    key: gradle-$CI_COMMIT_REF_SLUG
+    paths:
+      - .gradle/caches
+      - .gradle/wrapper
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends git-lfs
+    - git lfs install
+    - git lfs fetch --all
+    - git lfs checkout
+  script:
+    - ./gradlew build
+
+# container:
+#   image: eclipse-temurin:17-jdk
+#   stage: package
+#   only:
+#     - master
+#     - tags
+#   services:
+#     - docker:dind
+#   before_script:
+#     - mkdir -p $HOME/.docker
+#     - echo "{\"auths\":{\"https://index.docker.io/v1/\":{\"auth\":\"$(echo -n "$DOCKER_HUB_USER:$DOCKER_HUB_PASS" | base64 -w0 )\"},\"$(echo -n $CI_REGISTRY)\":{\"auth\":\"$(echo -n "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD" | base64 -w0 )\"}}}" > $HOME/.docker/config.json
+#     - cat $HOME/.docker/config.json
+#   script:
+#     - ./gradlew build
+#     - ./gradlew optimizedDockerBuild
+#     - ./gradlew optimizedDockerPush
+
+container:finvi:
+  image: eclipse-temurin:21-jdk
+  stage: package
+  only:
+    - tags
+  services:
+    - docker:dind
+  before_script:
+    - mkdir -p $HOME/.docker
+    - echo "{\"auths\":{\"https://index.docker.io/v1/\":{\"auth\":\"$(echo -n "$DOCKER_HUB_USER:$DOCKER_HUB_PASS" | base64 -w0 )\"},\"$(echo -n $CI_REGISTRY)\":{\"auth\":\"$(echo -n "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD" | base64 -w0 )\"}}}" > $HOME/.docker/config.json
+    - cat $HOME/.docker/config.json
+  script:
+    - VERSION=$(echo $CI_COMMIT_TAG | sed -s "s/^v//")
+    - ./gradlew -Pversion=$VERSION :finvi:build
+    - ./gradlew -Pversion=$VERSION :finvi:optimizedDockerBuild
+    - ./gradlew -Pversion=$VERSION :finvi:optimizedDockerPush
+
+
+container::velosidy:
+  image: eclipse-temurin:21-jdk
+  stage: package
+  only:
+    - tags
+  services:
+    - docker:dind
+  before_script:
+    - mkdir -p $HOME/.docker
+    - echo "{\"auths\":{\"https://index.docker.io/v1/\":{\"auth\":\"$(echo -n "$DOCKER_HUB_USER:$DOCKER_HUB_PASS" | base64 -w0 )\"},\"$(echo -n $CI_REGISTRY)\":{\"auth\":\"$(echo -n "$CI_REGISTRY_USER:$CI_REGISTRY_PASSWORD" | base64 -w0 )\"}}}" > $HOME/.docker/config.json
+    - cat $HOME/.docker/config.json
+  script:
+    - VERSION=$(echo $CI_COMMIT_TAG | sed -s "s/^v//")
+    - ./gradlew -Pversion=$VERSION :velosidy:build
+    - ./gradlew -Pversion=$VERSION :velosidy:optimizedDockerBuild
+    - ./gradlew -Pversion=$VERSION :velosidy:optimizedDockerPush
