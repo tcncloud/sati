@@ -104,22 +104,24 @@ public class DemoPlugin extends PluginBase {
   // --- Jobs ---
 
   @Override
-  public List<Pool> listPools() {
-    log.info("listPools called");
+  public List<Pool> listPools(String orgId) {
+    log.info("listPools called org={}", orgId);
     return List.of(
         new Pool("pool-1", "Demo Campaign A", Pool.PoolStatus.READY, 150),
         new Pool("pool-2", "Demo Campaign B", Pool.PoolStatus.NOT_READY, 0));
   }
 
   @Override
-  public Pool getPoolStatus(String poolId) {
-    log.info("getPoolStatus called for {}", poolId);
+  public Pool getPoolStatus(String orgId, String poolId) {
+    log.info("getPoolStatus called org={} pool={}", orgId, poolId);
     return new Pool(poolId, "Demo Pool", Pool.PoolStatus.READY, 42);
   }
 
   @Override
-  public Page<DataRecord> getPoolRecords(String poolId, String pageToken, int pageSize) {
-    log.info("getPoolRecords called for pool={} page={} size={}", poolId, pageToken, pageSize);
+  public Page<DataRecord> getPoolRecords(
+      String orgId, String poolId, String pageToken, int pageSize) {
+    log.info(
+        "getPoolRecords called org={} pool={} page={} size={}", orgId, poolId, pageToken, pageSize);
     return new Page<>(
         List.of(
             new DataRecord(poolId, "rec-1", Map.of("name", "John Doe", "phone", "+15551234567")),
@@ -128,8 +130,9 @@ public class DemoPlugin extends PluginBase {
   }
 
   @Override
-  public Page<DataRecord> searchRecords(List<Filter> filters, String pageToken, int pageSize) {
-    log.info("searchRecords called with {} filters", filters.size());
+  public Page<DataRecord> searchRecords(
+      String orgId, List<Filter> filters, String pageToken, int pageSize) {
+    log.info("searchRecords called org={} with {} filters", orgId, filters.size());
     return new Page<>(
         List.of(
             new DataRecord("pool-1", "rec-1", Map.of("name", "Search Result", "matched", true))),
@@ -138,9 +141,10 @@ public class DemoPlugin extends PluginBase {
 
   @Override
   public List<Field> getRecordFields(
-      String poolId, String recordId, List<String> fieldNames, List<Filter> filters) {
+      String orgId, String poolId, String recordId, List<String> fieldNames, List<Filter> filters) {
     log.info(
-        "getRecordFields called for {}/{} fields={} filters={}",
+        "getRecordFields called org={} {}/{} fields={} filters={}",
+        orgId,
         poolId,
         recordId,
         fieldNames,
@@ -153,9 +157,10 @@ public class DemoPlugin extends PluginBase {
 
   @Override
   public boolean setRecordFields(
-      String poolId, String recordId, List<Field> fields, List<Filter> filters) {
+      String orgId, String poolId, String recordId, List<Field> fields, List<Filter> filters) {
     log.info(
-        "setRecordFields called for {}/{} with {} fields, filters={}",
+        "setRecordFields called org={} {}/{} with {} fields, filters={}",
+        orgId,
         poolId,
         recordId,
         fields.size(),
@@ -164,13 +169,15 @@ public class DemoPlugin extends PluginBase {
   }
 
   @Override
-  public String createPayment(String poolId, String recordId, Map<String, Object> paymentData) {
-    log.info("createPayment called for {}/{}: {}", poolId, recordId, paymentData);
+  public String createPayment(
+      String orgId, String poolId, String recordId, Map<String, Object> paymentData) {
+    log.info("createPayment called org={} {}/{}: {}", orgId, poolId, recordId, paymentData);
     return "PAY-" + System.currentTimeMillis();
   }
 
   @Override
   public DataRecord popAccount(
+      String orgId,
       String poolId,
       String recordId,
       String partnerAgentId,
@@ -178,7 +185,8 @@ public class DemoPlugin extends PluginBase {
       CallType callType,
       List<Filter> filters) {
     log.info(
-        "popAccount called for {}/{} agent={} callSid={} callType={} filters={}",
+        "popAccount called org={} {}/{} agent={} callSid={} callType={} filters={}",
+        orgId,
         poolId,
         recordId,
         partnerAgentId,
@@ -189,8 +197,9 @@ public class DemoPlugin extends PluginBase {
   }
 
   @Override
-  public Map<String, Object> executeLogic(String logicName, Map<String, Object> parameters) {
-    log.info("executeLogic called: {} params={}", logicName, parameters);
+  public Map<String, Object> executeLogic(
+      String orgId, String logicName, Map<String, Object> parameters) {
+    log.info("executeLogic called org={}: {} params={}", orgId, logicName, parameters);
     return Map.of("result", "ok", "logic", logicName);
   }
 

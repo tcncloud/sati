@@ -16,41 +16,44 @@ import java.util.Map;
  */
 public interface JobHandler {
 
-  default List<Pool> listPools() throws Exception {
+  default List<Pool> listPools(String orgId) throws Exception {
     throw new UnsupportedOperationException("listPools not implemented");
   }
 
-  default Pool getPoolStatus(String poolId) throws Exception {
+  default Pool getPoolStatus(String orgId, String poolId) throws Exception {
     throw new UnsupportedOperationException("getPoolStatus not implemented");
   }
 
-  default Page<DataRecord> getPoolRecords(String poolId, String pageToken, int pageSize)
-      throws Exception {
+  default Page<DataRecord> getPoolRecords(
+      String orgId, String poolId, String pageToken, int pageSize) throws Exception {
     throw new UnsupportedOperationException("getPoolRecords not implemented");
   }
 
-  default Page<DataRecord> searchRecords(List<Filter> filters, String pageToken, int pageSize)
-      throws Exception {
+  default Page<DataRecord> searchRecords(
+      String orgId, List<Filter> filters, String pageToken, int pageSize) throws Exception {
     throw new UnsupportedOperationException("searchRecords not implemented");
   }
 
   default List<Field> getRecordFields(
-      String poolId, String recordId, List<String> fieldNames, List<Filter> filters)
+      String orgId, String poolId, String recordId, List<String> fieldNames, List<Filter> filters)
       throws Exception {
     throw new UnsupportedOperationException("getRecordFields not implemented");
   }
 
   default boolean setRecordFields(
-      String poolId, String recordId, List<Field> fields, List<Filter> filters) throws Exception {
+      String orgId, String poolId, String recordId, List<Field> fields, List<Filter> filters)
+      throws Exception {
     throw new UnsupportedOperationException("setRecordFields not implemented");
   }
 
-  default String createPayment(String poolId, String recordId, Map<String, Object> paymentData)
+  default String createPayment(
+      String orgId, String poolId, String recordId, Map<String, Object> paymentData)
       throws Exception {
     throw new UnsupportedOperationException("createPayment not implemented");
   }
 
   default DataRecord popAccount(
+      String orgId,
       String poolId,
       String recordId,
       String partnerAgentId,
@@ -61,8 +64,8 @@ public interface JobHandler {
     throw new UnsupportedOperationException("popAccount not implemented");
   }
 
-  default Map<String, Object> executeLogic(String logicName, Map<String, Object> parameters)
-      throws Exception {
+  default Map<String, Object> executeLogic(
+      String orgId, String logicName, Map<String, Object> parameters) throws Exception {
     throw new UnsupportedOperationException("executeLogic not implemented");
   }
 

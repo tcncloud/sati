@@ -378,7 +378,7 @@ class WorkStreamClientRefillTest {
     JobHandler jobHandler =
         new JobHandler() {
           @Override
-          public List<Pool> listPools() {
+          public List<Pool> listPools(String orgId) {
             return Collections.emptyList();
           }
         };

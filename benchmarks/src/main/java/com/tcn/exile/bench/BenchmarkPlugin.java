@@ -48,34 +48,34 @@ public final class BenchmarkPlugin extends PluginBase {
 
   // --- Jobs ---
   @Override
-  public List<Pool> listPools() throws Exception {
+  public List<Pool> listPools(String orgId) throws Exception {
     doJob();
     return List.of();
   }
 
   @Override
-  public Pool getPoolStatus(String poolId) throws Exception {
+  public Pool getPoolStatus(String orgId, String poolId) throws Exception {
     doJob();
     return new Pool(poolId, "bench-pool", Pool.PoolStatus.READY, 0);
   }
 
   @Override
-  public Page<DataRecord> getPoolRecords(String poolId, String pageToken, int pageSize)
-      throws Exception {
+  public Page<DataRecord> getPoolRecords(
+      String orgId, String poolId, String pageToken, int pageSize) throws Exception {
     doJob();
     return new Page<>(List.of(), "");
   }
 
   @Override
-  public Page<DataRecord> searchRecords(List<Filter> filters, String pageToken, int pageSize)
-      throws Exception {
+  public Page<DataRecord> searchRecords(
+      String orgId, List<Filter> filters, String pageToken, int pageSize) throws Exception {
     doJob();
     return new Page<>(List.of(), "");
   }
 
   @Override
   public List<Field> getRecordFields(
-      String poolId, String recordId, List<String> fieldNames, List<Filter> filters)
+      String orgId, String poolId, String recordId, List<String> fieldNames, List<Filter> filters)
       throws Exception {
     doJob();
     return List.of();
@@ -83,13 +83,15 @@ public final class BenchmarkPlugin extends PluginBase {
 
   @Override
   public boolean setRecordFields(
-      String poolId, String recordId, List<Field> fields, List<Filter> filters) throws Exception {
+      String orgId, String poolId, String recordId, List<Field> fields, List<Filter> filters)
+      throws Exception {
     doJob();
     return true;
   }
 
   @Override
-  public String createPayment(String poolId, String recordId, Map<String, Object> paymentData)
+  public String createPayment(
+      String orgId, String poolId, String recordId, Map<String, Object> paymentData)
       throws Exception {
     doJob();
     return "bench-payment-id";
@@ -97,6 +99,7 @@ public final class BenchmarkPlugin extends PluginBase {
 
   @Override
   public DataRecord popAccount(
+      String orgId,
       String poolId,
       String recordId,
       String partnerAgentId,
@@ -109,8 +112,8 @@ public final class BenchmarkPlugin extends PluginBase {
   }
 
   @Override
-  public Map<String, Object> executeLogic(String logicName, Map<String, Object> parameters)
-      throws Exception {
+  public Map<String, Object> executeLogic(
+      String orgId, String logicName, Map<String, Object> parameters) throws Exception {
     doJob();
     return Map.of();
   }
