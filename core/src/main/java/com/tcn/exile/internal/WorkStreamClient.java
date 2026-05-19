@@ -632,22 +632,24 @@ public final class WorkStreamClient implements AutoCloseable {
     var methodName = item.getTaskCase().name().toLowerCase();
     long methodStart = System.nanoTime();
     boolean methodSuccess = false;
+    var orgId = item.getOrgId();
     try {
       switch (item.getTaskCase()) {
         case LIST_POOLS -> {
-          var pools = jobHandler.listPools();
+          var pools = jobHandler.listPools(orgId);
           b.setListPools(
               ListPoolsResult.newBuilder()
                   .addAllPools(pools.stream().map(ProtoConverter::fromPool).toList()));
         }
         case GET_POOL_STATUS -> {
-          var pool = jobHandler.getPoolStatus(item.getGetPoolStatus().getPoolId());
+          var pool = jobHandler.getPoolStatus(orgId, item.getGetPoolStatus().getPoolId());
           b.setGetPoolStatus(GetPoolStatusResult.newBuilder().setPool(fromPool(pool)));
         }
         case GET_POOL_RECORDS -> {
           var task = item.getGetPoolRecords();
           var page =
-              jobHandler.getPoolRecords(task.getPoolId(), task.getPageToken(), task.getPageSize());
+              jobHandler.getPoolRecords(
+                  orgId, task.getPoolId(), task.getPageToken(), task.getPageSize());
           b.setGetPoolRecords(
               GetPoolRecordsResult.newBuilder()
                   .addAllRecords(
@@ -660,7 +662,8 @@ public final class WorkStreamClient implements AutoCloseable {
         case SEARCH_RECORDS -> {
           var task = item.getSearchRecords();
           var filters = task.getFiltersList().stream().map(ProtoConverter::toFilter).toList();
-          var page = jobHandler.searchRecords(filters, task.getPageToken(), task.getPageSize());
+          var page =
+              jobHandler.searchRecords(orgId, filters, task.getPageToken(), task.getPageSize());
           b.setSearchRecords(
               SearchRecordsResult.newBuilder()
                   .addAllRecords(
@@ -675,7 +678,7 @@ public final class WorkStreamClient implements AutoCloseable {
           var filters = task.getFiltersList().stream().map(ProtoConverter::toFilter).toList();
           var fields =
               jobHandler.getRecordFields(
-                  task.getPoolId(), task.getRecordId(), task.getFieldNamesList(), filters);
+                  orgId, task.getPoolId(), task.getRecordId(), task.getFieldNamesList(), filters);
           b.setGetRecordFields(
               GetRecordFieldsResult.newBuilder()
                   .addAllFields(fields.stream().map(ProtoConverter::fromField).toList()));
@@ -685,14 +688,15 @@ public final class WorkStreamClient implements AutoCloseable {
           var fields = task.getFieldsList().stream().map(ProtoConverter::toField).toList();
           var filters = task.getFiltersList().stream().map(ProtoConverter::toFilter).toList();
           var ok =
-              jobHandler.setRecordFields(task.getPoolId(), task.getRecordId(), fields, filters);
+              jobHandler.setRecordFields(
+                  orgId, task.getPoolId(), task.getRecordId(), fields, filters);
           b.setSetRecordFields(SetRecordFieldsResult.newBuilder().setSuccess(ok));
         }
         case CREATE_PAYMENT -> {
           var task = item.getCreatePayment();
           var paymentId =
               jobHandler.createPayment(
-                  task.getPoolId(), task.getRecordId(), structToMap(task.getPaymentData()));
+                  orgId, task.getPoolId(), task.getRecordId(), structToMap(task.getPaymentData()));
           b.setCreatePayment(
               CreatePaymentResult.newBuilder().setSuccess(true).setPaymentId(paymentId));
         }
@@ -701,6 +705,7 @@ public final class WorkStreamClient implements AutoCloseable {
           var filters = task.getFiltersList().stream().map(ProtoConverter::toFilter).toList();
           var record =
               jobHandler.popAccount(
+                  orgId,
                   task.getPoolId(),
                   task.getRecordId(),
                   task.getPartnerAgentId(),
@@ -712,7 +717,8 @@ public final class WorkStreamClient implements AutoCloseable {
         case EXECUTE_LOGIC -> {
           var task = item.getExecuteLogic();
           var output =
-              jobHandler.executeLogic(task.getLogicName(), structToMap(task.getParameters()));
+              jobHandler.executeLogic(
+                  orgId, task.getLogicName(), structToMap(task.getParameters()));
           b.setExecuteLogic(ExecuteLogicResult.newBuilder().setOutput(mapToStruct(output)));
         }
         case INFO -> {

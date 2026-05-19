@@ -176,8 +176,19 @@ public class AdminHandler {
     var client = clientManager.client();
     var map = new HashMap<String, Object>();
     map.put("status", client != null ? "connected" : "not connected");
-    if (client != null) {
-      map.put("streamStatus", streamStatusToMap(client.streamStatus()));
+    if (client == null) {
+      return map;
+    }
+    map.put("streamStatus", streamStatusToMap(client.streamStatus()));
+    try {
+      var diag = client.plugin().diagnostics();
+      map.put("systemInfo", diag.systemInfo());
+      map.put("runtimeInfo", diag.runtimeInfo());
+      map.put("databaseInfo", diag.databaseInfo());
+      map.put("custom", diag.custom());
+    } catch (Exception e) {
+      log.warn("Failed to collect plugin diagnostics: {}", e.getMessage());
+      map.put("diagnosticsError", e.getMessage());
     }
     return map;
   }
