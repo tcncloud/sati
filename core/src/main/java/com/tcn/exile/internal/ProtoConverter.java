@@ -294,6 +294,7 @@ public final class ProtoConverter {
   public static TransferInstanceEvent toTransferInstanceEvent(
       build.buf.gen.tcnapi.exile.gate.v3.TransferInstance ti) {
     var src = ti.getSource();
+    var initiation = ti.getInitiation();
     TransferInstanceEvent.Destination dest = null;
     if (ti.hasDestination()) {
       var d = ti.getDestination();
@@ -335,7 +336,7 @@ public final class ProtoConverter {
         dest,
         ti.getTransferType().name(),
         ti.getTransferResult().name(),
-        ti.getInitiation().name(),
+        initiation.name(),
         toInstant(ti.getCreateTime()),
         toInstant(ti.getTransferTime()),
         toInstant(ti.getAcceptTime()),
@@ -345,8 +346,12 @@ public final class ProtoConverter {
         toDuration(ti.getPendingDuration()),
         toDuration(ti.getExternalDuration()),
         toDuration(ti.getFullDuration()),
-        false,
-        false,
+        initiation
+            == build.buf.gen.tcnapi.exile.gate.v3.TransferInstance.TransferInitiation
+                .TRANSFER_INITIATION_PENDING,
+        initiation
+            == build.buf.gen.tcnapi.exile.gate.v3.TransferInstance.TransferInitiation
+                .TRANSFER_INITIATION_CONFERENCE,
         toDuration(ti.getFullDuration()).toNanos() / 1000L,
         toDuration(ti.getExternalDuration()).toNanos() / 1000L,
         toDuration(ti.getPendingDuration()).toNanos() / 1000L,
