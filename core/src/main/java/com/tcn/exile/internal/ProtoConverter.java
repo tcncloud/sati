@@ -345,15 +345,15 @@ public final class ProtoConverter {
         toDuration(ti.getPendingDuration()),
         toDuration(ti.getExternalDuration()),
         toDuration(ti.getFullDuration()),
-        ti.getStartAsPending(),
-        ti.getStartedAsConference(),
-        ti.getDurationMicroseconds(),
-        ti.getExternalDurationMicroseconds(),
-        ti.getPendingDurationMicroseconds(),
-        toInstant(ti.getTransferPendingStartTime()),
-        toInstant(ti.getTransferStartTime()),
-        toInstant(ti.getTransferEndTime()),
-        toInstant(ti.getTransferExternalEndTime()));
+        false,
+        false,
+        toDuration(ti.getFullDuration()).toNanos() / 1000L,
+        toDuration(ti.getExternalDuration()).toNanos() / 1000L,
+        toDuration(ti.getPendingDuration()).toNanos() / 1000L,
+        null,
+        toInstant(ti.getTransferTime()),
+        toInstant(ti.getEndTime()),
+        null);
   }
 
   public static TaskEvent toTaskEvent(build.buf.gen.tcnapi.exile.gate.v3.ExileTask t) {
