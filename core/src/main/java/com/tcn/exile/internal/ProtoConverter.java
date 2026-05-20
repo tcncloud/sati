@@ -294,18 +294,47 @@ public final class ProtoConverter {
   public static TransferInstanceEvent toTransferInstanceEvent(
       build.buf.gen.tcnapi.exile.gate.v3.TransferInstance ti) {
     var src = ti.getSource();
+    TransferInstanceEvent.Destination dest = null;
+    if (ti.hasDestination()) {
+      var d = ti.getDestination();
+      TransferInstanceEvent.Destination.Agent agent = null;
+      TransferInstanceEvent.Destination.Outbound outbound = null;
+      TransferInstanceEvent.Destination.Skills skills = null;
+      if (d.hasAgent()) {
+        agent = new TransferInstanceEvent.Destination.Agent(
+            d.getAgent().getSessionSid(),
+            d.getAgent().getPartnerAgentId(),
+            d.getAgent().getUserId()
+        );
+      } else if (d.hasOutbound()) {
+        outbound = new TransferInstanceEvent.Destination.Outbound(
+            d.getOutbound().getPhoneNumber(),
+            d.getOutbound().getCallSid(),
+            toCallType(d.getOutbound().getCallType()),
+            d.getOutbound().getConversationId()
+        );
+      } else if (d.hasQueue()) {
+        skills = new TransferInstanceEvent.Destination.Skills(
+            d.getQueue().getRequiredSkillsMap()
+        );
+      }
+      dest = new TransferInstanceEvent.Destination(agent, outbound, skills);
+    }
+
     return new TransferInstanceEvent(
         ti.getClientSid(),
         ti.getOrgId(),
-        ti.getTransferInstanceId(),
+        String.valueOf(ti.getTransferInstanceId()),
         new TransferInstanceEvent.Source(
-            src.getCallSid(),
-            toCallType(src.getCallType()),
-            src.getPartnerAgentId(),
-            src.getUserId(),
-            src.getConversationId(),
-            src.getSessionSid(),
-            src.getAgentCallSid()),
+            new TransferInstanceEvent.Source.Call(
+                src.getCallSid(),
+                toCallType(src.getCallType()),
+                src.getPartnerAgentId(),
+                src.getUserId(),
+                src.getConversationId(),
+                src.getSessionSid(),
+                src.getAgentCallSid())),
+        dest,
         ti.getTransferType().name(),
         ti.getTransferResult().name(),
         ti.getInitiation().name(),
@@ -317,7 +346,16 @@ public final class ProtoConverter {
         toInstant(ti.getUpdateTime()),
         toDuration(ti.getPendingDuration()),
         toDuration(ti.getExternalDuration()),
-        toDuration(ti.getFullDuration()));
+        toDuration(ti.getFullDuration()),
+        false,
+        false,
+        toDuration(ti.getFullDuration()).toNanos() / 1000L,
+        toDuration(ti.getExternalDuration()).toNanos() / 1000L,
+        toDuration(ti.getPendingDuration()).toNanos() / 1000L,
+        null,
+        toInstant(ti.getTransferTime()),
+        toInstant(ti.getEndTime()),
+        null);
   }
 
   public static TaskEvent toTaskEvent(build.buf.gen.tcnapi.exile.gate.v3.ExileTask t) {
