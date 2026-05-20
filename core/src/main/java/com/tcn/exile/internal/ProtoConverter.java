@@ -301,22 +301,20 @@ public final class ProtoConverter {
       TransferInstanceEvent.Destination.Outbound outbound = null;
       TransferInstanceEvent.Destination.Skills skills = null;
       if (d.hasAgent()) {
-        agent = new TransferInstanceEvent.Destination.Agent(
-            d.getAgent().getSessionSid(),
-            d.getAgent().getPartnerAgentId(),
-            d.getAgent().getUserId()
-        );
+        agent =
+            new TransferInstanceEvent.Destination.Agent(
+                d.getAgent().getSessionSid(),
+                d.getAgent().getPartnerAgentId(),
+                d.getAgent().getUserId());
       } else if (d.hasOutbound()) {
-        outbound = new TransferInstanceEvent.Destination.Outbound(
-            d.getOutbound().getPhoneNumber(),
-            d.getOutbound().getCallSid(),
-            toCallType(d.getOutbound().getCallType()),
-            d.getOutbound().getConversationId()
-        );
+        outbound =
+            new TransferInstanceEvent.Destination.Outbound(
+                d.getOutbound().getPhoneNumber(),
+                d.getOutbound().getCallSid(),
+                toCallType(d.getOutbound().getCallType()),
+                d.getOutbound().getConversationId());
       } else if (d.hasQueue()) {
-        skills = new TransferInstanceEvent.Destination.Skills(
-            d.getQueue().getRequiredSkillsMap()
-        );
+        skills = new TransferInstanceEvent.Destination.Skills(d.getQueue().getRequiredSkillsMap());
       }
       dest = new TransferInstanceEvent.Destination(agent, outbound, skills);
     }

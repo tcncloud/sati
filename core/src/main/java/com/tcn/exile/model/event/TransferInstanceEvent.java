@@ -43,12 +43,12 @@ public record TransferInstanceEvent(
         long agentCallSid) {}
   }
 
-  public record Destination(
-      Agent agent,
-      Outbound outbound,
-      Skills skills) {
+  public record Destination(Agent agent, Outbound outbound, Skills skills) {
     public record Agent(long sessionSid, String partnerAgentId, String userId) {}
-    public record Outbound(String phoneNumber, long callSid, CallType callType, String conversationId) {}
+
+    public record Outbound(
+        String phoneNumber, long callSid, CallType callType, String conversationId) {}
+
     public record Skills(java.util.Map<String, Long> requiredSkills) {}
   }
 }
