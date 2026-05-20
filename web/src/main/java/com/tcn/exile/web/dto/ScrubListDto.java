@@ -1,3 +1,6 @@
 package com.tcn.exile.web.dto;
 
-public record ScrubListDto(String scrubListId, boolean readOnly, ScrubListType scrubType) {}
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+public record ScrubListDto(
+    String scrubListId, boolean readOnly, @JsonProperty("contentType") ScrubListType scrubType) {}
