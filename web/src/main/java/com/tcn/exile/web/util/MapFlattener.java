@@ -27,8 +27,14 @@ public class MapFlattener {
    *   <li>Exact match (case-sensitive)
    *   <li>Case-insensitive match ignoring whitespace
    *   <li>If multiple matches found, prefer non-empty values
-   *   <li>If no good match found, throw an exception
+   *   <li>If no good match found, return {@code null}
    * </ol>
+   *
+   * <p>"No match" and "ambiguous match" are returned as {@code null} rather than thrown so callers
+   * can treat absence as a normal outcome — most lookups for optional fields don't want to wrap
+   * every call in try/catch. A previous version threw {@link IllegalArgumentException}; that forced
+   * the v3 finvi plugin into a tight nack/redeliver loop whenever a stored-proc result row lacked
+   * an RPC field, which is a normal outcome rather than an error.
    */
   public static Object search(Map<String, Object> flattenedMap, String suffix) {
     if (flattenedMap.containsKey(suffix)) {
@@ -56,14 +62,8 @@ public class MapFlattener {
       }
     }
 
-    String errorMessage =
-        String.format(
-            "No good match found for suffix '%s'. Found %d matches: %s",
-            suffix,
-            matches.size(),
-            matches.stream().map(Map.Entry::getKey).collect(Collectors.joining(", ")));
-    log.debug(errorMessage);
-    throw new IllegalArgumentException(errorMessage);
+    log.debug("No good match found for suffix '{}'. Found {} matches", suffix, matches.size());
+    return null;
   }
 
   private static String normalizeKey(String key) {
