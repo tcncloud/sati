@@ -220,6 +220,17 @@ public final class ExileClient implements AutoCloseable {
   }
 
   /**
+   * Signals the gate that a pool is ready to be pulled. Fire-and-forget: the gate fetches and
+   * stages the pool's records. Throws when the WorkStream is not connected, so callers can retry.
+   */
+  public void notifyPoolReady(String poolId) {
+    if (poolId == null || poolId.isBlank()) {
+      throw new IllegalArgumentException("poolId is required");
+    }
+    workStream.sendPoolReady(poolId);
+  }
+
+  /**
    * Snapshot of the adaptive concurrency controller's current state, for plugin diagnostics,
    * dashboards, and custom metric export. Returns empty when adaptive is disabled — either the
    * caller passed an explicit {@link Builder#capacityProvider} or called {@code adaptive(false)}.

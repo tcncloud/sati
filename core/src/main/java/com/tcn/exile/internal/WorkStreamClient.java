@@ -846,6 +846,14 @@ public final class WorkStreamClient implements AutoCloseable {
     send(WorkRequest.newBuilder().setPull(Pull.newBuilder().setMaxItems(count)).build());
   }
 
+  /** Signals the gate that a pool is ready to be pulled. Throws when the stream is down. */
+  public void sendPoolReady(String poolId) {
+    if (requestObserver.get() == null) {
+      throw new IllegalStateException("WorkStream is not connected");
+    }
+    send(WorkRequest.newBuilder().setPoolReady(PoolReady.newBuilder().setPoolId(poolId)).build());
+  }
+
   private void send(WorkRequest request) {
     var observer = requestObserver.get();
     if (observer != null) {
