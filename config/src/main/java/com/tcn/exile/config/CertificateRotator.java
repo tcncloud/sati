@@ -105,7 +105,8 @@ public final class CertificateRotator {
                   new ByteArrayInputStream(config.publicCert().getBytes(StandardCharsets.UTF_8)));
       var digest = MessageDigest.getInstance("SHA-256");
       var hash = digest.digest(cert.getEncoded());
-      return HexFormat.of().withDelimiter(":").formatHex(hash);
+      // Bare lowercase hex, no delimiter — must match the gate's hex(sha256(DER)) lookup key.
+      return HexFormat.of().formatHex(hash);
     } catch (Exception e) {
       return "";
     }
