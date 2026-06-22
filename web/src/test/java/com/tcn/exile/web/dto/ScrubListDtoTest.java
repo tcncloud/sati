@@ -11,10 +11,11 @@ class ScrubListDtoTest {
   @Test
   void testSerializationKeys() throws Exception {
     ObjectMapper mapper = new ObjectMapper();
-    ScrubListDto dto = new ScrubListDto("x", false, ScrubListType.phone);
+    ScrubListDto dto = new ScrubListDto("x", false, ScrubListType.phone_number);
     String json = mapper.writeValueAsString(dto);
 
-    assertTrue(json.contains("\"contentType\":\"phone\""), "JSON should contain 'contentType' key");
+    assertTrue(
+        json.contains("\"contentType\":\"phone_number\""), "JSON should contain 'contentType' key");
     assertFalse(json.contains("\"scrubType\""), "JSON should NOT contain 'scrubType' key");
   }
 }

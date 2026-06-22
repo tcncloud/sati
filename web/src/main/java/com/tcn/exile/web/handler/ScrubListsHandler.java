@@ -77,8 +77,9 @@ public class ScrubListsHandler {
   private ScrubListType mapContentType(String contentType) {
     if (contentType == null) return ScrubListType.other;
     return switch (contentType) {
-      case "CONTENT_TYPE_PHONE" -> ScrubListType.phone;
+      case "CONTENT_TYPE_PHONE_NUMBER" -> ScrubListType.phone_number;
       case "CONTENT_TYPE_EMAIL" -> ScrubListType.email;
+      case "CONTENT_TYPE_SMS" -> ScrubListType.sms;
       default -> ScrubListType.other;
     };
   }

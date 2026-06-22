@@ -1,7 +1,8 @@
 package com.tcn.exile.web.dto;
 
 public enum ScrubListType {
-  phone,
+  phone_number,
   email,
+  sms,
   other
 }

@@ -1,10 +1,13 @@
 package com.tcn.exile.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.tcn.exile.service.RecordingService;
 import java.time.Duration;
 import java.util.List;
 import java.util.stream.Collectors;
 
+// v2 wire parity: always emit every key (even when null), matching v1.25.3 behavior.
+@JsonInclude(JsonInclude.Include.ALWAYS)
 public record VoiceRecordingDto(
     String recordingId,
     long callSid,
@@ -30,7 +33,7 @@ public record VoiceRecordingDto(
     return new VoiceRecordingDto(
         recording.recordingId(),
         recording.callSid(),
-        "CALL_TYPE_" + recording.callType().name(),
+        recording.callType().name().toLowerCase(),
         formattedStartTime,
         formattedStartOffset,
         formattedEndOffset,
