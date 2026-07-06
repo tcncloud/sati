@@ -72,8 +72,8 @@ public class AdminHandler {
   // ==================== gRPC / Stream status ====================
 
   /**
-   * JSON map of stream status plus connection config fields. The config fields are part of the v2
-   * wire shape external clients read (e.g. HCx uses "org" to correlate inbound requests).
+   * JSON map of stream status plus connection config fields. The config fields (including "org")
+   * are part of the v2 wire shape that external clients depend on.
    */
   public Map<String, Object> grpcStatus() {
     var status = clientManager.streamStatus();
