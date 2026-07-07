@@ -8,6 +8,7 @@ import com.tcn.exile.model.CallType;
 import com.tcn.exile.service.CallService;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -121,7 +122,8 @@ public class AgentsHandler {
       String recordId,
       String rulesetName,
       Boolean skipComplianceChecks,
-      Boolean recordCall) {
+      Boolean recordCall,
+      Map<String, String> recordData) {
     log.debug("dial partnerAgentId={}, phoneNumber={}", partnerAgentId, phoneNumber);
 
     if (partnerAgentId == null || partnerAgentId.isBlank()) {
@@ -142,7 +144,8 @@ public class AgentsHandler {
                 recordId,
                 rulesetName,
                 skipComplianceChecks,
-                recordCall);
+                recordCall,
+                recordData);
 
     if (result != null) {
       return result;
