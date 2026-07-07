@@ -71,13 +71,27 @@ public class AdminHandler {
 
   // ==================== gRPC / Stream status ====================
 
-  /** Returns a JSON-friendly map of stream status, or a "not connected" message. */
+  /**
+   * JSON map of stream status plus connection config fields. The config fields (including "org")
+   * are part of the v2 wire shape that external clients depend on.
+   */
   public Map<String, Object> grpcStatus() {
     var status = clientManager.streamStatus();
+    var map = status != null ? streamStatusToMap(status) : new HashMap<String, Object>();
     if (status == null) {
-      return Map.of("status", "not connected");
+      map.put("status", "not connected");
     }
-    return streamStatusToMap(status);
+    var client = clientManager.client();
+    map.put("configured", client != null);
+    if (client != null) {
+      var config = client.config();
+      map.put("api_endpoint", config.apiHostname() + ":" + config.apiPort());
+      map.put("org", config.org());
+      var expiration = getCertExpiration(config);
+      map.put("expiration_date", expiration);
+      map.put("certificate_expiration_date", expiration);
+    }
+    return map;
   }
 
   /** Builds a model map for the gRPC status view template. */
