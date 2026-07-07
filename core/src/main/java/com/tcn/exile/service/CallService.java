@@ -31,7 +31,8 @@ public final class CallService {
       String recordId,
       String rulesetName,
       Boolean skipCompliance,
-      Boolean recordCall) {
+      Boolean recordCall,
+      Map<String, String> recordData) {
     var req =
         build.buf.gen.tcnapi.exile.gate.v3.DialRequest.newBuilder()
             .setPartnerAgentId(partnerAgentId)
@@ -42,6 +43,7 @@ public final class CallService {
     if (rulesetName != null) req.setRulesetName(rulesetName);
     if (skipCompliance != null) req.setSkipComplianceChecks(skipCompliance);
     if (recordCall != null) req.setRecordCall(recordCall);
+    if (recordData != null) req.putAllRecordData(recordData);
     var resp = stub.dial(req.build());
     return new DialResult(
         resp.getPhoneNumber(),
