@@ -49,6 +49,7 @@ public final class ExileClient implements AutoCloseable {
   private final AgentService agentService;
   private final CallService callService;
   private final RecordingService recordingService;
+  private final TranscriptService transcriptService;
   private final ScrubListService scrubListService;
   private final ConfigService configService;
   private final JourneyService journeyService;
@@ -89,6 +90,7 @@ public final class ExileClient implements AutoCloseable {
     this.agentService = services.agent();
     this.callService = services.call();
     this.recordingService = services.recording();
+    this.transcriptService = services.transcript();
     this.scrubListService = services.scrubList();
     this.configService = services.config();
     this.journeyService = services.journey();
@@ -277,6 +279,10 @@ public final class ExileClient implements AutoCloseable {
 
   public RecordingService recordings() {
     return recordingService;
+  }
+
+  public TranscriptService transcripts() {
+    return transcriptService;
   }
 
   public ScrubListService scrubLists() {
