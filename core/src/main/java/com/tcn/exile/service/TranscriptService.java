@@ -143,15 +143,18 @@ public final class TranscriptService {
             .toList();
 
     var out = new StringBuilder();
-    var speaking = -1;
+    // Keyed on the label, not the thread: a transfer splits one speaker across
+    // several threads, and relabeling at each boundary reads as a new speaker.
+    String speaking = null;
 
     for (var next : spoken) {
-      if (next.thread() != speaking) {
+      var label = labels.get(next.thread());
+      if (!label.equals(speaking)) {
         if (!out.isEmpty()) {
           out.append('\n');
         }
-        out.append(labels.get(next.thread())).append(": ");
-        speaking = next.thread();
+        out.append(label).append(": ");
+        speaking = label;
       } else {
         out.append(' ');
       }
