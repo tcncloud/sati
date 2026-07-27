@@ -2,43 +2,32 @@ package com.tcn.exile.web.dto;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.tcn.exile.service.TranscriptService;
-import java.util.Comparator;
 import java.util.List;
+import java.util.stream.IntStream;
 
 /** summaryStatus is null when the call has no transcript. */
 @JsonInclude(JsonInclude.Include.ALWAYS)
 public record CallTranscriptSummaryDto(
-    String transcript, List<String> summaryBulletPoints, String summaryStatus) {
+    String transcript,
+    List<TranscriptThreadDto> threads,
+    List<String> summaryBulletPoints,
+    String summaryStatus) {
 
   public static CallTranscriptSummaryDto from(TranscriptService.CallTranscriptSummary summary) {
-    // Threads are per speaker; sorting the words by offset yields the
-    // conversation in chronological order.
-    var words =
-        summary.threads().stream()
-            .flatMap(t -> t.segments().stream())
-            .sorted(Comparator.comparing(TranscriptService.Segment::offset))
+    var speakers = summary.speakers();
+    var threads =
+        IntStream.range(0, summary.threads().size())
+            .mapToObj(
+                i -> {
+                  var thread = summary.threads().get(i);
+                  return new TranscriptThreadDto(
+                      thread.id(), speakers.get(i), thread.userId(), thread.text());
+                })
             .toList();
     return new CallTranscriptSummaryDto(
-        joinWords(words),
+        summary.conversation(),
+        threads,
         summary.summaryBulletPoints(),
         summary.summaryStatus() != null ? summary.summaryStatus().name() : null);
-  }
-
-  // Segments arrive one ASR word each. Continuation fragments (leading
-  // hyphen/apostrophe, e.g. "-ahead") attach to the previous word.
-  private static String joinWords(List<TranscriptService.Segment> segments) {
-    var sb = new StringBuilder();
-    for (var segment : segments) {
-      var word = segment.text();
-      if (word == null || word.isEmpty()) {
-        continue;
-      }
-      if (sb.isEmpty() || word.charAt(0) == '-' || word.charAt(0) == '\'') {
-        sb.append(word);
-      } else {
-        sb.append(' ').append(word);
-      }
-    }
-    return sb.toString();
   }
 }
