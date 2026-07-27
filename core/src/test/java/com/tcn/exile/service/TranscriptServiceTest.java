@@ -94,6 +94,20 @@ class TranscriptServiceTest {
   }
 
   @Test
+  void keepsOneCustomerLabelWhenATransferSplitsTheCustomerAcrossThreads() {
+    var beforeTransfer = thread(CUSTOMER, "u1", word("still", 1000));
+    var afterTransfer = thread(CUSTOMER, "u2", word("here", 3000));
+    var first = thread(AGENT, "u1", word("transferring", 0));
+    var second = thread(AGENT, "u2", word("continuing", 4000));
+
+    var call = summary(beforeTransfer, afterTransfer, first, second);
+
+    assertEquals(List.of("Customer", "Customer", "Agent 1", "Agent 2"), call.speakers());
+    assertEquals(
+        "Agent 1: transferring\nCustomer: still here\nAgent 2: continuing", call.conversation());
+  }
+
+  @Test
   void leavesTheAgentUnnumberedWhenOneAgentHandledTheWholeCall() {
     var first = thread(AGENT, "u1", word("still", 0));
     var second = thread(AGENT, "u1", word("me", 4000));
