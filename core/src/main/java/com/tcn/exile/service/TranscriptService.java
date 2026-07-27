@@ -4,10 +4,22 @@ import com.tcn.exile.internal.ProtoConverter;
 import com.tcn.exile.model.CallType;
 import io.grpc.ManagedChannel;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.stream.IntStream;
 
 /** Call transcript and AI summary retrieval. No proto types in the public API. */
 public final class TranscriptService {
+
+  // Channel numbering follows the analytics platform: 1 carries the customer,
+  // 2 carries the agent.
+  private static final int CUSTOMER_CHANNEL = 1;
+  private static final int AGENT_CHANNEL = 2;
+
+  // Silence long enough to end an utterance, matching the analytics platform.
+  private static final Duration UTTERANCE_GAP = Duration.ofSeconds(1);
 
   private final build.buf.gen.tcnapi.exile.gate.v3.TranscriptServiceGrpc
           .TranscriptServiceBlockingStub
@@ -26,13 +38,39 @@ public final class TranscriptService {
 
   public record Segment(String text, Duration offset, Duration duration) {}
 
-  public record TranscriptThread(int id, String userId, List<Segment> segments) {}
+  /**
+   * One audio channel of a call. The id is the channel number, not a unique key -- a transferred
+   * call carries one thread per agent leg, all on channel 2. userId is the agent who handled the
+   * leg, which is stamped on the customer channel too, so it never identifies the speaker.
+   */
+  public record TranscriptThread(int id, String userId, List<Segment> segments) {
+
+    /** This channel's words joined into text. */
+    public String text() {
+      return joinWords(segments);
+    }
+  }
 
   public record CallTranscriptSummary(
       boolean transcriptFound,
       List<TranscriptThread> threads,
       List<String> summaryBulletPoints,
-      SummaryStatus summaryStatus) {}
+      SummaryStatus summaryStatus) {
+
+    /**
+     * The call as speaker-labeled turns, one per line. A voice carrying across channels is
+     * transcribed on both, so grouping each speaker's run of words into a turn keeps the duplicate
+     * attributable instead of interleaving it word by word.
+     */
+    public String conversation() {
+      return buildConversation(threads);
+    }
+
+    /** Who spoke on each thread, in the same order as {@link #threads()}. */
+    public List<String> speakers() {
+      return speakerLabels(threads);
+    }
+  }
 
   public CallTranscriptSummary getCallTranscriptSummary(long callSid, CallType callType) {
     var resp =
@@ -66,6 +104,116 @@ public final class TranscriptService {
         threads,
         resp.getSummaryBulletPointsList(),
         toSummaryStatus(resp));
+  }
+
+  // Several threads share channel 2 when a call is transferred, so agents are
+  // numbered by the user who handled each leg.
+  private static List<String> speakerLabels(List<TranscriptThread> threads) {
+    var agentNumbers = new LinkedHashMap<String, Integer>();
+    for (var thread : threads) {
+      if (thread.id() == AGENT_CHANNEL) {
+        agentNumbers.putIfAbsent(thread.userId(), agentNumbers.size() + 1);
+      }
+    }
+
+    var labels = new ArrayList<String>(threads.size());
+    for (var thread : threads) {
+      if (thread.id() == CUSTOMER_CHANNEL) {
+        labels.add("Customer");
+      } else if (thread.id() != AGENT_CHANNEL) {
+        labels.add("Unknown");
+      } else if (agentNumbers.size() > 1) {
+        labels.add("Agent " + agentNumbers.get(thread.userId()));
+      } else {
+        labels.add("Agent");
+      }
+    }
+    return labels;
+  }
+
+  private static String buildConversation(List<TranscriptThread> threads) {
+    record Spoken(int thread, Utterance utterance) {}
+
+    var labels = speakerLabels(threads);
+    var spoken =
+        IntStream.range(0, threads.size())
+            .boxed()
+            .flatMap(i -> utterances(threads.get(i).segments()).stream().map(u -> new Spoken(i, u)))
+            .sorted(Comparator.comparing((Spoken s) -> s.utterance().offset()))
+            .toList();
+
+    var out = new StringBuilder();
+    var speaking = -1;
+
+    for (var next : spoken) {
+      if (next.thread() != speaking) {
+        if (!out.isEmpty()) {
+          out.append('\n');
+        }
+        out.append(labels.get(next.thread())).append(": ");
+        speaking = next.thread();
+      } else {
+        out.append(' ');
+      }
+      out.append(next.utterance().text());
+    }
+
+    return out.toString();
+  }
+
+  private record Utterance(Duration offset, String text) {}
+
+  /**
+   * Groups a channel's words into utterances. Speakers overlap constantly on a real call, so
+   * interleaving raw words would alternate the labels every word or two; merging each speaker's run
+   * of words first keeps the turns whole.
+   */
+  private static List<Utterance> utterances(List<Segment> segments) {
+    var ordered =
+        segments.stream()
+            .filter(s -> s.text() != null && !s.text().isBlank())
+            .sorted(Comparator.comparing(Segment::offset))
+            .toList();
+    if (ordered.isEmpty()) {
+      return List.of();
+    }
+
+    var out = new ArrayList<Utterance>();
+    var run = new ArrayList<Segment>();
+    run.add(ordered.getFirst());
+
+    for (var segment : ordered.subList(1, ordered.size())) {
+      var previous = run.getLast();
+      var spokenBy = previous.offset().plus(previous.duration()).plus(UTTERANCE_GAP);
+      if (segment.offset().compareTo(spokenBy) <= 0) {
+        run.add(segment);
+      } else {
+        out.add(new Utterance(run.getFirst().offset(), joinWords(run)));
+        run = new ArrayList<>();
+        run.add(segment);
+      }
+    }
+    out.add(new Utterance(run.getFirst().offset(), joinWords(run)));
+
+    return out;
+  }
+
+  // Segments arrive one ASR word each. Continuation fragments (leading
+  // hyphen/apostrophe, e.g. "-ahead") attach to the previous word.
+  private static String joinWords(List<Segment> segments) {
+    var sb = new StringBuilder();
+    for (var segment : segments.stream().sorted(Comparator.comparing(Segment::offset)).toList()) {
+      var word = segment.text();
+      if (word == null || word.isEmpty()) {
+        continue;
+      }
+      if (sb.isEmpty() || word.charAt(0) == '-' || word.charAt(0) == '\'') {
+        sb.append(word);
+      } else {
+        sb.append(' ').append(word);
+      }
+    }
+    return sb.toString();
   }
 
   private static SummaryStatus toSummaryStatus(
