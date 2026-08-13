@@ -47,6 +47,30 @@ public final class ProtoConverter {
 
   // ---- Enums ----
 
+  public static String toLogbackLevel(build.buf.gen.tcnapi.exile.gate.v3.LogLevel level) {
+    return switch (level) {
+      case LOG_LEVEL_TRACE -> "TRACE";
+      case LOG_LEVEL_DEBUG -> "DEBUG";
+      case LOG_LEVEL_INFO -> "INFO";
+      case LOG_LEVEL_WARN -> "WARN";
+      case LOG_LEVEL_ERROR -> "ERROR";
+      default -> throw new IllegalArgumentException("Unknown log level: " + level);
+    };
+  }
+
+  /** Null when the level has no wire equivalent (OFF, ALL). */
+  public static build.buf.gen.tcnapi.exile.gate.v3.LogLevel toProtoLevel(String level) {
+    if (level == null) return null;
+    return switch (level.toUpperCase()) {
+      case "TRACE" -> build.buf.gen.tcnapi.exile.gate.v3.LogLevel.LOG_LEVEL_TRACE;
+      case "DEBUG" -> build.buf.gen.tcnapi.exile.gate.v3.LogLevel.LOG_LEVEL_DEBUG;
+      case "INFO" -> build.buf.gen.tcnapi.exile.gate.v3.LogLevel.LOG_LEVEL_INFO;
+      case "WARN" -> build.buf.gen.tcnapi.exile.gate.v3.LogLevel.LOG_LEVEL_WARN;
+      case "ERROR" -> build.buf.gen.tcnapi.exile.gate.v3.LogLevel.LOG_LEVEL_ERROR;
+      default -> null;
+    };
+  }
+
   public static CallType toCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType ct) {
     return switch (ct) {
       case CALL_TYPE_INBOUND -> CallType.INBOUND;

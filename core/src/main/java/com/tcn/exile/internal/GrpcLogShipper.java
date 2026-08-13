@@ -49,6 +49,11 @@ public final class GrpcLogShipper implements LogShipper {
 
   @Override
   public void shipStructuredLogs(List<MemoryAppender.LogEvent> events) {
+    shipStructuredLogsChecked(events);
+  }
+
+  @Override
+  public boolean shipStructuredLogsChecked(List<MemoryAppender.LogEvent> events) {
     var records = new ArrayList<LogRecord>();
     for (var event : events) {
       var builder =
@@ -69,7 +74,7 @@ public final class GrpcLogShipper implements LogShipper {
 
       records.add(builder.build());
     }
-    sendRecords(records);
+    return sendRecords(records);
   }
 
   /** Serialize the log event as a JSON string for structured gate-side processing. */
@@ -119,12 +124,14 @@ public final class GrpcLogShipper implements LogShipper {
         .replace("\t", "\\t");
   }
 
-  private void sendRecords(List<LogRecord> records) {
+  private boolean sendRecords(List<LogRecord> records) {
     try {
       int accepted = telemetryService.reportLogs(clientId, records);
       log.debug("Shipped {} log records ({} accepted)", records.size(), accepted);
+      return true;
     } catch (Exception e) {
-      log.debug("Failed to ship logs: {}", e.getMessage());
+      log.debug("Failed to ship logs, will retry: {}", e.getMessage());
+      return false;
     }
   }
 

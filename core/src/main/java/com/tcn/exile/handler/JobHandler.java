@@ -96,6 +96,11 @@ public interface JobHandler {
     throw new UnsupportedOperationException("setLogLevel not implemented");
   }
 
+  /** Logger name to the logback level currently in effect ("DEBUG", "INFO", "WARN", ...). */
+  default Map<String, String> loggerLevels() throws Exception {
+    return Map.of();
+  }
+
   record DiagnosticsInfo(
       Map<String, Object> systemInfo,
       Map<String, Object> runtimeInfo,
