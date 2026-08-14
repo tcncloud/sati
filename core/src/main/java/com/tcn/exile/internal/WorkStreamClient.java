@@ -765,11 +765,17 @@ public final class WorkStreamClient implements AutoCloseable {
                     .setLogger(entry.logger())
                     .setMessage(entry.message()));
           }
+          for (var e : jobHandler.loggerLevels().entrySet()) {
+            var level = toProtoLevel(e.getValue());
+            if (level != null) {
+              rb.putLoggerLevels(e.getKey(), level);
+            }
+          }
           b.setListTenantLogs(rb);
         }
         case SET_LOG_LEVEL -> {
           var task = item.getSetLogLevel();
-          jobHandler.setLogLevel(task.getLoggerName(), task.getLevel());
+          jobHandler.setLogLevel(task.getLoggerName(), toLogbackLevel(task.getLevel()));
           b.setSetLogLevel(SetLogLevelResult.getDefaultInstance());
         }
         default -> throw new UnsupportedOperationException("Unknown job: " + item.getTaskCase());

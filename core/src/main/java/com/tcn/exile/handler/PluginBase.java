@@ -6,6 +6,7 @@ import com.tcn.exile.model.Page;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,6 +40,9 @@ public abstract class PluginBase implements Plugin {
 
   private static final Logger log = LoggerFactory.getLogger(PluginBase.class);
 
+  private static final Set<String> VALID_LEVELS =
+      Set.of("TRACE", "DEBUG", "INFO", "WARN", "ERROR", "OFF", "ALL");
+
   @Override
   public String pluginName() {
     return getClass().getSimpleName();
@@ -63,15 +67,17 @@ public abstract class PluginBase implements Plugin {
         logEvents.size(),
         startMs,
         endMs);
-    var entries =
+    var matching =
         logEvents.stream()
             .filter(e -> e.timestamp >= startMs && e.timestamp <= endMs)
             .map(
                 e ->
                     new JobHandler.LogEntry(
-                        Instant.ofEpochMilli(e.timestamp), "INFO", "memlogger", e.message))
-            .limit(pageSize > 0 ? pageSize : 100)
-            .toList();
+                        Instant.ofEpochMilli(e.timestamp),
+                        e.level != null ? e.level : "INFO",
+                        e.loggerName != null ? e.loggerName : "memlogger",
+                        e.message));
+    var entries = pageSize > 0 ? matching.limit(pageSize).toList() : matching.toList();
     log.info("listTenantLogs: returning {} entries", entries.size());
 
     return new Page<>(entries, "");
@@ -79,14 +85,32 @@ public abstract class PluginBase implements Plugin {
 
   @Override
   public void setLogLevel(String loggerName, String level) throws Exception {
+    var requested = level != null ? level.toUpperCase() : null;
+    if (requested == null || !VALID_LEVELS.contains(requested)) {
+      throw new IllegalArgumentException(
+          "Unknown log level '" + level + "', expected one of " + VALID_LEVELS);
+    }
     var loggerContext =
         (ch.qos.logback.classic.LoggerContext) org.slf4j.LoggerFactory.getILoggerFactory();
     var logger = loggerContext.getLogger(loggerName);
-    if (logger != null) {
-      var newLevel = ch.qos.logback.classic.Level.valueOf(level);
-      logger.setLevel(newLevel);
-      log.info("Log level changed: {}={}", loggerName, newLevel);
+    var newLevel = ch.qos.logback.classic.Level.valueOf(requested);
+    logger.setLevel(newLevel);
+    log.info("Log level changed: {}={}", loggerName, newLevel);
+  }
+
+  @Override
+  public Map<String, String> loggerLevels() throws Exception {
+    var loggerContext =
+        (ch.qos.logback.classic.LoggerContext) org.slf4j.LoggerFactory.getILoggerFactory();
+
+    var levels = new java.util.LinkedHashMap<String, String>();
+    for (var logger : loggerContext.getLoggerList()) {
+      var level = logger.getLevel() != null ? logger.getLevel() : logger.getEffectiveLevel();
+      if (level != null) {
+        levels.put(logger.getName(), level.toString());
+      }
     }
+    return levels;
   }
 
   @Override

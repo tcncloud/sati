@@ -28,6 +28,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
   private static final int MAX_SIZE = 1000;
@@ -37,6 +38,9 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
   private final AtomicBoolean isStarted = new AtomicBoolean(false);
   private Thread cleanupThread;
   private Thread shipperThread;
+
+  private final AtomicLong seqCounter = new AtomicLong();
+  private volatile long lastShippedSeq = 0;
 
   /**
    * Pluggable trace context extractor. Called at append time to capture the current trace/span IDs.
@@ -78,6 +82,8 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
   public void stop() {
     if (isStarted.compareAndSet(true, false)) {
       stopCleanupThread();
+      stopShipperThread();
+      shipPendingEvents();
       super.stop();
       MemoryAppenderInstance.setInstance(null);
       clearEvents();
@@ -156,7 +162,8 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
             mdc,
             stackTrace,
             traceId,
-            spanId);
+            spanId,
+            seqCounter.incrementAndGet());
 
     if (!events.offer(logEvent)) {
       // If queue is full, remove oldest and try again
@@ -223,7 +230,8 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
               event.mdc,
               event.stackTrace,
               event.traceId,
-              event.spanId));
+              event.spanId,
+              event.seq));
     }
 
     return result;
@@ -241,6 +249,7 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     addInfo("Log shipper disabled");
     stopShipperThread();
     if (this.shipper != null) {
+      shipPendingEvents();
       this.shipper.stop();
       this.shipper = null;
     }
@@ -253,7 +262,7 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
               while (isStarted.get() && shipper != null) {
                 try {
                   TimeUnit.SECONDS.sleep(10);
-                  drainToShipper();
+                  shipPendingEvents();
                 } catch (InterruptedException e) {
                   Thread.currentThread().interrupt();
                   break;
@@ -272,12 +281,25 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     }
   }
 
-  private void drainToShipper() {
+  void shipPendingEvents() {
+    var shipper = this.shipper;
     if (shipper == null || events.isEmpty()) return;
+
+    long watermark = lastShippedSeq;
+    long highest = watermark;
     List<LogEvent> batch = new ArrayList<>();
-    events.drainTo(batch);
-    if (!batch.isEmpty()) {
-      shipper.shipStructuredLogs(batch);
+    for (LogEvent event : events) {
+      if (event.seq > watermark) {
+        batch.add(event);
+        if (event.seq > highest) {
+          highest = event.seq;
+        }
+      }
+    }
+    if (batch.isEmpty()) return;
+
+    if (shipper.shipStructuredLogsChecked(batch)) {
+      lastShippedSeq = highest;
     }
   }
 
@@ -301,8 +323,10 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
     public final String traceId;
     public final String spanId;
 
+    public final long seq;
+
     public LogEvent(String message, long timestamp) {
-      this(message, null, timestamp, null, null, null, null, null, null, null);
+      this(message, null, timestamp, null, null, null, null, null, null, null, 0);
     }
 
     public LogEvent(
@@ -315,7 +339,8 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
         Map<String, String> mdc,
         String stackTrace,
         String traceId,
-        String spanId) {
+        String spanId,
+        long seq) {
       this.message = message;
       this.formattedMessage = formattedMessage;
       this.timestamp = timestamp;
@@ -326,6 +351,7 @@ public class MemoryAppender extends OutputStreamAppender<ILoggingEvent> {
       this.stackTrace = stackTrace;
       this.traceId = traceId;
       this.spanId = spanId;
+      this.seq = seq;
     }
   }
 }

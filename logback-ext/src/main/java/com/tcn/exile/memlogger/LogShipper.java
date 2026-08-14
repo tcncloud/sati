@@ -26,5 +26,10 @@ public interface LogShipper {
     shipLogs(events.stream().map(e -> e.message).toList());
   }
 
+  default boolean shipStructuredLogsChecked(List<MemoryAppender.LogEvent> events) {
+    shipStructuredLogs(events);
+    return true;
+  }
+
   void stop();
 }
