@@ -67,7 +67,7 @@ public abstract class PluginBase implements Plugin {
         logEvents.size(),
         startMs,
         endMs);
-    var entries =
+    var matching =
         logEvents.stream()
             .filter(e -> e.timestamp >= startMs && e.timestamp <= endMs)
             .map(
@@ -76,9 +76,8 @@ public abstract class PluginBase implements Plugin {
                         Instant.ofEpochMilli(e.timestamp),
                         e.level != null ? e.level : "INFO",
                         e.loggerName != null ? e.loggerName : "memlogger",
-                        e.message))
-            .limit(pageSize > 0 ? pageSize : 100)
-            .toList();
+                        e.message));
+    var entries = pageSize > 0 ? matching.limit(pageSize).toList() : matching.toList();
     log.info("listTenantLogs: returning {} entries", entries.size());
 
     return new Page<>(entries, "");

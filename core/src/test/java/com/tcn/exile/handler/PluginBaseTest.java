@@ -19,6 +19,7 @@ package com.tcn.exile.handler;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.tcn.exile.memlogger.MemoryAppender;
 import com.tcn.exile.service.ConfigService;
 import org.junit.jupiter.api.Test;
 
@@ -34,6 +35,46 @@ public class PluginBaseTest {
   private static ch.qos.logback.classic.Logger logger(String name) {
     var ctx = (ch.qos.logback.classic.LoggerContext) org.slf4j.LoggerFactory.getILoggerFactory();
     return ctx.getLogger(name);
+  }
+
+  private static MemoryAppender startedAppender() {
+    var ctx = (ch.qos.logback.classic.LoggerContext) org.slf4j.LoggerFactory.getILoggerFactory();
+
+    var encoder = new ch.qos.logback.classic.encoder.PatternLayoutEncoder();
+    encoder.setContext(ctx);
+    encoder.setPattern("%msg%n");
+    encoder.start();
+
+    var appender = new MemoryAppender();
+    appender.setContext(ctx);
+    appender.setEncoder(encoder);
+    appender.start();
+    return appender;
+  }
+
+  @Test
+  public void listTenantLogsReturnsEveryEntryWhenNoPageSizeIsRequested() throws Exception {
+    var appender = startedAppender();
+    var chatty = logger("test.tenantlogs.pagesize");
+    chatty.setLevel(ch.qos.logback.classic.Level.INFO);
+    chatty.setAdditive(false);
+    chatty.addAppender(appender);
+
+    try {
+      for (int i = 0; i < 150; i++) {
+        chatty.info("line {}", i);
+      }
+      var plugin = new TestPlugin();
+
+      assertEquals(
+          150,
+          plugin.listTenantLogs(null, null, "", 0).items().size(),
+          "the gate sends no page size, so a limit here silently truncates the admin log view");
+      assertEquals(5, plugin.listTenantLogs(null, null, "", 5).items().size());
+    } finally {
+      chatty.detachAppender(appender);
+      appender.stop();
+    }
   }
 
   @Test
