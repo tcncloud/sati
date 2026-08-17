@@ -76,7 +76,7 @@ public abstract class PluginBase implements Plugin {
                         Instant.ofEpochMilli(e.timestamp),
                         e.level != null ? e.level : "INFO",
                         e.loggerName != null ? e.loggerName : "memlogger",
-                        e.message));
+                        e.formattedMessage != null ? e.formattedMessage : e.message));
     var entries = pageSize > 0 ? matching.limit(pageSize).toList() : matching.toList();
     log.info("listTenantLogs: returning {} entries", entries.size());
 

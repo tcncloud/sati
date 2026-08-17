@@ -53,6 +53,29 @@ public class PluginBaseTest {
   }
 
   @Test
+  public void listTenantLogsReturnsTheEncodedLineNotTheBareMessage() throws Exception {
+    var appender = startedAppender();
+    var chatty = logger("test.tenantlogs.encoded");
+    chatty.setLevel(ch.qos.logback.classic.Level.INFO);
+    chatty.setAdditive(false);
+    chatty.addAppender(appender);
+
+    try {
+      chatty.info("account {} popped", 42);
+
+      var entries = new TestPlugin().listTenantLogs(null, null, "", 0).items();
+
+      assertEquals(1, entries.size());
+      assertEquals("account 42 popped\n", entries.get(0).message());
+      assertEquals("INFO", entries.get(0).level());
+      assertEquals(chatty.getName(), entries.get(0).logger());
+    } finally {
+      chatty.detachAppender(appender);
+      appender.stop();
+    }
+  }
+
+  @Test
   public void listTenantLogsReturnsEveryEntryWhenNoPageSizeIsRequested() throws Exception {
     var appender = startedAppender();
     var chatty = logger("test.tenantlogs.pagesize");
