@@ -25,6 +25,7 @@ import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -711,7 +712,10 @@ public final class WorkStreamClient implements AutoCloseable {
                   task.getPartnerAgentId(),
                   task.getCallSid(),
                   ProtoConverter.toCallType(task.getCallType()),
-                  filters);
+                  filters,
+                  task.hasOriginalCallType()
+                      ? Optional.of(ProtoConverter.toCallType(task.getOriginalCallType()))
+                      : Optional.empty());
           b.setPopAccount(PopAccountResult.newBuilder().setRecord(fromRecord(record)));
         }
         case EXECUTE_LOGIC -> {

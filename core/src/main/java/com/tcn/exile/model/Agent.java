@@ -16,5 +16,6 @@ public record Agent(
     boolean recording,
     Optional<ConnectedParty> connectedParty) {
 
-  public record ConnectedParty(long callSid, CallType callType, boolean inbound) {}
+  public record ConnectedParty(
+      long callSid, CallType callType, boolean inbound, Optional<CallType> originalCallType) {}
 }

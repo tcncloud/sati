@@ -272,6 +272,26 @@ class ProtoConverterTest {
     assertTrue(java.connectedParty().isPresent());
     assertEquals(42, java.connectedParty().get().callSid());
     assertEquals(CallType.INBOUND, java.connectedParty().get().callType());
+    assertTrue(java.connectedParty().get().originalCallType().isEmpty());
+  }
+
+  @Test
+  void agentConnectedPartyWithOriginalCallType() {
+    var proto =
+        build.buf.gen.tcnapi.exile.gate.v3.Agent.newBuilder()
+            .setConnectedParty(
+                build.buf.gen.tcnapi.exile.gate.v3.Agent.ConnectedParty.newBuilder()
+                    .setCallSid(42)
+                    .setCallType(build.buf.gen.tcnapi.exile.gate.v3.CallType.CALL_TYPE_MANUAL)
+                    .setIsInbound(false)
+                    .setOriginalCallType(
+                        build.buf.gen.tcnapi.exile.gate.v3.CallType.CALL_TYPE_INBOUND))
+            .build();
+
+    var java = ProtoConverter.toAgent(proto);
+    assertEquals(CallType.MANUAL, java.connectedParty().get().callType());
+    assertFalse(java.connectedParty().get().inbound());
+    assertEquals(CallType.INBOUND, java.connectedParty().get().originalCallType().orElseThrow());
   }
 
   @Test

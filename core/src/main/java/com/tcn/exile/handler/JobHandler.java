@@ -4,6 +4,7 @@ import com.tcn.exile.model.*;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Handles jobs dispatched by the gate server. Each method receives plain Java parameters and
@@ -62,6 +63,19 @@ public interface JobHandler {
       List<Filter> filters)
       throws Exception {
     throw new UnsupportedOperationException("popAccount not implemented");
+  }
+
+  default DataRecord popAccount(
+      String orgId,
+      String poolId,
+      String recordId,
+      String partnerAgentId,
+      long callSid,
+      CallType callType,
+      List<Filter> filters,
+      Optional<CallType> originalCallType)
+      throws Exception {
+    return popAccount(orgId, poolId, recordId, partnerAgentId, callSid, callType, filters);
   }
 
   default Map<String, Object> executeLogic(

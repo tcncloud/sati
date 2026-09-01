@@ -206,7 +206,10 @@ public final class ProtoConverter {
                 new Agent.ConnectedParty(
                     a.getConnectedParty().getCallSid(),
                     toCallType(a.getConnectedParty().getCallType()),
-                    a.getConnectedParty().getIsInbound()))
+                    a.getConnectedParty().getIsInbound(),
+                    a.getConnectedParty().hasOriginalCallType()
+                        ? Optional.of(toCallType(a.getConnectedParty().getOriginalCallType()))
+                        : Optional.empty()))
             : Optional.empty();
     return new Agent(
         a.getUserId(),
