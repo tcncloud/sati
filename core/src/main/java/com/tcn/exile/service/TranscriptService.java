@@ -72,6 +72,24 @@ public final class TranscriptService {
     }
   }
 
+  public record CallTranscriptSegment(
+      String label,
+      String value,
+      Duration startOffset,
+      Duration endOffset,
+      List<TranscriptThread> threads) {
+
+    /** The segment as speaker-labeled turns, one per line. */
+    public String conversation() {
+      return buildConversation(threads);
+    }
+
+    /** Who spoke on each thread, in the same order as {@link #threads()}. */
+    public List<String> speakers() {
+      return speakerLabels(threads);
+    }
+  }
+
   public CallTranscriptSummary getCallTranscriptSummary(long callSid, CallType callType) {
     var resp =
         stub.getCallTranscriptSummary(
@@ -82,28 +100,59 @@ public final class TranscriptService {
                         "CALL_TYPE_" + callType.name()))
                 .build());
 
-    var threads =
-        resp.getThreadsList().stream()
-            .map(
-                t ->
-                    new TranscriptThread(
-                        t.getId(),
-                        t.getUserId(),
-                        t.getSegmentsList().stream()
-                            .map(
-                                s ->
-                                    new Segment(
-                                        s.getText(),
-                                        ProtoConverter.toDuration(s.getOffset()),
-                                        ProtoConverter.toDuration(s.getDuration())))
-                            .toList()))
-            .toList();
-
     return new CallTranscriptSummary(
         resp.getTranscriptFound(),
-        threads,
+        toThreads(resp.getThreadsList()),
         resp.getSummaryBulletPointsList(),
         toSummaryStatus(resp));
+  }
+
+  public List<CallTranscriptSegment> getCallTranscriptSegments(
+      long callSid,
+      CallType callType,
+      String label,
+      String value,
+      Duration startOffset,
+      Duration endOffset) {
+    var req =
+        build.buf.gen.tcnapi.exile.gate.v3.GetCallTranscriptSegmentsRequest.newBuilder()
+            .setCallSid(callSid)
+            .setCallType(
+                build.buf.gen.tcnapi.exile.gate.v3.CallType.valueOf("CALL_TYPE_" + callType.name()))
+            .setLabel(label)
+            .setValue(value);
+    if (startOffset != null) req.setStartOffset(ProtoConverter.fromDuration(startOffset));
+    if (endOffset != null) req.setEndOffset(ProtoConverter.fromDuration(endOffset));
+
+    return stub.getCallTranscriptSegments(req.build()).getSegmentsList().stream()
+        .map(
+            s ->
+                new CallTranscriptSegment(
+                    s.getLabel(),
+                    s.getValue(),
+                    ProtoConverter.toDuration(s.getStartOffset()),
+                    ProtoConverter.toDuration(s.getEndOffset()),
+                    toThreads(s.getThreadsList())))
+        .toList();
+  }
+
+  private static List<TranscriptThread> toThreads(
+      List<build.buf.gen.tcnapi.exile.gate.v3.TranscriptThread> threads) {
+    return threads.stream()
+        .map(
+            t ->
+                new TranscriptThread(
+                    t.getId(),
+                    t.getUserId(),
+                    t.getSegmentsList().stream()
+                        .map(
+                            s ->
+                                new Segment(
+                                    s.getText(),
+                                    ProtoConverter.toDuration(s.getOffset()),
+                                    ProtoConverter.toDuration(s.getDuration())))
+                        .toList()))
+        .toList();
   }
 
   // Several threads share channel 2 when a call is transferred, so agents are
