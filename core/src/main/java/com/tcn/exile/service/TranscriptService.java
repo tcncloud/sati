@@ -6,17 +6,11 @@ import io.grpc.ManagedChannel;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.stream.IntStream;
 
 /** Call transcript and AI summary retrieval. No proto types in the public API. */
 public final class TranscriptService {
-
-  // Channel numbering follows the analytics platform: 1 carries the customer,
-  // 2 carries the agent.
-  private static final int CUSTOMER_CHANNEL = 1;
-  private static final int AGENT_CHANNEL = 2;
 
   // Silence long enough to end an utterance, matching the analytics platform.
   private static final Duration UTTERANCE_GAP = Duration.ofSeconds(1);
@@ -58,17 +52,35 @@ public final class TranscriptService {
       SummaryStatus summaryStatus) {
 
     /**
-     * The call as speaker-labeled turns, one per line. A voice carrying across channels is
-     * transcribed on both, so grouping each speaker's run of words into a turn keeps the duplicate
+     * The call as channel-labeled turns, one per line. A voice carrying across channels is
+     * transcribed on both, so grouping each channel's run of words into a turn keeps the duplicate
      * attributable instead of interleaving it word by word.
      */
     public String conversation() {
       return buildConversation(threads);
     }
 
-    /** Who spoke on each thread, in the same order as {@link #threads()}. */
+    /** The channel label for each thread, in the same order as {@link #threads()}. */
     public List<String> speakers() {
-      return speakerLabels(threads);
+      return channelLabels(threads);
+    }
+  }
+
+  public record CallTranscriptSegment(
+      String label,
+      String value,
+      Duration startOffset,
+      Duration endOffset,
+      List<TranscriptThread> threads) {
+
+    /** The segment as channel-labeled turns, one per line. */
+    public String conversation() {
+      return buildConversation(threads);
+    }
+
+    /** The channel label for each thread, in the same order as {@link #threads()}. */
+    public List<String> speakers() {
+      return channelLabels(threads);
     }
   }
 
@@ -82,59 +94,69 @@ public final class TranscriptService {
                         "CALL_TYPE_" + callType.name()))
                 .build());
 
-    var threads =
-        resp.getThreadsList().stream()
-            .map(
-                t ->
-                    new TranscriptThread(
-                        t.getId(),
-                        t.getUserId(),
-                        t.getSegmentsList().stream()
-                            .map(
-                                s ->
-                                    new Segment(
-                                        s.getText(),
-                                        ProtoConverter.toDuration(s.getOffset()),
-                                        ProtoConverter.toDuration(s.getDuration())))
-                            .toList()))
-            .toList();
-
     return new CallTranscriptSummary(
         resp.getTranscriptFound(),
-        threads,
+        toThreads(resp.getThreadsList()),
         resp.getSummaryBulletPointsList(),
         toSummaryStatus(resp));
   }
 
-  // Several threads share channel 2 when a call is transferred, so agents are
-  // numbered by the user who handled each leg.
-  private static List<String> speakerLabels(List<TranscriptThread> threads) {
-    var agentNumbers = new LinkedHashMap<String, Integer>();
-    for (var thread : threads) {
-      if (thread.id() == AGENT_CHANNEL) {
-        agentNumbers.putIfAbsent(thread.userId(), agentNumbers.size() + 1);
-      }
-    }
+  public List<CallTranscriptSegment> getCallTranscriptSegments(
+      long callSid,
+      CallType callType,
+      String label,
+      String value,
+      Duration startOffset,
+      Duration endOffset) {
+    var req =
+        build.buf.gen.tcnapi.exile.gate.v3.GetCallTranscriptSegmentsRequest.newBuilder()
+            .setCallSid(callSid)
+            .setCallType(
+                build.buf.gen.tcnapi.exile.gate.v3.CallType.valueOf("CALL_TYPE_" + callType.name()))
+            .setLabel(label)
+            .setValue(value);
+    if (startOffset != null) req.setStartOffset(ProtoConverter.fromDuration(startOffset));
+    if (endOffset != null) req.setEndOffset(ProtoConverter.fromDuration(endOffset));
 
-    var labels = new ArrayList<String>(threads.size());
-    for (var thread : threads) {
-      if (thread.id() == CUSTOMER_CHANNEL) {
-        labels.add("Customer");
-      } else if (thread.id() != AGENT_CHANNEL) {
-        labels.add("Unknown");
-      } else if (agentNumbers.size() > 1) {
-        labels.add("Agent " + agentNumbers.get(thread.userId()));
-      } else {
-        labels.add("Agent");
-      }
-    }
-    return labels;
+    return stub.getCallTranscriptSegments(req.build()).getSegmentsList().stream()
+        .map(
+            s ->
+                new CallTranscriptSegment(
+                    s.getLabel(),
+                    s.getValue(),
+                    ProtoConverter.toDuration(s.getStartOffset()),
+                    ProtoConverter.toDuration(s.getEndOffset()),
+                    toThreads(s.getThreadsList())))
+        .toList();
+  }
+
+  private static List<TranscriptThread> toThreads(
+      List<build.buf.gen.tcnapi.exile.gate.v3.TranscriptThread> threads) {
+    return threads.stream()
+        .map(
+            t ->
+                new TranscriptThread(
+                    t.getId(),
+                    t.getUserId(),
+                    t.getSegmentsList().stream()
+                        .map(
+                            s ->
+                                new Segment(
+                                    s.getText(),
+                                    ProtoConverter.toDuration(s.getOffset()),
+                                    ProtoConverter.toDuration(s.getDuration())))
+                        .toList()))
+        .toList();
+  }
+
+  private static List<String> channelLabels(List<TranscriptThread> threads) {
+    return threads.stream().map(thread -> "Channel " + thread.id()).toList();
   }
 
   private static String buildConversation(List<TranscriptThread> threads) {
     record Spoken(int thread, Utterance utterance) {}
 
-    var labels = speakerLabels(threads);
+    var labels = channelLabels(threads);
     var spoken =
         IntStream.range(0, threads.size())
             .boxed()
@@ -143,8 +165,8 @@ public final class TranscriptService {
             .toList();
 
     var out = new StringBuilder();
-    // Keyed on the label, not the thread: a transfer splits one speaker across
-    // several threads, and relabeling at each boundary reads as a new speaker.
+    // Keyed on the label, not the thread: a transfer splits one channel across
+    // several threads, and relabeling at each boundary reads as a new channel.
     String speaking = null;
 
     for (var next : spoken) {

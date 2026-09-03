@@ -11,8 +11,8 @@ import org.junit.jupiter.api.Test;
 
 class TranscriptServiceTest {
 
-  private static final int CUSTOMER = 1;
-  private static final int AGENT = 2;
+  private static final int CHANNEL_1 = 1;
+  private static final int CHANNEL_2 = 2;
 
   /** A word lasting 100ms. Words more than a second apart land in separate utterances. */
   private static Segment word(String text, long offsetMillis) {
@@ -28,104 +28,101 @@ class TranscriptServiceTest {
   }
 
   @Test
-  void labelsOneTurnPerSpeaker() {
-    var customer = thread(CUSTOMER, "u1", word("hello", 0), word("there", 200));
-    var agent = thread(AGENT, "u1", word("hi", 3000), word("yourself", 3200));
+  void labelsOneTurnPerChannel() {
+    var customer = thread(CHANNEL_1, "u1", word("hello", 0), word("there", 200));
+    var agent = thread(CHANNEL_2, "u1", word("hi", 3000), word("yourself", 3200));
 
     assertEquals(
-        "Customer: hello there\nAgent: hi yourself", summary(customer, agent).conversation());
+        "Channel 1: hello there\nChannel 2: hi yourself", summary(customer, agent).conversation());
   }
 
   @Test
   void keepsTurnsWholeWhenSpeakersOverlapWordByWord() {
     // The regression this guards: both speakers talk at once, so ordering raw
     // words by offset alternates the label every word or two.
-    var customer = thread(CUSTOMER, "u1", word("okay", 100), word("sure", 500));
+    var customer = thread(CHANNEL_1, "u1", word("okay", 100), word("sure", 500));
     var agent =
-        thread(AGENT, "u1", word("just", 0), word("got", 300), word("one", 700), word("in", 900));
+        thread(
+            CHANNEL_2, "u1", word("just", 0), word("got", 300), word("one", 700), word("in", 900));
 
     assertEquals(
-        "Agent: just got one in\nCustomer: okay sure", summary(customer, agent).conversation());
+        "Channel 2: just got one in\nChannel 1: okay sure",
+        summary(customer, agent).conversation());
   }
 
   @Test
   void startsANewTurnWhenTheOtherSpeakerFillsALongPause() {
-    var customer = thread(CUSTOMER, "u1", word("mhm", 2000));
-    var agent = thread(AGENT, "u1", word("checking", 0), word("done", 4000));
+    var customer = thread(CHANNEL_1, "u1", word("mhm", 2000));
+    var agent = thread(CHANNEL_2, "u1", word("checking", 0), word("done", 4000));
 
     assertEquals(
-        "Agent: checking\nCustomer: mhm\nAgent: done", summary(customer, agent).conversation());
+        "Channel 2: checking\nChannel 1: mhm\nChannel 2: done",
+        summary(customer, agent).conversation());
   }
 
   @Test
   void mergesWordsSeparatedByLessThanASecondIntoOneUtterance() {
-    var agent = thread(AGENT, "u1", word("one", 0), word("two", 1050));
+    var agent = thread(CHANNEL_2, "u1", word("one", 0), word("two", 1050));
 
-    assertEquals("Agent: one two", summary(agent).conversation());
+    assertEquals("Channel 2: one two", summary(agent).conversation());
   }
 
   @Test
-  void putsTheSameSpeakersSeparateUtterancesOnOneLine() {
-    var agent = thread(AGENT, "u1", word("first", 0), word("second", 5000));
+  void putsOneChannelsSeparateUtterancesOnOneLine() {
+    var agent = thread(CHANNEL_2, "u1", word("first", 0), word("second", 5000));
 
-    assertEquals("Agent: first second", summary(agent).conversation());
+    assertEquals("Channel 2: first second", summary(agent).conversation());
   }
 
   @Test
   void showsAVoiceCarryingAcrossChannelsAsTwoParallelTurns() {
     // Both channels transcribe the same speech when a voice bleeds across
     // them, and nothing upstream dedupes it.
-    var customer = thread(CUSTOMER, "u1", word("let", 10), word("me", 210));
-    var agent = thread(AGENT, "u1", word("let", 0), word("me", 200));
+    var customer = thread(CHANNEL_1, "u1", word("let", 10), word("me", 210));
+    var agent = thread(CHANNEL_2, "u1", word("let", 0), word("me", 200));
 
-    assertEquals("Agent: let me\nCustomer: let me", summary(customer, agent).conversation());
+    assertEquals("Channel 2: let me\nChannel 1: let me", summary(customer, agent).conversation());
   }
 
   @Test
-  void numbersAgentsWhenATransferPutsSeveralLegsOnTheAgentChannel() {
-    var customer = thread(CUSTOMER, "u1", word("hi", 2000));
-    var first = thread(AGENT, "u1", word("transferring", 0));
-    var second = thread(AGENT, "u2", word("continuing", 4000));
+  void labelsSeveralLegsOnOneChannelWithThatChannel() {
+    var customer = thread(CHANNEL_1, "u1", word("hi", 2000));
+    var first = thread(CHANNEL_2, "u1", word("transferring", 0));
+    var second = thread(CHANNEL_2, "u2", word("continuing", 4000));
 
     var call = summary(customer, first, second);
 
-    assertEquals(List.of("Customer", "Agent 1", "Agent 2"), call.speakers());
-    assertEquals("Agent 1: transferring\nCustomer: hi\nAgent 2: continuing", call.conversation());
+    assertEquals(List.of("Channel 1", "Channel 2", "Channel 2"), call.speakers());
+    assertEquals(
+        "Channel 2: transferring\nChannel 1: hi\nChannel 2: continuing", call.conversation());
   }
 
   @Test
-  void keepsOneCustomerLabelWhenATransferSplitsTheCustomerAcrossThreads() {
-    var beforeTransfer = thread(CUSTOMER, "u1", word("still", 1000));
-    var afterTransfer = thread(CUSTOMER, "u2", word("here", 3000));
-    var first = thread(AGENT, "u1", word("transferring", 0));
-    var second = thread(AGENT, "u2", word("continuing", 4000));
+  void keepsOneLabelWhenATransferSplitsAChannelAcrossThreads() {
+    var beforeTransfer = thread(CHANNEL_1, "u1", word("still", 1000));
+    var afterTransfer = thread(CHANNEL_1, "u2", word("here", 3000));
+    var first = thread(CHANNEL_2, "u1", word("transferring", 0));
+    var second = thread(CHANNEL_2, "u2", word("continuing", 4000));
 
     var call = summary(beforeTransfer, afterTransfer, first, second);
 
-    assertEquals(List.of("Customer", "Customer", "Agent 1", "Agent 2"), call.speakers());
+    assertEquals(List.of("Channel 1", "Channel 1", "Channel 2", "Channel 2"), call.speakers());
     assertEquals(
-        "Agent 1: transferring\nCustomer: still here\nAgent 2: continuing", call.conversation());
+        "Channel 2: transferring\nChannel 1: still here\nChannel 2: continuing",
+        call.conversation());
   }
 
   @Test
-  void leavesTheAgentUnnumberedWhenOneAgentHandledTheWholeCall() {
-    var first = thread(AGENT, "u1", word("still", 0));
-    var second = thread(AGENT, "u1", word("me", 4000));
-
-    assertEquals(List.of("Agent", "Agent"), summary(first, second).speakers());
-  }
-
-  @Test
-  void labelsUnrecognizedChannelsUnknown() {
-    assertEquals("Unknown: noise", summary(thread(7, "", word("noise", 0))).conversation());
+  void labelsAnyChannelByItsNumber() {
+    assertEquals("Channel 7: noise", summary(thread(7, "", word("noise", 0))).conversation());
   }
 
   @Test
   void skipsThreadsWithNoUsableWords() {
-    var blank = thread(CUSTOMER, "u1", word("", 0));
-    var agent = thread(AGENT, "u1", word("alone", 100));
+    var blank = thread(CHANNEL_1, "u1", word("", 0));
+    var agent = thread(CHANNEL_2, "u1", word("alone", 100));
 
-    assertEquals("Agent: alone", summary(blank, agent).conversation());
+    assertEquals("Channel 2: alone", summary(blank, agent).conversation());
   }
 
   @Test
@@ -136,8 +133,8 @@ class TranscriptServiceTest {
 
   @Test
   void joinsEachThreadsOwnWordsWithoutTheOtherChannel() {
-    var customer = thread(CUSTOMER, "u1", word("mine", 0), word("only", 4000));
-    var agent = thread(AGENT, "u1", word("theirs", 100));
+    var customer = thread(CHANNEL_1, "u1", word("mine", 0), word("only", 4000));
+    var agent = thread(CHANNEL_2, "u1", word("theirs", 100));
 
     assertEquals("mine only", customer.text());
     assertEquals("theirs", agent.text());
@@ -145,9 +142,9 @@ class TranscriptServiceTest {
 
   @Test
   void attachesContinuationFragmentsToThePrecedingWord() {
-    var agent = thread(AGENT, "u1", word("go", 0), word("-ahead", 100));
+    var agent = thread(CHANNEL_2, "u1", word("go", 0), word("-ahead", 100));
 
     assertEquals("go-ahead", agent.text());
-    assertEquals("Agent: go-ahead", summary(agent).conversation());
+    assertEquals("Channel 2: go-ahead", summary(agent).conversation());
   }
 }
