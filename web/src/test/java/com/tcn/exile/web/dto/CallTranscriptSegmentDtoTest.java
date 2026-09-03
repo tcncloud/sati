@@ -53,9 +53,22 @@ class CallTranscriptSegmentDtoTest {
   }
 
   @Test
-  void flattensThreadsIntoSpeakerLabeledText() {
+  void exposesEachChannelAsAThread() {
     var dto = CallTranscriptSegmentDto.from(segment(Duration.ZERO, Duration.ofSeconds(9)));
 
-    assertEquals("Customer: where is\nAgent: here", dto.transcript());
+    assertEquals(2, dto.threads().size());
+    assertEquals(1, dto.threads().get(0).id());
+    assertEquals("Channel 1", dto.threads().get(0).speaker());
+    assertEquals("u1", dto.threads().get(0).userId());
+    assertEquals("where is", dto.threads().get(0).text());
+    assertEquals("Channel 2", dto.threads().get(1).speaker());
+    assertEquals("here", dto.threads().get(1).text());
+  }
+
+  @Test
+  void flattensThreadsIntoChannelLabeledText() {
+    var dto = CallTranscriptSegmentDto.from(segment(Duration.ZERO, Duration.ofSeconds(9)));
+
+    assertEquals("Channel 1: where is\nChannel 2: here", dto.transcript());
   }
 }
