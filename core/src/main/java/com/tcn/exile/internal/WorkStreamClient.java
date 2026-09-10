@@ -810,6 +810,9 @@ public final class WorkStreamClient implements AutoCloseable {
         case CALL_RECORDING ->
             eventHandler.onCallRecording(toCallRecordingEvent(item.getCallRecording()));
         case EXILE_TASK -> eventHandler.onTask(toTaskEvent(item.getExileTask()));
+        case PIPELINE_RESULT ->
+            eventHandler.onPipelineResult(toPipelineResultEvent(item.getPipelineResult()));
+        case TASK_GROUP -> eventHandler.onTaskGroup(toTaskGroupEvent(item.getTaskGroup()));
         default -> throw new UnsupportedOperationException("Unknown event: " + item.getTaskCase());
       }
       methodSuccess = true;
