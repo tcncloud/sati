@@ -426,4 +426,71 @@ class ProtoConverterTest {
     assertEquals(3, java.attempts());
     assertEquals("TASK_STATUS_RUNNING", java.status());
   }
+
+  @Test
+  void pipelineResultEventConversion() {
+    var proto =
+        build.buf.gen.tcnapi.exile.gate.v3.LMSPipeline.newBuilder()
+            .setName("entrypoints/EP-1/pipelines/RUN-1")
+            .setEntrypointId("EP-1")
+            .setOrgId("O-1")
+            .setEventId("RUN-1")
+            .putMetadata("pool_id", "P-1")
+            .setRecordCount(10)
+            .putExchanges(
+                "EX-1",
+                build.buf.gen.tcnapi.exile.gate.v3.LMSPipeline.Exchange.newBuilder()
+                    .putTarget("campaign_id", "C-1")
+                    .setStatus(
+                        build.buf.gen.tcnapi.exile.gate.v3.LMSPipeline.Exchange.Status
+                            .STATUS_EXECUTED)
+                    .setInputRecordCount(10)
+                    .setOutputRecordCount(8)
+                    .setSystemMessage("ok")
+                    .build())
+            .build();
+
+    var java = ProtoConverter.toPipelineResultEvent(proto);
+    assertEquals("entrypoints/EP-1/pipelines/RUN-1", java.name());
+    assertEquals("EP-1", java.entrypointId());
+    assertEquals("O-1", java.orgId());
+    assertEquals("RUN-1", java.eventId());
+    assertEquals("P-1", java.metadata().get("pool_id"));
+    assertEquals(10, java.recordCount());
+    assertEquals(1, java.exchanges().size());
+    var exchange = java.exchanges().get("EX-1");
+    assertEquals("C-1", exchange.target().get("campaign_id"));
+    assertEquals("STATUS_EXECUTED", exchange.status());
+    assertEquals(10, exchange.inputRecordCount());
+    assertEquals(8, exchange.outputRecordCount());
+    assertEquals("ok", exchange.systemMessage());
+  }
+
+  @Test
+  void taskGroupEventConversion() {
+    var proto =
+        build.buf.gen.tcnapi.exile.gate.v3.TaskGroup.newBuilder()
+            .setName("campaigns/C-1")
+            .setTaskGroupId("TG-1")
+            .setTaskName("Campaign 1")
+            .setState(build.buf.gen.tcnapi.exile.gate.v3.TaskGroup.State.STATE_RUNNING)
+            .setStatusCode(1200)
+            .setOrgId("O-1")
+            .putMetadata("client_sid", "1")
+            .setStartTime(com.google.protobuf.Timestamp.newBuilder().setSeconds(1700000000))
+            .build();
+
+    var java = ProtoConverter.toTaskGroupEvent(proto);
+    assertEquals("campaigns/C-1", java.name());
+    assertEquals("TG-1", java.taskGroupId());
+    assertEquals("Campaign 1", java.taskName());
+    assertEquals("STATE_RUNNING", java.state());
+    assertEquals(1200, java.statusCode());
+    assertEquals("O-1", java.orgId());
+    assertEquals("1", java.metadata().get("client_sid"));
+    assertNotNull(java.startTime());
+    assertNull(java.scheduledStartTime());
+    assertNull(java.scheduledStopTime());
+    assertNull(java.stopTime());
+  }
 }
