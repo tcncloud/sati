@@ -70,6 +70,10 @@ because it needs `org_id` and the certificate name for OTel resource attributes.
   `getPoolRecords`, `searchRecords`, `getRecordFields`, `setRecordFields`,
   `createPayment`, `popAccount`, `executeLogic`, `info`, `diagnostics`,
   `listTenantLogs`, `setLogLevel`, `shutdown`, `processLog`.
+  `streamPoolRecords` is the streaming alternative to `getPoolRecords`: the
+  handler pushes records into a `RecordSink` as it reads them, and sati sends
+  them in ~1MB `Result`s (`final=false`, then one `final=true`), blocking the
+  sink while the stream is busy.
 - `EventHandler` — fire-and-acknowledge events: `onAgentCall`,
   `onTelephonyResult`, `onAgentResponse`, `onTransferInstance`,
   `onCallRecording`, `onTask`.

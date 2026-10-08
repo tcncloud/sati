@@ -30,6 +30,11 @@ public interface JobHandler {
     throw new UnsupportedOperationException("getPoolRecords not implemented");
   }
 
+  /** Return {@code false}, having sent nothing, to fall back to {@link #getPoolRecords}. */
+  default boolean streamPoolRecords(String orgId, String poolId, RecordSink sink) throws Exception {
+    return false;
+  }
+
   default Page<DataRecord> searchRecords(
       String orgId, List<Filter> filters, String pageToken, int pageSize) throws Exception {
     throw new UnsupportedOperationException("searchRecords not implemented");
