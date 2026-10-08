@@ -55,6 +55,11 @@ public final class WorkStreamClient implements AutoCloseable {
   public static final java.time.Duration DEFAULT_SHUTDOWN_DRAIN_TIMEOUT =
       java.time.Duration.ofSeconds(30);
 
+  // Well under the gate's 4MB inbound message limit.
+  static final int MAX_RESULT_BATCH_BYTES = 1_000_000;
+
+  static final java.time.Duration STREAM_LOST_NACK_WAIT = java.time.Duration.ofMinutes(5);
+
   private final ExileConfig config;
   private final JobHandler jobHandler;
   private final EventHandler eventHandler;
@@ -563,7 +568,9 @@ public final class WorkStreamClient implements AutoCloseable {
       MDC.put("spanId", span.getSpanContext().getSpanId());
       if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB) {
         var result = dispatchJob(item);
-        send(WorkRequest.newBuilder().setResult(result).build());
+        if (result != null) {
+          send(WorkRequest.newBuilder().setResult(result).build());
+        }
       } else {
         dispatchEvent(item);
         send(WorkRequest.newBuilder().setAck(Ack.newBuilder().addWorkIds(workId)).build());
@@ -575,7 +582,9 @@ public final class WorkStreamClient implements AutoCloseable {
       span.recordException(e);
       failedTotal.incrementAndGet();
       log.warn("Work item {} failed: {}", workId, e.getMessage());
-      if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB) {
+      if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB && causedByStreamLoss(e)) {
+        nackOnNextStream(workId);
+      } else if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB) {
         send(
             WorkRequest.newBuilder()
                 .setResult(
@@ -628,6 +637,7 @@ public final class WorkStreamClient implements AutoCloseable {
     }
   }
 
+  // Returns null when the job already sent its own results.
   private Result.Builder dispatchJob(WorkItem item) throws Exception {
     var b = Result.newBuilder().setWorkId(item.getWorkId()).setFinal(true);
     var methodName = item.getTaskCase().name().toLowerCase();
@@ -648,6 +658,16 @@ public final class WorkStreamClient implements AutoCloseable {
         }
         case GET_POOL_RECORDS -> {
           var task = item.getGetPoolRecords();
+          var batches = new PoolRecordBatches(item.getWorkId(), requestObserver.get());
+          if (jobHandler.streamPoolRecords(orgId, task.getPoolId(), batches)) {
+            batches.finish();
+            methodSuccess = true;
+            return null;
+          }
+          if (batches.started()) {
+            throw new IllegalStateException(
+                "streamPoolRecords returned false after sending records");
+          }
           var page =
               jobHandler.getPoolRecords(
                   orgId, task.getPoolId(), task.getPageToken(), task.getPageSize());
@@ -889,6 +909,102 @@ public final class WorkStreamClient implements AutoCloseable {
     }
   }
 
+  // Batches buffered on a closed stream may be lost, so a job must never finish on another one.
+  private void sendOnJobStream(StreamObserver<WorkRequest> jobStream, WorkRequest request)
+      throws JobStreamLostException, InterruptedException {
+    while (true) {
+      var call = responseStream.get();
+      if (jobStream == null || requestObserver.get() != jobStream || call == null) {
+        throw new JobStreamLostException();
+      }
+      if (call.isReady()) {
+        break;
+      }
+      Thread.sleep(5);
+    }
+    send(request);
+    if (requestObserver.get() != jobStream) {
+      throw new JobStreamLostException();
+    }
+  }
+
+  private static final class JobStreamLostException extends java.io.IOException {
+    JobStreamLostException() {
+      super("work stream closed while sending job results");
+    }
+  }
+
+  private static boolean causedByStreamLoss(Throwable t) {
+    for (; t != null; t = t.getCause()) {
+      if (t instanceof JobStreamLostException) return true;
+    }
+    return false;
+  }
+
+  // The gate never saw this job finish; a Nack on the next stream makes it send the job again.
+  private void nackOnNextStream(String workId) {
+    long deadline = System.nanoTime() + STREAM_LOST_NACK_WAIT.toNanos();
+    try {
+      while (running.get() && System.nanoTime() < deadline) {
+        if (phase == Phase.ACTIVE && requestObserver.get() != null) {
+          send(
+              WorkRequest.newBuilder()
+                  .setNack(
+                      Nack.newBuilder()
+                          .setWorkId(workId)
+                          .setReason("work stream closed while sending job results"))
+                  .build());
+          return;
+        }
+        Thread.sleep(100);
+      }
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
+    log.warn("Could not nack {}: no work stream within {}", workId, STREAM_LOST_NACK_WAIT);
+  }
+
+  private final class PoolRecordBatches implements com.tcn.exile.handler.RecordSink {
+    private final String workId;
+    private final StreamObserver<WorkRequest> jobStream;
+    private GetPoolRecordsResult.Builder batch = GetPoolRecordsResult.newBuilder();
+    private int batchBytes = 0;
+    private boolean started = false;
+
+    PoolRecordBatches(String workId, StreamObserver<WorkRequest> jobStream) {
+      this.workId = workId;
+      this.jobStream = jobStream;
+    }
+
+    @Override
+    public void send(DataRecord record) throws Exception {
+      started = true;
+      var r = fromRecord(record);
+      int size = r.getSerializedSize();
+      if (batchBytes > 0 && batchBytes + size > MAX_RESULT_BATCH_BYTES) {
+        sendBatch(false);
+      }
+      batch.addRecords(r);
+      batchBytes += size;
+    }
+
+    boolean started() {
+      return started;
+    }
+
+    void finish() throws Exception {
+      sendBatch(true);
+    }
+
+    private void sendBatch(boolean last) throws Exception {
+      var result =
+          Result.newBuilder().setWorkId(workId).setFinal(last).setGetPoolRecords(batch).build();
+      sendOnJobStream(jobStream, WorkRequest.newBuilder().setResult(result).build());
+      batch = GetPoolRecordsResult.newBuilder();
+      batchBytes = 0;
+    }
+  }
+
   /**
    * Graceful shutdown. Stops pulling new work, waits up to {@link #shutdownDrainTimeout} for
    * in-flight plugin handlers to finish and send their Results/Acks, then half-closes the stream
@@ -983,7 +1099,8 @@ public final class WorkStreamClient implements AutoCloseable {
     if (channel != null) ChannelFactory.shutdown(channel);
 
     log.info(
-        "WorkStream closed (drained={}, remaining_at_start={}, completed_total={}, failed_total={})",
+        "WorkStream closed (drained={}, remaining_at_start={}, completed_total={},"
+            + " failed_total={})",
         drained,
         remaining,
         completedTotal.get(),
