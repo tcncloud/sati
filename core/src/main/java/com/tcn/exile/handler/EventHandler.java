@@ -29,4 +29,6 @@ public interface EventHandler {
   default void onPipelineResult(PipelineResultEvent event) throws Exception {}
 
   default void onTaskGroup(TaskGroupEvent event) throws Exception {}
+
+  default void onMessageStatus(MessageStatusEvent event) throws Exception {}
 }

@@ -493,4 +493,44 @@ class ProtoConverterTest {
     assertNull(java.scheduledStopTime());
     assertNull(java.stopTime());
   }
+
+  @Test
+  void messageStatusEventConversion() {
+    var proto =
+        build.buf.gen.tcnapi.exile.gate.v3.MessageStatus.newBuilder()
+            .setMessageRef("88123456")
+            .setPoolId("POOL-01")
+            .setRecordId("ACCT-998877")
+            .setChannel(build.buf.gen.tcnapi.exile.gate.v3.MessageStatus.Channel.CHANNEL_SMS)
+            .setStatus(build.buf.gen.tcnapi.exile.gate.v3.MessageStatus.Status.STATUS_FAILED)
+            .setStatusMessage("carrier rejected")
+            .setUpdateTime(com.google.protobuf.Timestamp.newBuilder().setSeconds(1792086130))
+            .setOrgId("O-1")
+            .putMetadata("letterCode", "PMT01")
+            .build();
+
+    var java = ProtoConverter.toMessageStatusEvent(proto);
+    assertEquals("88123456", java.messageRef());
+    assertEquals("POOL-01", java.poolId());
+    assertEquals("ACCT-998877", java.recordId());
+    assertEquals("sms", java.channel());
+    assertEquals("FAILED", java.status());
+    assertEquals("carrier rejected", java.statusMessage());
+    assertEquals(Instant.parse("2026-10-15T17:42:10Z"), java.updateTime());
+    assertEquals("O-1", java.orgId());
+    assertEquals("PMT01", java.metadata().get("letterCode"));
+  }
+
+  @Test
+  void messageStatusEventEmailWithoutUpdateTime() {
+    var java =
+        ProtoConverter.toMessageStatusEvent(
+            build.buf.gen.tcnapi.exile.gate.v3.MessageStatus.newBuilder()
+                .setChannel(build.buf.gen.tcnapi.exile.gate.v3.MessageStatus.Channel.CHANNEL_EMAIL)
+                .setStatus(build.buf.gen.tcnapi.exile.gate.v3.MessageStatus.Status.STATUS_DELIVERED)
+                .build());
+    assertEquals("email", java.channel());
+    assertEquals("DELIVERED", java.status());
+    assertNull(java.updateTime());
+  }
 }

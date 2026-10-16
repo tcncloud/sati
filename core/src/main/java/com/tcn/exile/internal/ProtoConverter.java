@@ -441,6 +441,26 @@ public final class ProtoConverter {
         t.getMetadataMap());
   }
 
+  public static MessageStatusEvent toMessageStatusEvent(
+      build.buf.gen.tcnapi.exile.gate.v3.MessageStatus m) {
+    var channel =
+        switch (m.getChannel()) {
+          case CHANNEL_SMS -> "sms";
+          case CHANNEL_EMAIL -> "email";
+          default -> "";
+        };
+    return new MessageStatusEvent(
+        m.getMessageRef(),
+        m.getPoolId(),
+        m.getRecordId(),
+        channel,
+        m.getStatus().name().replaceFirst("^STATUS_", ""),
+        m.getStatusMessage(),
+        m.hasUpdateTime() ? toInstant(m.getUpdateTime()) : null,
+        m.getOrgId(),
+        m.getMetadataMap());
+  }
+
   // ---- Struct ↔ Map ----
 
   public static Map<String, Object> structToMap(com.google.protobuf.Struct s) {

@@ -5,6 +5,7 @@ import com.tcn.exile.config.ExileClientManager;
 import com.tcn.exile.web.dto.SendEmailRequestDto;
 import com.tcn.exile.web.dto.SendMessageResponseDto;
 import com.tcn.exile.web.dto.SendSmsRequestDto;
+import io.grpc.StatusRuntimeException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,16 +38,20 @@ public class MessagingHandler {
     requireCampaignAndRecipient(request.campaignSid(), request.recipient());
     requireText(request.body(), "body");
 
-    return SendMessageResponseDto.from(
-        getClient()
-            .messaging()
-            .sendSms(
-                request.campaignSid(),
-                request.recipient(),
-                request.body(),
-                request.poolId(),
-                request.recordId(),
-                request.metadata()));
+    try {
+      return SendMessageResponseDto.from(
+          getClient()
+              .messaging()
+              .sendSms(
+                  request.campaignSid(),
+                  request.recipient(),
+                  request.body(),
+                  request.poolId(),
+                  request.recordId(),
+                  request.metadata()));
+    } catch (StatusRuntimeException e) {
+      throw rejected(e);
+    }
   }
 
   public SendMessageResponseDto sendEmail(SendEmailRequestDto request) {
@@ -60,17 +65,29 @@ public class MessagingHandler {
     requireText(request.subject(), "subject");
     requireText(request.body(), "body");
 
-    return SendMessageResponseDto.from(
-        getClient()
-            .messaging()
-            .sendEmail(
-                request.campaignSid(),
-                request.recipient(),
-                request.subject(),
-                request.body(),
-                request.poolId(),
-                request.recordId(),
-                request.metadata()));
+    try {
+      return SendMessageResponseDto.from(
+          getClient()
+              .messaging()
+              .sendEmail(
+                  request.campaignSid(),
+                  request.recipient(),
+                  request.subject(),
+                  request.body(),
+                  request.poolId(),
+                  request.recordId(),
+                  request.metadata()));
+    } catch (StatusRuntimeException e) {
+      throw rejected(e);
+    }
+  }
+
+  private static RuntimeException rejected(StatusRuntimeException e) {
+    return switch (e.getStatus().getCode()) {
+      case INVALID_ARGUMENT, NOT_FOUND, FAILED_PRECONDITION ->
+          new IllegalArgumentException(e.getStatus().getDescription(), e);
+      default -> e;
+    };
   }
 
   private static void requireCampaignAndRecipient(long campaignSid, String recipient) {
