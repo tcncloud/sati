@@ -402,6 +402,45 @@ public final class ProtoConverter {
         toInstant(t.getUpdateTime()));
   }
 
+  public static PipelineResultEvent toPipelineResultEvent(
+      build.buf.gen.tcnapi.exile.gate.v3.LMSPipeline p) {
+    Map<String, PipelineResultEvent.Exchange> exchanges = new LinkedHashMap<>();
+    p.getExchangesMap().forEach((k, v) -> exchanges.put(k, toExchange(v)));
+    return new PipelineResultEvent(
+        p.getName(),
+        p.getEntrypointId(),
+        p.getOrgId(),
+        p.getEventId(),
+        p.getMetadataMap(),
+        exchanges,
+        p.getRecordCount());
+  }
+
+  private static PipelineResultEvent.Exchange toExchange(
+      build.buf.gen.tcnapi.exile.gate.v3.LMSPipeline.Exchange e) {
+    return new PipelineResultEvent.Exchange(
+        e.getTargetMap(),
+        e.getStatus().name(),
+        e.getInputRecordCount(),
+        e.getOutputRecordCount(),
+        e.getSystemMessage());
+  }
+
+  public static TaskGroupEvent toTaskGroupEvent(build.buf.gen.tcnapi.exile.gate.v3.TaskGroup t) {
+    return new TaskGroupEvent(
+        t.getName(),
+        t.getTaskGroupId(),
+        t.getTaskName(),
+        t.getState().name(),
+        t.getStatusCode(),
+        t.hasScheduledStartTime() ? toInstant(t.getScheduledStartTime()) : null,
+        t.hasScheduledStopTime() ? toInstant(t.getScheduledStopTime()) : null,
+        t.hasStartTime() ? toInstant(t.getStartTime()) : null,
+        t.hasStopTime() ? toInstant(t.getStopTime()) : null,
+        t.getOrgId(),
+        t.getMetadataMap());
+  }
+
   // ---- Struct ↔ Map ----
 
   public static Map<String, Object> structToMap(com.google.protobuf.Struct s) {

@@ -25,4 +25,8 @@ public interface EventHandler {
   default void onCallRecording(CallRecordingEvent event) throws Exception {}
 
   default void onTask(TaskEvent event) throws Exception {}
+
+  default void onPipelineResult(PipelineResultEvent event) throws Exception {}
+
+  default void onTaskGroup(TaskGroupEvent event) throws Exception {}
 }
