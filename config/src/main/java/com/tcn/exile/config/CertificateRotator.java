@@ -27,6 +27,10 @@ import org.slf4j.MDC;
  * config file up front, and never rotates the same fingerprint twice. Without that second guard a
  * failed write turns into a new certificate every hour until the old one expires.
  *
+ * <p>A rotated config is applied directly, never by waiting on the config watcher: the file may be
+ * a symlink to a target outside the watched directory, and writing through one raises no watch
+ * event at all.
+ *
  * <p>Every blocked rotation logs at ERROR with {@code alert=cert_rotation_blocked} in the MDC.
  * These integrations run on customer infrastructure, so nobody here reads their container logs —
  * but the client ships its logs to the gate, which lands them in our logging with the org attached.
@@ -154,7 +158,8 @@ public final class CertificateRotator {
       lastRotatedHash = hash;
       lastRotatedAt = now;
 
-      if (ConfigParser.parse(newCert.getBytes(StandardCharsets.UTF_8)).isEmpty()) {
+      var parsed = ConfigParser.parse(newCert.getBytes(StandardCharsets.UTF_8));
+      if (parsed.isEmpty()) {
         alert(
             "unparseable_response",
             config,
@@ -165,6 +170,9 @@ public final class CertificateRotator {
       }
 
       manager.configWatcher().writeConfig(newCert);
+      // Apply it rather than waiting for the watcher. A write through a symlink pointing outside
+      // the watched directory raises no event, which is one way this used to loop.
+      manager.applyConfig(parsed.get());
       log.info("Certificate rotated for org={}", config.org());
       return true;
     } catch (Exception e) {

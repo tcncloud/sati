@@ -70,6 +70,20 @@ public final class ExileConfig {
     return certificateFingerprint;
   }
 
+  /**
+   * True when {@code other} carries the same credentials and endpoint. Used to skip a client
+   * rebuild when a config write is observed more than once — one atomic replace commonly surfaces
+   * as several filesystem events.
+   */
+  public boolean sameCredentials(ExileConfig other) {
+    return other != null
+        && rootCert.equals(other.rootCert)
+        && publicCert.equals(other.publicCert)
+        && privateKey.equals(other.privateKey)
+        && apiHostname.equals(other.apiHostname)
+        && apiPort == other.apiPort;
+  }
+
   /** Extracts the organization name from the certificate CN field. Thread-safe. */
   public String org() {
     String result = org;

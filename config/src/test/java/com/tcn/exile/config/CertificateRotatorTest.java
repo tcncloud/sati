@@ -209,6 +209,29 @@ class CertificateRotatorTest {
   }
 
   @Test
+  void appliesTheRotatedConfigWithoutWaitingForTheWatcher() throws Exception {
+    // Writing through a symlink raises no watch event, so the rotator must apply its own write.
+    var h = harness(CERT_PEM);
+    when(h.configService().rotateCertificate(anyString())).thenReturn(encodedConfig(CERT_PEM));
+
+    assertTrue(new CertificateRotator(h.manager(), ALWAYS_DUE).checkAndRotate());
+
+    var applied = org.mockito.ArgumentCaptor.forClass(ExileConfig.class);
+    verify(h.manager()).applyConfig(applied.capture());
+    assertEquals(CERT_PEM, applied.getValue().publicCert());
+  }
+
+  @Test
+  void doesNotApplyAnythingWhenTheWriteFails() throws Exception {
+    var h = harness(CERT_PEM);
+    when(h.configService().rotateCertificate(anyString())).thenReturn(encodedConfig(CERT_PEM));
+    doThrow(new IOException("Read-only file system")).when(h.watcher()).writeConfig(anyString());
+
+    assertFalse(new CertificateRotator(h.manager(), ALWAYS_DUE).checkAndRotate());
+    verify(h.manager(), never()).applyConfig(any());
+  }
+
+  @Test
   void doesNotRotateTwiceForTheSameCertificate() throws Exception {
     // The loop this guards: the gate issues a cert, the write fails, the client keeps the
     // old cert, and the next tick sends the identical hash again.

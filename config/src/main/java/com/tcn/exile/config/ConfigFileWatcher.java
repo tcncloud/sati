@@ -125,41 +125,60 @@ public final class ConfigFileWatcher implements AutoCloseable {
   }
 
   /**
+   * The file {@link #writeConfig} actually writes. Follows a symlink to its target, so deployments
+   * that link the config in from elsewhere keep writing where the operator pointed them.
+   */
+  Path writeTarget() {
+    var file = configFile();
+    try {
+      return Files.isSymbolicLink(file) ? file.toRealPath() : file;
+    } catch (IOException e) {
+      // Dangling link — write the link path itself and let the write report the error.
+      return file;
+    }
+  }
+
+  /**
    * Throws if {@link #writeConfig} could not replace the config file. Callers use this to fail
    * before taking an action they cannot undo — a ConfigMap or Secret volume is mounted read-only,
    * so the directory check is what catches the common deployment mistake.
    */
   public void assertWritable() throws IOException {
-    var file = configFile();
-    if (!Files.isWritable(file.getParent())) {
-      throw new IOException(file.getParent() + " is not writable");
+    var target = writeTarget();
+    if (!Files.isWritable(target.getParent())) {
+      throw new IOException(target.getParent() + " is not writable");
     }
-    if (Files.exists(file) && !Files.isWritable(file)) {
-      throw new IOException(file + " is not writable");
+    if (Files.exists(target) && !Files.isWritable(target)) {
+      throw new IOException(target + " is not writable");
     }
   }
 
   /**
-   * Write a config string (e.g., a rotated certificate) to the config file. This triggers the
-   * watcher to reload.
+   * Write a config string (e.g., a rotated certificate) to the config file.
    *
-   * <p>Writes to a temp file and moves it into place so the watcher never parses a half-written
-   * file. The move replaces a symlink at that path rather than writing through it.
+   * <p>Stages a temp file beside the target and renames it into place, so a reader never sees a
+   * half-written file. A symlink is followed, not replaced — the bytes land where the operator
+   * pointed the link.
+   *
+   * <p>Do not rely on this to trigger a reload. Writing through a symlink whose target sits outside
+   * a watched directory produces no watch event at all, so a caller that needs the new config
+   * applied must apply it itself.
    */
   public void writeConfig(String content) throws IOException {
-    var file = configFile();
-    var tmp = Files.createTempFile(file.getParent(), CONFIG_FILE_NAME, ".tmp");
+    var target = writeTarget();
+    var tmp = Files.createTempFile(target.getParent(), CONFIG_FILE_NAME, ".tmp");
     try {
       Files.writeString(tmp, content);
       try {
-        Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        Files.move(
+            tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
       } catch (AtomicMoveNotSupportedException e) {
-        Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+        Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
       }
     } finally {
       Files.deleteIfExists(tmp);
     }
-    log.info("Wrote config file: {}", file);
+    log.info("Wrote config file: {}", target);
   }
 
   private void loadExistingConfig() {

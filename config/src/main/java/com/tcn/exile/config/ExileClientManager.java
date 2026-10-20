@@ -124,12 +124,28 @@ public final class ExileClientManager implements AutoCloseable {
     destroyClient();
   }
 
+  /**
+   * Rebuild the client on {@code config} without waiting for a watch event. A write through a
+   * symlink whose target is outside the watched directory produces no event, so whoever wrote the
+   * config applies it. A no-op when the credentials already match the running client.
+   */
+  public void applyConfig(ExileConfig config) {
+    createClient(config);
+  }
+
   @Override
   public void close() {
     stop();
   }
 
   private synchronized void createClient(ExileConfig config) {
+    // One atomic replace usually surfaces as several events, and the rotator applies its own
+    // write directly. Rebuilding per event would drop the work stream repeatedly.
+    if (activeClient != null && activeConfig != null && activeConfig.sameCredentials(config)) {
+      log.debug("Config unchanged for org={}, keeping the existing client", config.org());
+      return;
+    }
+
     log.info(
         "Creating ExileClient (endpoint={}:{}, org={}, plugin={})",
         config.apiHostname(),

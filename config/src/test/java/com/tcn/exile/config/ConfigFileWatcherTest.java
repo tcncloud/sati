@@ -70,16 +70,40 @@ class ConfigFileWatcherTest {
   }
 
   @Test
-  void writeConfigReplacesASymlinkInsteadOfWritingThroughIt(@TempDir Path dir) throws IOException {
-    var target = Files.writeString(dir.resolve("target.cfg"), "original");
+  void writeConfigFollowsASymlinkToItsTarget(@TempDir Path dir, @TempDir Path elsewhere)
+      throws IOException {
+    // Deployments that link the config in from elsewhere must keep writing where the
+    // operator pointed them, not get silently diverted to a file in the watched directory.
+    var target = Files.writeString(elsewhere.resolve("real.cfg"), "original");
     var link = dir.resolve(ConfigFileWatcher.CONFIG_FILE_NAME);
     Files.createSymbolicLink(link, target);
 
     started(dir).writeConfig("rotated");
 
-    assertFalse(Files.isSymbolicLink(link), "the symlink should be replaced, not followed");
-    assertEquals("rotated", Files.readString(link));
-    assertEquals("original", Files.readString(target));
+    assertTrue(Files.isSymbolicLink(link), "the symlink must survive the write");
+    assertEquals("rotated", Files.readString(target));
+    try (Stream<Path> staged = Files.list(elsewhere)) {
+      assertEquals(
+          List.of("real.cfg"),
+          staged.map(f -> f.getFileName().toString()).sorted().toList(),
+          "no temp file left beside the target");
+    }
+  }
+
+  @Test
+  void assertWritableChecksTheSymlinkTargetNotTheLink(@TempDir Path dir, @TempDir Path elsewhere)
+      throws IOException {
+    var target = Files.writeString(elsewhere.resolve("real.cfg"), "original");
+    Files.createSymbolicLink(dir.resolve(ConfigFileWatcher.CONFIG_FILE_NAME), target);
+    var w = started(dir);
+
+    assertTrue(elsewhere.toFile().setWritable(false));
+    assumeFalse(Files.isWritable(elsewhere), "running as root, cannot make a directory read-only");
+
+    var e = assertThrows(IOException.class, w::assertWritable);
+    assertTrue(e.getMessage().contains(elsewhere.toString()), e.getMessage());
+
+    elsewhere.toFile().setWritable(true);
   }
 
   @Test
