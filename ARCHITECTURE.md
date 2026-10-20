@@ -142,8 +142,9 @@ the library does the same.
 
 Parses the Base64-encoded JSON config file (`com.tcn.exiles.sati.config.cfg`).
 Fields: `ca_certificate`, `certificate`, `private_key`, `api_endpoint`
-(`host:port` or URL), optional `certificate_name`. Uses a small hand-written
-JSON parser to avoid pulling Jackson/Gson into the library.
+(`host:port` or URL), optional `certificate_name` and
+`fingerprint_sha256_string`. Uses a small hand-written JSON parser to avoid
+pulling Jackson/Gson into the library.
 
 ### ConfigFileWatcher (config module)
 
@@ -153,7 +154,11 @@ Watches one or more directories (defaults: `/workdir/config`,
 CREATE/MODIFY for the known filename it parses the file and invokes
 `onConfigChanged(ExileConfig)`; on DELETE it invokes `onConfigRemoved()`. Also
 exposes `writeConfig(String)` so the certificate rotator can persist a rotated
-credential, which then naturally triggers the watcher again.
+credential, which then naturally triggers the watcher again. `writeConfig`
+stages a temp file and moves it into place, so the watcher never parses a
+half-written file; the move replaces a symlink at that path rather than writing
+through it. `assertWritable()` lets a caller check up front that the file can
+be replaced.
 
 ### ExileClientManager (config module)
 
@@ -162,6 +167,32 @@ Single-tenant convenience wrapper: wires a `ConfigFileWatcher` to
 (hourly by default). When `onConfigChanged` fires with a new org, the old
 client is destroyed and a new one is built. Returns the current `ExileClient`
 and a `StreamStatus` snapshot for health endpoints.
+
+`stop()` tears everything down, watcher included. `dropClient()` destroys only
+the client and leaves the watcher and scheduler running, so a replacement config
+written into the watched directory recovers the integration without a restart.
+
+### CertificateRotator (config module)
+
+Runs on the manager's scheduler and rotates the certificate once it is within
+`renewalDays` (default 10) of expiry.
+
+**The config directory must be writable.** Rotation issues a certificate on the
+gate before it can be persisted locally, and that step cannot be undone, so the
+rotator will not start one it cannot finish:
+
+- It calls `assertWritable()` before the gate call. A ConfigMap or Secret volume
+  is mounted read-only, which is the common deployment mistake.
+- It never rotates the same fingerprint twice. If the write or the reload fails,
+  the client keeps the old certificate and the next tick would otherwise send an
+  identical hash — one new certificate an hour until the old one expires.
+- On expiry it calls `dropClient()`, not `stop()`.
+
+The gate keys certificates on `hex(sha256(DER))`. The rotator prefers
+`fingerprint_sha256_string` straight from the config file and only computes the
+digest when the file omits it: a locally derived value formatted differently
+from the gate's key makes every rotation fail with "exile certificate not
+found".
 
 ### MultiTenantManager (config module)
 

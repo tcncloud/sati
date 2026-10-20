@@ -3,8 +3,10 @@ package com.tcn.exile.config;
 import com.tcn.exile.ExileConfig;
 import io.methvin.watcher.DirectoryWatcher;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
@@ -114,16 +116,49 @@ public final class ConfigFileWatcher implements AutoCloseable {
     return configDir;
   }
 
-  /**
-   * Write a config string (e.g., a rotated certificate) to the config file. This triggers the
-   * watcher to reload.
-   */
-  public void writeConfig(String content) throws IOException {
+  /** The config file this watcher reads and writes. */
+  public Path configFile() {
     if (configDir == null) {
       throw new IllegalStateException("No config directory available");
     }
-    var file = configDir.resolve(CONFIG_FILE_NAME);
-    Files.writeString(file, content);
+    return configDir.resolve(CONFIG_FILE_NAME);
+  }
+
+  /**
+   * Throws if {@link #writeConfig} could not replace the config file. Callers use this to fail
+   * before taking an action they cannot undo — a ConfigMap or Secret volume is mounted read-only,
+   * so the directory check is what catches the common deployment mistake.
+   */
+  public void assertWritable() throws IOException {
+    var file = configFile();
+    if (!Files.isWritable(file.getParent())) {
+      throw new IOException(file.getParent() + " is not writable");
+    }
+    if (Files.exists(file) && !Files.isWritable(file)) {
+      throw new IOException(file + " is not writable");
+    }
+  }
+
+  /**
+   * Write a config string (e.g., a rotated certificate) to the config file. This triggers the
+   * watcher to reload.
+   *
+   * <p>Writes to a temp file and moves it into place so the watcher never parses a half-written
+   * file. The move replaces a symlink at that path rather than writing through it.
+   */
+  public void writeConfig(String content) throws IOException {
+    var file = configFile();
+    var tmp = Files.createTempFile(file.getParent(), CONFIG_FILE_NAME, ".tmp");
+    try {
+      Files.writeString(tmp, content);
+      try {
+        Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+      } catch (AtomicMoveNotSupportedException e) {
+        Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+      }
+    } finally {
+      Files.deleteIfExists(tmp);
+    }
     log.info("Wrote config file: {}", file);
   }
 

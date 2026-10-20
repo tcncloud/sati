@@ -115,12 +115,21 @@ public final class ExileClientManager implements AutoCloseable {
     if (scheduler != null) scheduler.shutdownNow();
   }
 
+  /**
+   * Destroy the active client but keep the watcher and rotation scheduler running, so a replacement
+   * config dropped into the watched directory recovers the integration without a restart. Use this
+   * rather than {@link #stop()} for faults the operator can fix in place.
+   */
+  public void dropClient() {
+    destroyClient();
+  }
+
   @Override
   public void close() {
     stop();
   }
 
-  private void createClient(ExileConfig config) {
+  private synchronized void createClient(ExileConfig config) {
     log.info(
         "Creating ExileClient (endpoint={}:{}, org={}, plugin={})",
         config.apiHostname(),
@@ -130,7 +139,6 @@ public final class ExileClientManager implements AutoCloseable {
     var newOrg = config.org();
     if (activeOrg != null && !activeOrg.equals(newOrg)) {
       log.info("Org changed from {} to {}, destroying old client", activeOrg, newOrg);
-      destroyClient();
     }
 
     destroyClient();
@@ -158,7 +166,7 @@ public final class ExileClientManager implements AutoCloseable {
     }
   }
 
-  private void destroyClient() {
+  private synchronized void destroyClient() {
     var c = activeClient;
     if (c != null) {
       try {

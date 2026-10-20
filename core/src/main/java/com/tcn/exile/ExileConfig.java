@@ -19,6 +19,7 @@ public final class ExileConfig {
   private final String apiHostname;
   private final int apiPort;
   private final String certificateName;
+  private final String certificateFingerprint;
 
   // Lazily derived from certificate.
   private volatile String org;
@@ -30,6 +31,8 @@ public final class ExileConfig {
     this.apiHostname = Objects.requireNonNull(builder.apiHostname, "apiHostname");
     this.apiPort = builder.apiPort > 0 ? builder.apiPort : 443;
     this.certificateName = builder.certificateName != null ? builder.certificateName : "";
+    this.certificateFingerprint =
+        builder.certificateFingerprint != null ? builder.certificateFingerprint : "";
   }
 
   public String rootCert() {
@@ -55,6 +58,16 @@ public final class ExileConfig {
   /** The certificate name from the config file (may be empty). */
   public String certificateName() {
     return certificateName;
+  }
+
+  /**
+   * The gate's lookup key for this certificate — {@code fingerprint_sha256_string} from the config
+   * file, bare lowercase hex of {@code sha256(DER)}. Empty if the config file omitted it; callers
+   * must then fall back to computing it. Prefer this over recomputing: a locally derived digest
+   * that formats differently from the gate's key silently breaks certificate rotation.
+   */
+  public String certificateFingerprint() {
+    return certificateFingerprint;
   }
 
   /** Extracts the organization name from the certificate CN field. Thread-safe. */
@@ -103,6 +116,7 @@ public final class ExileConfig {
     private String apiHostname;
     private int apiPort;
     private String certificateName;
+    private String certificateFingerprint;
 
     private Builder() {}
 
@@ -128,6 +142,11 @@ public final class ExileConfig {
 
     public Builder certificateName(String certificateName) {
       this.certificateName = certificateName;
+      return this;
+    }
+
+    public Builder certificateFingerprint(String certificateFingerprint) {
+      this.certificateFingerprint = certificateFingerprint;
       return this;
     }
 
