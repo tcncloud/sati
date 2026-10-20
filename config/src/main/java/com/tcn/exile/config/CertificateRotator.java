@@ -13,6 +13,7 @@ import java.util.HexFormat;
 import java.util.Locale;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 
 /**
  * Checks certificate expiration and rotates via the gate config service.
@@ -25,11 +26,21 @@ import org.slf4j.LoggerFactory;
  * cannot be undone. So the rotator refuses to start one it cannot finish: it fails on an unwritable
  * config file up front, and never rotates the same fingerprint twice. Without that second guard a
  * failed write turns into a new certificate every hour until the old one expires.
+ *
+ * <p>Every blocked rotation logs at ERROR with {@code alert=cert_rotation_blocked} in the MDC.
+ * These integrations run on customer infrastructure, so nobody here reads their container logs —
+ * but the client ships its logs to the gate, which lands them in our logging with the org attached.
+ * That marker is the alert hook; {@code reason} says which branch fired.
  */
 public final class CertificateRotator {
 
   private static final Logger log = LoggerFactory.getLogger(CertificateRotator.class);
   private static final int DEFAULT_RENEWAL_DAYS = 10;
+
+  /** MDC marker every blocked rotation carries. Alert on this. */
+  static final String ALERT_KEY = "alert";
+
+  static final String ALERT_VALUE = "cert_rotation_blocked";
 
   private final ExileClientManager manager;
   private final int renewalDays;
@@ -66,8 +77,11 @@ public final class CertificateRotator {
     if (expiration.isBefore(now)) {
       // Drop only the client: the watcher stays up, so writing a valid config into the
       // watched directory recovers the integration without a restart.
-      log.error(
-          "Certificate for org={} expired at {}. Dropping the client; it recovers when a valid"
+      alert(
+          "expired",
+          config,
+          expiration,
+          "Certificate for org={} expired at {}. The integration is down. It recovers when a valid"
               + " config is written to {}.",
           config.org(),
           expiration,
@@ -86,12 +100,20 @@ public final class CertificateRotator {
 
     var hash = getCertFingerprint(config);
     if (hash.isEmpty()) {
-      log.error("Cannot rotate for org={}: no usable certificate fingerprint", config.org());
+      alert(
+          "no_fingerprint",
+          config,
+          expiration,
+          "Cannot rotate for org={}: no usable certificate fingerprint",
+          config.org());
       return false;
     }
 
     if (hash.equals(lastRotatedHash)) {
-      log.error(
+      alert(
+          "already_rotated",
+          config,
+          expiration,
           "Certificate for org={} was rotated at {} but the client is still using the old one, so"
               + " the write or the reload failed. Not rotating again. Check that {} is writable and"
               + " that the watcher reloaded it.",
@@ -104,7 +126,10 @@ public final class CertificateRotator {
     try {
       manager.configWatcher().assertWritable();
     } catch (IOException | RuntimeException e) {
-      log.error(
+      alert(
+          "not_writable",
+          config,
+          expiration,
           "Cannot rotate for org={}: {}. Mount the config directory read-write.",
           config.org(),
           e.getMessage());
@@ -115,7 +140,12 @@ public final class CertificateRotator {
     try {
       var newCert = client.config_().rotateCertificate(hash);
       if (newCert == null || newCert.isEmpty()) {
-        log.error("Certificate rotation for org={} returned an empty response", config.org());
+        alert(
+            "empty_response",
+            config,
+            expiration,
+            "Certificate rotation for org={} returned an empty response",
+            config.org());
         return false;
       }
 
@@ -125,7 +155,10 @@ public final class CertificateRotator {
       lastRotatedAt = now;
 
       if (ConfigParser.parse(newCert.getBytes(StandardCharsets.UTF_8)).isEmpty()) {
-        log.error(
+        alert(
+            "unparseable_response",
+            config,
+            expiration,
             "Certificate rotation for org={} returned a config that does not parse; not writing it",
             config.org());
         return false;
@@ -135,8 +168,38 @@ public final class CertificateRotator {
       log.info("Certificate rotated for org={}", config.org());
       return true;
     } catch (Exception e) {
-      log.error("Certificate rotation failed for org={}: {}", config.org(), e.getMessage(), e);
+      alert(
+          "write_failed",
+          config,
+          expiration,
+          "Certificate rotation failed for org={}: {}",
+          config.org(),
+          e.getMessage(),
+          e);
       return false;
+    }
+  }
+
+  /**
+   * Log a blocked rotation at ERROR, tagged for alerting. The MDC fields ride along to the gate
+   * inside the shipped log record, so an alert can match on them rather than on the message text.
+   */
+  private void alert(
+      String reason, ExileConfig config, Instant expiration, String message, Object... args) {
+    var prior = MDC.getCopyOfContextMap();
+    try {
+      MDC.put(ALERT_KEY, ALERT_VALUE);
+      MDC.put("reason", reason);
+      MDC.put("org_id", config.org());
+      MDC.put("config_file", configFileForLog());
+      if (expiration != null) MDC.put("cert_expires_at", expiration.toString());
+      log.error(message, args);
+    } finally {
+      if (prior != null) {
+        MDC.setContextMap(prior);
+      } else {
+        MDC.clear();
+      }
     }
   }
 

@@ -194,6 +194,31 @@ digest when the file omits it: a locally derived value formatted differently
 from the gate's key makes every rotation fail with "exile certificate not
 found".
 
+#### Alerting on a blocked rotation
+
+Integrations run on customer infrastructure, so nobody here reads their
+container logs. The client ships its logs to the gate (`GrpcLogShipper` →
+`ReportLogs`), which re-emits them into our logging with `log_source=client` and
+the org attached, so an ERROR here is visible to us.
+
+Every blocked rotation logs at ERROR with `alert=cert_rotation_blocked` in the
+MDC — alert on that key, not on the message text. `reason` says which branch
+fired:
+
+| `reason` | Meaning |
+|---|---|
+| `not_writable` | Config file cannot be replaced. Usually a ConfigMap or Secret mount. |
+| `already_rotated` | A certificate was issued for this fingerprint and the client is still on the old one — the write or the watcher reload failed. |
+| `write_failed` | The gate issued a certificate but persisting it threw. |
+| `empty_response` / `unparseable_response` | The gate returned nothing usable. |
+| `no_fingerprint` | The configured certificate could not be read. |
+| `expired` | The certificate is already expired and the client has been dropped. The integration is down. |
+
+The gate also counts every rotation as
+`exile_gatev3_calls_total{method="RotateCertificate", org_id=...}`, so a sustained
+rate above roughly one a day per org is the same signal from the server side and
+does not depend on the client version.
+
 ### MultiTenantManager (config module)
 
 Multi-tenant reconciliation loop. The caller supplies a

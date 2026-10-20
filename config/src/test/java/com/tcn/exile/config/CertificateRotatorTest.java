@@ -5,6 +5,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
+import ch.qos.logback.classic.Level;
+import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.core.read.ListAppender;
 import com.tcn.exile.ExileClient;
 import com.tcn.exile.ExileConfig;
 import com.tcn.exile.service.ConfigService;
@@ -12,9 +15,50 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.List;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.slf4j.LoggerFactory;
 
 class CertificateRotatorTest {
+
+  private ListAppender<ILoggingEvent> logs;
+  private ch.qos.logback.classic.Logger rotatorLogger;
+
+  @BeforeEach
+  void captureLogs() {
+    logs = new ListAppender<>();
+    logs.start();
+    rotatorLogger =
+        (ch.qos.logback.classic.Logger) LoggerFactory.getLogger(CertificateRotator.class);
+    rotatorLogger.addAppender(logs);
+  }
+
+  @AfterEach
+  void releaseLogs() {
+    if (rotatorLogger != null) rotatorLogger.detachAppender(logs);
+  }
+
+  /** The ERROR events carrying the alert marker, in order. */
+  private List<ILoggingEvent> alerts() {
+    return logs.list.stream()
+        .filter(e -> e.getLevel() == Level.ERROR)
+        .filter(
+            e ->
+                CertificateRotator.ALERT_VALUE.equals(
+                    e.getMDCPropertyMap().get(CertificateRotator.ALERT_KEY)))
+        .toList();
+  }
+
+  private void assertAlerted(String reason, String org) {
+    var found = alerts();
+    assertEquals(1, found.size(), "expected exactly one alert, got " + found.size());
+    var mdc = found.get(0).getMDCPropertyMap();
+    assertEquals(reason, mdc.get("reason"));
+    assertEquals(org, mdc.get("org_id"));
+    assertNotNull(mdc.get("config_file"));
+  }
 
   // Throwaway self-signed cert (fixture only). Its DER SHA-256, bare lowercase hex,
   // computed independently with: openssl x509 -outform DER | openssl dgst -sha256
@@ -161,6 +205,7 @@ class CertificateRotatorTest {
     assertTrue(new CertificateRotator(h.manager(), ALWAYS_DUE).checkAndRotate());
     verify(h.configService()).rotateCertificate(EXPECTED_FINGERPRINT);
     verify(h.watcher()).writeConfig(newConfig);
+    assertTrue(alerts().isEmpty(), "a successful rotation must not alert");
   }
 
   @Test
@@ -177,6 +222,11 @@ class CertificateRotatorTest {
     assertFalse(rotator.checkAndRotate());
 
     verify(h.configService(), times(1)).rotateCertificate(anyString());
+    // One alert per blocked tick: the first write failure, then two refusals.
+    assertEquals(3, alerts().size());
+    assertEquals(
+        List.of("write_failed", "already_rotated", "already_rotated"),
+        alerts().stream().map(e -> e.getMDCPropertyMap().get("reason")).toList());
   }
 
   @Test
@@ -187,6 +237,7 @@ class CertificateRotatorTest {
 
     assertFalse(new CertificateRotator(h.manager(), ALWAYS_DUE).checkAndRotate());
     verify(h.configService(), never()).rotateCertificate(anyString());
+    assertAlerted("not_writable", "");
   }
 
   @Test
@@ -214,6 +265,7 @@ class CertificateRotatorTest {
     assertFalse(new CertificateRotator(h.manager(), 1).checkAndRotate());
     verify(h.configService(), never()).rotateCertificate(anyString());
     verify(h.watcher(), never()).assertWritable();
+    assertTrue(alerts().isEmpty(), "a certificate that is not due must not alert");
   }
 
   @Test
@@ -222,6 +274,7 @@ class CertificateRotatorTest {
     var h = harness(EXPIRED_CERT_PEM);
 
     assertFalse(new CertificateRotator(h.manager(), ALWAYS_DUE).checkAndRotate());
+    assertAlerted("expired", "test-org");
     verify(h.manager()).dropClient();
     verify(h.manager(), never()).stop();
     verify(h.configService(), never()).rotateCertificate(anyString());
