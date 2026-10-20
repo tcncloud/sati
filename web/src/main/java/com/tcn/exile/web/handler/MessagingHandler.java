@@ -2,10 +2,12 @@ package com.tcn.exile.web.handler;
 
 import com.tcn.exile.ExileClient;
 import com.tcn.exile.config.ExileClientManager;
+import com.tcn.exile.web.dto.MessagingCampaignDto;
 import com.tcn.exile.web.dto.SendEmailRequestDto;
 import com.tcn.exile.web.dto.SendMessageResponseDto;
 import com.tcn.exile.web.dto.SendSmsRequestDto;
 import io.grpc.StatusRuntimeException;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,7 +37,8 @@ public class MessagingHandler {
         request.poolId(),
         request.recordId());
 
-    requireCampaignAndRecipient(request.campaignSid(), request.recipient());
+    long campaignSid = parseCampaignSid(request.campaignSid());
+    requireText(request.recipient(), "recipient");
     requireText(request.body(), "body");
 
     try {
@@ -43,7 +46,7 @@ public class MessagingHandler {
           getClient()
               .messaging()
               .sendSms(
-                  request.campaignSid(),
+                  campaignSid,
                   request.recipient(),
                   request.body(),
                   request.poolId(),
@@ -61,7 +64,8 @@ public class MessagingHandler {
         request.poolId(),
         request.recordId());
 
-    requireCampaignAndRecipient(request.campaignSid(), request.recipient());
+    long campaignSid = parseCampaignSid(request.campaignSid());
+    requireText(request.recipient(), "recipient");
     requireText(request.subject(), "subject");
     requireText(request.body(), "body");
 
@@ -70,13 +74,31 @@ public class MessagingHandler {
           getClient()
               .messaging()
               .sendEmail(
-                  request.campaignSid(),
+                  campaignSid,
                   request.recipient(),
                   request.subject(),
                   request.body(),
                   request.poolId(),
                   request.recordId(),
                   request.metadata()));
+    } catch (StatusRuntimeException e) {
+      throw rejected(e);
+    }
+  }
+
+  /** channel is "sms", "email", or blank for both. */
+  public List<MessagingCampaignDto> listCampaigns(String channel) {
+    log.debug("listCampaigns(channel={})", channel);
+
+    var ch = channel == null || channel.isBlank() ? null : channel.trim().toLowerCase();
+    if (ch != null && !ch.equals("sms") && !ch.equals("email")) {
+      throw new IllegalArgumentException("channel must be sms or email");
+    }
+
+    try {
+      return getClient().messaging().listCampaigns(ch).stream()
+          .map(MessagingCampaignDto::from)
+          .toList();
     } catch (StatusRuntimeException e) {
       throw rejected(e);
     }
@@ -90,11 +112,18 @@ public class MessagingHandler {
     };
   }
 
-  private static void requireCampaignAndRecipient(long campaignSid, String recipient) {
-    if (campaignSid == 0) {
-      throw new IllegalArgumentException("campaignSid is required and must be non-zero");
+  private static long parseCampaignSid(String campaignSid) {
+    requireText(campaignSid, "campaignSid");
+    long sid;
+    try {
+      sid = Long.parseLong(campaignSid.trim());
+    } catch (NumberFormatException e) {
+      sid = 0;
     }
-    requireText(recipient, "recipient");
+    if (sid <= 0) {
+      throw new IllegalArgumentException("campaignSid must be a positive whole number");
+    }
+    return sid;
   }
 
   private static void requireText(String value, String field) {

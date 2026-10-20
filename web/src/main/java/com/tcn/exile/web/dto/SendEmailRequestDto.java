@@ -3,7 +3,7 @@ package com.tcn.exile.web.dto;
 import java.util.Map;
 
 public record SendEmailRequestDto(
-    long campaignSid,
+    String campaignSid,
     String recipient,
     String subject,
     String body,
