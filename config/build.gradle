@@ -8,4 +8,7 @@ dependencies {
 
 	// File watching — the only external dependency beyond core.
 	implementation("io.methvin:directory-watcher:0.19.1")
+
+	// Logback appender for asserting on the rotation alert markers.
+	testImplementation(project(':logback-ext'))
 }
