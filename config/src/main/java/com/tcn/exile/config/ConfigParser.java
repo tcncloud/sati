@@ -14,7 +14,8 @@ import org.slf4j.LoggerFactory;
  * Parses the Base64-encoded JSON config file used by all exile integrations.
  *
  * <p>The file format is a Base64-encoded JSON object with fields: {@code ca_certificate}, {@code
- * certificate}, {@code private_key}, and {@code api_endpoint} (as {@code hostname:port}).
+ * certificate}, {@code private_key}, and {@code api_endpoint} (as {@code hostname:port}). Optional:
+ * {@code certificate_name} and {@code fingerprint_sha256_string}.
  */
 public final class ConfigParser {
 
@@ -65,6 +66,9 @@ public final class ConfigParser {
 
       var certName = (String) map.get("certificate_name");
       if (certName != null) builder.certificateName(certName);
+
+      var fingerprint = (String) map.get("fingerprint_sha256_string");
+      if (fingerprint != null) builder.certificateFingerprint(fingerprint);
 
       if (endpoint != null && !endpoint.isEmpty()) {
         // Handle both "host:port" and URL formats like "https://host" or "https://host:port".

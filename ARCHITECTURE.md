@@ -142,8 +142,9 @@ the library does the same.
 
 Parses the Base64-encoded JSON config file (`com.tcn.exiles.sati.config.cfg`).
 Fields: `ca_certificate`, `certificate`, `private_key`, `api_endpoint`
-(`host:port` or URL), optional `certificate_name`. Uses a small hand-written
-JSON parser to avoid pulling Jackson/Gson into the library.
+(`host:port` or URL), optional `certificate_name` and
+`fingerprint_sha256_string`. Uses a small hand-written JSON parser to avoid
+pulling Jackson/Gson into the library.
 
 ### ConfigFileWatcher (config module)
 
@@ -153,7 +154,16 @@ Watches one or more directories (defaults: `/workdir/config`,
 CREATE/MODIFY for the known filename it parses the file and invokes
 `onConfigChanged(ExileConfig)`; on DELETE it invokes `onConfigRemoved()`. Also
 exposes `writeConfig(String)` so the certificate rotator can persist a rotated
-credential, which then naturally triggers the watcher again.
+credential. `writeConfig` stages a temp file beside the target and renames it
+into place, so a reader never sees a half-written file. A symlink is followed,
+not replaced — the bytes land where the operator pointed the link — and
+`assertWritable()` checks that same target.
+
+**A write is not a reload.** If the config file is a symlink whose target sits
+outside a watched directory, writing through it raises no watch event at all:
+the file on disk is current and the running client is not. Whoever writes a
+config must apply it (`ExileClientManager.applyConfig`) rather than waiting for
+the watcher, which exists for changes made by someone else.
 
 ### ExileClientManager (config module)
 
@@ -162,6 +172,67 @@ Single-tenant convenience wrapper: wires a `ConfigFileWatcher` to
 (hourly by default). When `onConfigChanged` fires with a new org, the old
 client is destroyed and a new one is built. Returns the current `ExileClient`
 and a `StreamStatus` snapshot for health endpoints.
+
+`stop()` tears everything down, watcher included. `dropClient()` destroys only
+the client and leaves the watcher and scheduler running, so a replacement config
+written into the watched directory recovers the integration without a restart.
+`applyConfig(ExileConfig)` rebuilds on a config the caller already has, for
+writes the watcher will not report.
+
+Rebuilds are skipped when the credentials match the running client
+(`ExileConfig.sameCredentials`). One atomic replace usually surfaces as several
+filesystem events, and the rotator applies its own write directly, so without
+this the work stream would be torn down and reconnected repeatedly for a single
+change.
+
+### CertificateRotator (config module)
+
+Runs on the manager's scheduler and rotates the certificate once it is within
+`renewalDays` (default 10) of expiry.
+
+**The config directory must be writable.** Rotation issues a certificate on the
+gate before it can be persisted locally, and that step cannot be undone, so the
+rotator will not start one it cannot finish:
+
+- It calls `assertWritable()` before the gate call. A ConfigMap or Secret volume
+  is mounted read-only, which is the common deployment mistake.
+- It never rotates the same fingerprint twice. If the write or the reload fails,
+  the client keeps the old certificate and the next tick would otherwise send an
+  identical hash — one new certificate an hour until the old one expires.
+- On expiry it calls `dropClient()`, not `stop()`.
+- It applies the rotated config itself instead of waiting for a watch event that
+  a symlinked config would never produce.
+
+The gate keys certificates on `hex(sha256(DER))`. The rotator prefers
+`fingerprint_sha256_string` straight from the config file and only computes the
+digest when the file omits it: a locally derived value formatted differently
+from the gate's key makes every rotation fail with "exile certificate not
+found".
+
+#### Alerting on a blocked rotation
+
+Integrations run on customer infrastructure, so nobody here reads their
+container logs. The client ships its logs to the gate (`GrpcLogShipper` →
+`ReportLogs`), which re-emits them into our logging with `log_source=client` and
+the org attached, so an ERROR here is visible to us.
+
+Every blocked rotation logs at ERROR with `alert=cert_rotation_blocked` in the
+MDC — alert on that key, not on the message text. `reason` says which branch
+fired:
+
+| `reason` | Meaning |
+|---|---|
+| `not_writable` | Config file cannot be replaced. Usually a ConfigMap or Secret mount. |
+| `already_rotated` | A certificate was issued for this fingerprint and the client is still on the old one — the write or the watcher reload failed. |
+| `write_failed` | The gate issued a certificate but persisting it threw. |
+| `empty_response` / `unparseable_response` | The gate returned nothing usable. |
+| `no_fingerprint` | The configured certificate could not be read. |
+| `expired` | The certificate is already expired and the client has been dropped. The integration is down. |
+
+The gate also counts every rotation as
+`exile_gatev3_calls_total{method="RotateCertificate", org_id=...}`, so a sustained
+rate above roughly one a day per org is the same signal from the server side and
+does not depend on the client version.
 
 ### MultiTenantManager (config module)
 
