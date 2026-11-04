@@ -19,7 +19,10 @@ import io.opentelemetry.sdk.trace.SdkTracerProviderBuilder;
 import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
 import io.opentelemetry.sdk.trace.export.SpanExporter;
 import io.opentelemetry.sdk.trace.samplers.Sampler;
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.function.Supplier;
 import org.slf4j.Logger;
@@ -43,6 +46,7 @@ public final class MetricsManager implements AutoCloseable {
 
   private static final AttributeKey<String> METHOD_KEY = AttributeKey.stringKey("method");
   private static final AttributeKey<String> STATUS_KEY = AttributeKey.stringKey("status");
+  private static final AttributeKey<String> PATH_KEY = AttributeKey.stringKey("path");
 
   /**
    * @param telemetryService gRPC stub for reporting metrics
@@ -339,6 +343,33 @@ public final class MetricsManager implements AutoCloseable {
         adaptive.minLimit(),
         adaptive.maxLimit(),
         adaptive.effectiveCeiling());
+  }
+
+  /** Register {@code exile.disk.used_percent} (0-100) for the disk sati runs from. */
+  public void registerDiskGauge() {
+    var dir = Path.of(System.getProperty("user.dir"));
+    var attrs = Attributes.of(PATH_KEY, dir.toString());
+    meter
+        .gaugeBuilder("exile.disk.used_percent")
+        .setDescription("Disk space used on the filesystem sati runs from")
+        .setUnit("%")
+        .buildWithCallback(
+            obs -> {
+              try {
+                obs.record(diskUsedPercent(dir), attrs);
+              } catch (IOException e) {
+                log.debug("Could not read disk usage for {}: {}", dir, e.getMessage());
+              }
+            });
+  }
+
+  static double diskUsedPercent(Path dir) throws IOException {
+    var store = Files.getFileStore(dir);
+    long total = store.getTotalSpace();
+    if (total <= 0) {
+      throw new IOException("no size reported for " + dir);
+    }
+    return 100.0 * (total - store.getUsableSpace()) / total;
   }
 
   @Override

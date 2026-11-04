@@ -195,6 +195,7 @@ public final class ExileClient implements AutoCloseable {
         workStream.setDurationRecorder(metricsManager::recordWorkDuration);
         workStream.setMethodRecorder(metricsManager::recordMethodCall);
         workStream.setReconnectRecorder(metricsManager::recordReconnectDuration);
+        metricsManager.registerDiskGauge();
 
         // Feed job completions into the adaptive controller (if active) and
         // register the corresponding OTel gauges so dashboards can see the
