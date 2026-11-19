@@ -363,6 +363,15 @@ public final class MetricsManager implements AutoCloseable {
             });
   }
 
+  /** 0 while the client is admin-only (the plugin has never accepted a config), 1 after. */
+  public void registerPluginReadyGauge(java.util.function.BooleanSupplier ready) {
+    meter
+        .gaugeBuilder("exile.plugin.ready")
+        .setDescription("1 once the plugin has accepted a config, 0 while only admin jobs run")
+        .ofLongs()
+        .buildWithCallback(obs -> obs.record(ready.getAsBoolean() ? 1 : 0));
+  }
+
   static double diskUsedPercent(Path dir) throws IOException {
     var store = Files.getFileStore(dir);
     long total = store.getTotalSpace();

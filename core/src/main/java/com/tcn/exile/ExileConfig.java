@@ -19,6 +19,7 @@ public final class ExileConfig {
   private final String apiHostname;
   private final int apiPort;
   private final String certificateName;
+  private final String certificateDescription;
   private final String certificateFingerprint;
 
   // Lazily derived from certificate.
@@ -31,6 +32,8 @@ public final class ExileConfig {
     this.apiHostname = Objects.requireNonNull(builder.apiHostname, "apiHostname");
     this.apiPort = builder.apiPort > 0 ? builder.apiPort : 443;
     this.certificateName = builder.certificateName != null ? builder.certificateName : "";
+    this.certificateDescription =
+        builder.certificateDescription != null ? builder.certificateDescription : "";
     this.certificateFingerprint =
         builder.certificateFingerprint != null ? builder.certificateFingerprint : "";
   }
@@ -58,6 +61,11 @@ public final class ExileConfig {
   /** The certificate name from the config file (may be empty). */
   public String certificateName() {
     return certificateName;
+  }
+
+  /** The certificate description from the config file (may be empty). */
+  public String certificateDescription() {
+    return certificateDescription;
   }
 
   /**
@@ -130,6 +138,7 @@ public final class ExileConfig {
     private String apiHostname;
     private int apiPort;
     private String certificateName;
+    private String certificateDescription;
     private String certificateFingerprint;
 
     private Builder() {}
@@ -156,6 +165,11 @@ public final class ExileConfig {
 
     public Builder certificateName(String certificateName) {
       this.certificateName = certificateName;
+      return this;
+    }
+
+    public Builder certificateDescription(String certificateDescription) {
+      this.certificateDescription = certificateDescription;
       return this;
     }
 

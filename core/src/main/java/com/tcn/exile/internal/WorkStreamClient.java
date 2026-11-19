@@ -24,8 +24,11 @@ import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
 import java.time.Instant;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -60,6 +63,26 @@ public final class WorkStreamClient implements AutoCloseable {
 
   static final java.time.Duration STREAM_LOST_NACK_WAIT = java.time.Duration.ofMinutes(5);
 
+  static final String NOT_READY_MESSAGE = "Plugin not ready; only admin jobs can run";
+
+  static final List<WorkType> ADMIN_CAPABILITIES =
+      List.of(
+          WorkType.WORK_TYPE_INFO,
+          WorkType.WORK_TYPE_SHUTDOWN,
+          WorkType.WORK_TYPE_LOGGING,
+          WorkType.WORK_TYPE_DIAGNOSTICS,
+          WorkType.WORK_TYPE_LIST_TENANT_LOGS,
+          WorkType.WORK_TYPE_SET_LOG_LEVEL);
+
+  private static final Set<WorkItem.TaskCase> ADMIN_TASKS =
+      EnumSet.of(
+          WorkItem.TaskCase.INFO,
+          WorkItem.TaskCase.SHUTDOWN,
+          WorkItem.TaskCase.LOGGING,
+          WorkItem.TaskCase.DIAGNOSTICS,
+          WorkItem.TaskCase.LIST_TENANT_LOGS,
+          WorkItem.TaskCase.SET_LOG_LEVEL);
+
   private final ExileConfig config;
   private final JobHandler jobHandler;
   private final EventHandler eventHandler;
@@ -71,6 +94,10 @@ public final class WorkStreamClient implements AutoCloseable {
   private final java.time.Duration shutdownDrainTimeout;
 
   private final AtomicBoolean running = new AtomicBoolean(false);
+
+  // Read at each Register, so a change takes effect on the next connect.
+  private volatile boolean adminOnly;
+  private final AtomicBoolean reconnectRequested = new AtomicBoolean(false);
 
   /**
    * Set to {@code true} on the first call to {@link #close()}. While draining:
@@ -216,6 +243,25 @@ public final class WorkStreamClient implements AutoCloseable {
         reconnectAttempts.get());
   }
 
+  /**
+   * In admin-only mode the client registers with {@link #ADMIN_CAPABILITIES} only, answers every
+   * other job with an error result, and nacks events. Takes effect on the next Register; call
+   * {@link #reconnect()} to apply it to a live stream.
+   */
+  public void setAdminOnly(boolean adminOnly) {
+    this.adminOnly = adminOnly;
+  }
+
+  /** Drops the current stream so the client registers again right away. */
+  public void reconnect() {
+    var stream = responseStream.get();
+    if (stream == null) {
+      return;
+    }
+    reconnectRequested.set(true);
+    stream.cancel("re-registering with new capabilities", null);
+  }
+
   public void start() {
     if (!running.compareAndSet(false, true)) {
       throw new IllegalStateException("Already started");
@@ -228,10 +274,10 @@ public final class WorkStreamClient implements AutoCloseable {
   }
 
   /**
-   * Start with a pre-built channel (package-private for testing). Skips ChannelFactory so tests can
-   * use InProcessChannelBuilder.
+   * Start with a pre-built channel, for tests only. Skips ChannelFactory so tests can use
+   * InProcessChannelBuilder.
    */
-  void start(ManagedChannel testChannel) {
+  public void start(ManagedChannel testChannel) {
     if (!running.compareAndSet(false, true)) {
       throw new IllegalStateException("Already started");
     }
@@ -256,7 +302,7 @@ public final class WorkStreamClient implements AutoCloseable {
         runStream();
         // Only reset backoff if the stream ended gracefully (RST_STREAM NO_ERROR or server close).
         // UNAVAILABLE and other errors should trigger backoff to avoid hammering the server.
-        if (lastDisconnectGraceful) {
+        if (reconnectRequested.getAndSet(false) || lastDisconnectGraceful) {
           backoff.reset();
         } else {
           backoff.recordFailure();
@@ -318,9 +364,15 @@ public final class WorkStreamClient implements AutoCloseable {
 
                 @Override
                 public void onError(Throwable t) {
-                  lastError = t.getClass().getSimpleName() + ": " + t.getMessage();
                   lastDisconnect = Instant.now();
                   connectedSince = null;
+                  if (reconnectRequested.get()) {
+                    // Our own cancel from reconnect(), not a failure.
+                    log.info("Stream closed to re-register: {}", t.getMessage());
+                    latch.countDown();
+                    return;
+                  }
+                  lastError = t.getClass().getSimpleName() + ": " + t.getMessage();
                   // RST_STREAM with NO_ERROR is envoy recycling the stream, not a real failure.
                   String msg = t.getMessage();
                   lastDisconnectGraceful =
@@ -350,13 +402,17 @@ public final class WorkStreamClient implements AutoCloseable {
 
       // Register.
       phase = Phase.REGISTERING;
+      boolean admin = adminOnly;
+      if (admin) {
+        log.warn("Registering admin-only: the plugin has not accepted a config yet");
+      }
       send(
           WorkRequest.newBuilder()
               .setRegister(
                   Register.newBuilder()
                       .setClientName(clientName)
                       .setClientVersion(clientVersion)
-                      .addAllCapabilities(capabilities))
+                      .addAllCapabilities(admin ? ADMIN_CAPABILITIES : capabilities))
               .build());
 
       // Wait until stream ends.
@@ -645,6 +701,10 @@ public final class WorkStreamClient implements AutoCloseable {
     boolean methodSuccess = false;
     var orgId = item.getOrgId();
     try {
+      // An error result, not a Nack: the gate resends a nacked job right away.
+      if (adminOnly && !ADMIN_TASKS.contains(item.getTaskCase())) {
+        throw new IllegalStateException(NOT_READY_MESSAGE);
+      }
       switch (item.getTaskCase()) {
         case LIST_POOLS -> {
           var pools = jobHandler.listPools(orgId);
@@ -763,12 +823,20 @@ public final class WorkStreamClient implements AutoCloseable {
         }
         case DIAGNOSTICS -> {
           var diag = jobHandler.diagnostics();
+          // Added here, not in diagnostics(), so plugins that override it still send them.
+          var custom = new LinkedHashMap<String, Object>();
+          if (diag.custom() != null) {
+            custom.putAll(diag.custom());
+          }
+          custom.put("config.api_endpoint", config.apiHostname() + ":" + config.apiPort());
+          custom.put("config.certificate_name", config.certificateName());
+          custom.put("config.certificate_description", config.certificateDescription());
           b.setDiagnostics(
               DiagnosticsResult.newBuilder()
                   .setSystemInfo(mapToStruct(diag.systemInfo()))
                   .setRuntimeInfo(mapToStruct(diag.runtimeInfo()))
                   .setDatabaseInfo(mapToStruct(diag.databaseInfo()))
-                  .setCustom(mapToStruct(diag.custom())));
+                  .setCustom(mapToStruct(custom)));
         }
         case LIST_TENANT_LOGS -> {
           var task = item.getListTenantLogs();
@@ -819,6 +887,9 @@ public final class WorkStreamClient implements AutoCloseable {
     long methodStart = System.nanoTime();
     boolean methodSuccess = false;
     try {
+      if (adminOnly) {
+        throw new IllegalStateException(NOT_READY_MESSAGE);
+      }
       switch (item.getTaskCase()) {
         case AGENT_CALL -> eventHandler.onAgentCall(toAgentCallEvent(item.getAgentCall()));
         case TELEPHONY_RESULT ->

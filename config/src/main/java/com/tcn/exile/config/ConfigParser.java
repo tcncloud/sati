@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
  *
  * <p>The file format is a Base64-encoded JSON object with fields: {@code ca_certificate}, {@code
  * certificate}, {@code private_key}, and {@code api_endpoint} (as {@code hostname:port}). Optional:
- * {@code certificate_name} and {@code fingerprint_sha256_string}.
+ * {@code certificate_name}, {@code certificate_description} and {@code fingerprint_sha256_string}.
  */
 public final class ConfigParser {
 
@@ -66,6 +66,9 @@ public final class ConfigParser {
 
       var certName = (String) map.get("certificate_name");
       if (certName != null) builder.certificateName(certName);
+
+      var certDescription = (String) map.get("certificate_description");
+      if (certDescription != null) builder.certificateDescription(certDescription);
 
       var fingerprint = (String) map.get("fingerprint_sha256_string");
       if (fingerprint != null) builder.certificateFingerprint(fingerprint);

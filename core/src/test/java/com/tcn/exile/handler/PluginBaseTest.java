@@ -17,11 +17,19 @@
 package com.tcn.exile.handler;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.tcn.exile.memlogger.MemoryAppender;
 import com.tcn.exile.service.ConfigService;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 public class PluginBaseTest {
 
@@ -159,5 +167,101 @@ public class PluginBaseTest {
     var plugin = new TestPlugin();
     assertThrows(
         IllegalArgumentException.class, () -> plugin.setLogLevel("test.setlevel.null", null));
+  }
+
+  @Test
+  public void diagnosticsHasTheKeysTheAdminPageShows() throws Exception {
+    var d = new TestPlugin().diagnostics();
+
+    for (var key : List.of("os.memory.total", "os.memory.free", "os.swap.total", "os.swap.free")) {
+      assertTrue(d.systemInfo().containsKey(key), key);
+    }
+    for (var key :
+        List.of(
+            "java.runtime.name",
+            "java.vm.vendor",
+            "java.specification.name",
+            "java.specification.version",
+            "java.class.path",
+            "start.ms",
+            "non_heap.max",
+            "memory_pools")) {
+      assertTrue(d.runtimeInfo().containsKey(key), key);
+    }
+    var pools = (List<?>) d.runtimeInfo().get("memory_pools");
+    assertFalse(pools.isEmpty());
+    var pool = (Map<?, ?>) pools.get(0);
+    assertTrue(pool.keySet().containsAll(List.of("name", "type", "used", "max", "committed")));
+  }
+
+  @Test
+  public void diagnosticsSendsOnlyTheFixedEnvAndPropertyNames() throws Exception {
+    var d = new TestPlugin().diagnostics();
+
+    var env = (Map<?, ?>) d.systemInfo().get("env");
+    assertTrue(PluginBase.ENV_NAMES.containsAll(env.keySet()), env.keySet().toString());
+    var props = (Map<?, ?>) d.systemInfo().get("system_properties");
+    assertTrue(
+        PluginBase.SYSTEM_PROPERTY_NAMES.containsAll(props.keySet()), props.keySet().toString());
+    assertEquals(System.getProperty("java.version"), props.get("java.version"));
+    assertFalse(props.containsKey("sun.java.command"));
+    assertFalse(PluginBase.SYSTEM_PROPERTY_NAMES.contains("sun.java.command"));
+  }
+
+  @Test
+  public void diagnosticsNeverSendsPlaceholders() throws Exception {
+    var d = new TestPlugin().diagnostics();
+    for (var value : d.systemInfo().values()) {
+      assertFalse("Unknown".equals(value) || "unknown".equals(value), d.systemInfo().toString());
+    }
+  }
+
+  @Test
+  public void containerLimitsReadCgroupV2(@TempDir Path dir) throws Exception {
+    Files.writeString(dir.resolve("memory.max"), "536870912\n");
+    Files.writeString(dir.resolve("cpu.max"), "150000 100000\n");
+
+    assertEquals(
+        Map.of("memory_limit", "536870912", "cpu_limit", "1.5"),
+        PluginBase.containerLimits(dir.toString()));
+  }
+
+  @Test
+  public void containerLimitsFallBackToCgroupV1(@TempDir Path dir) throws Exception {
+    Files.createDirectories(dir.resolve("memory"));
+    Files.createDirectories(dir.resolve("cpu"));
+    Files.writeString(dir.resolve("memory/memory.limit_in_bytes"), "1073741824");
+    Files.writeString(dir.resolve("cpu/cpu.cfs_quota_us"), "200000");
+    Files.writeString(dir.resolve("cpu/cpu.cfs_period_us"), "100000");
+
+    assertEquals(
+        Map.of("memory_limit", "1073741824", "cpu_limit", "2.0"),
+        PluginBase.containerLimits(dir.toString()));
+  }
+
+  @Test
+  public void containerLimitsLeaveOutUnsetLimits(@TempDir Path dir) throws Exception {
+    Files.writeString(dir.resolve("memory.max"), "max");
+    Files.writeString(dir.resolve("cpu.max"), "max 100000");
+    assertTrue(PluginBase.containerLimits(dir.toString()).isEmpty());
+
+    Files.delete(dir.resolve("memory.max"));
+    Files.delete(dir.resolve("cpu.max"));
+    Files.createDirectories(dir.resolve("memory"));
+    Files.createDirectories(dir.resolve("cpu"));
+    Files.writeString(dir.resolve("memory/memory.limit_in_bytes"), "9223372036854771712");
+    Files.writeString(dir.resolve("cpu/cpu.cfs_quota_us"), "-1");
+    Files.writeString(dir.resolve("cpu/cpu.cfs_period_us"), "100000");
+    assertTrue(PluginBase.containerLimits(dir.toString()).isEmpty());
+  }
+
+  @Test
+  public void containerIdComesFromTheCgroupPath() {
+    var id = "3f1c2b9a8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a";
+    assertEquals(
+        "3f1c2b9a8d7e", PluginBase.containerId("0::/system.slice/docker-" + id + ".scope"));
+    assertEquals("3f1c2b9a8d7e", PluginBase.containerId("12:memory:/docker/" + id));
+    assertNull(PluginBase.containerId("0::/"));
+    assertNull(PluginBase.containerId(null));
   }
 }
