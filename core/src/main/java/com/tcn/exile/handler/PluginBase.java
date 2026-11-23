@@ -174,7 +174,10 @@ public abstract class PluginBase implements Plugin {
     if (podName != null) {
       systemInfo.put("pod.name", podName);
     }
-    putIfPresent(systemInfo, "container.id", containerId(readFile("/proc/self/cgroup")));
+    putIfPresent(
+        systemInfo,
+        "container.id",
+        containerId(readFile("/proc/self/cgroup"), readFile("/proc/self/mountinfo")));
     putIfPresent(systemInfo, "container.image", containerImage());
     var limits = containerLimits(CGROUP_DIR);
     if (!limits.isEmpty()) {
@@ -335,6 +338,8 @@ public abstract class PluginBase implements Plugin {
 
   private static final java.util.regex.Pattern CONTAINER_ID =
       java.util.regex.Pattern.compile("[0-9a-f]{64}");
+  private static final java.util.regex.Pattern DOCKER_MOUNT_ID =
+      java.util.regex.Pattern.compile("/containers/([0-9a-f]{64})/");
 
   private static void putIfPresent(Map<String, Object> map, String key, Object value) {
     if (value != null) {
@@ -375,11 +380,18 @@ public abstract class PluginBase implements Plugin {
     return null;
   }
 
-  // The first 12 characters of the 64-hex container ID in /proc/self/cgroup, as docker shows it.
-  static String containerId(String cgroup) {
-    if (cgroup == null) return null;
-    var m = CONTAINER_ID.matcher(cgroup);
-    return m.find() ? m.group().substring(0, 12) : null;
+  // The first 12 characters of the 64-hex container ID, as docker shows it. Under cgroup v2
+  // /proc/self/cgroup is just "0::/", so fall back to docker's /etc/hostname mount source.
+  static String containerId(String cgroup, String mountinfo) {
+    if (cgroup != null) {
+      var m = CONTAINER_ID.matcher(cgroup);
+      if (m.find()) return m.group().substring(0, 12);
+    }
+    if (mountinfo != null) {
+      var m = DOCKER_MOUNT_ID.matcher(mountinfo);
+      if (m.find()) return m.group(1).substring(0, 12);
+    }
+    return null;
   }
 
   private static String containerImage() {

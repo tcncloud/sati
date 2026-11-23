@@ -259,9 +259,27 @@ public class PluginBaseTest {
   public void containerIdComesFromTheCgroupPath() {
     var id = "3f1c2b9a8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a";
     assertEquals(
-        "3f1c2b9a8d7e", PluginBase.containerId("0::/system.slice/docker-" + id + ".scope"));
-    assertEquals("3f1c2b9a8d7e", PluginBase.containerId("12:memory:/docker/" + id));
-    assertNull(PluginBase.containerId("0::/"));
-    assertNull(PluginBase.containerId(null));
+        "3f1c2b9a8d7e", PluginBase.containerId("0::/system.slice/docker-" + id + ".scope", null));
+    assertEquals("3f1c2b9a8d7e", PluginBase.containerId("12:memory:/docker/" + id, null));
+    assertNull(PluginBase.containerId("0::/", null));
+    assertNull(PluginBase.containerId(null, null));
+  }
+
+  @Test
+  public void containerIdFallsBackToTheDockerMountsUnderCgroupV2() {
+    var id = "840fd6bf2f660c9059daae44c8ef3adef479f48e209539679b9f5f04baf65288";
+    var layer = "aa".repeat(32);
+    var mountinfo =
+        "275 1 0:48 / / rw - overlay overlay rw,lowerdir=/var/lib/docker/overlay2/"
+            + layer
+            + "/diff\n"
+            + "296 275 254:1 /docker/containers/"
+            + id
+            + "/hostname /etc/hostname rw - ext4 /dev/vda1 rw\n";
+    assertEquals("840fd6bf2f66", PluginBase.containerId("0::/", mountinfo));
+
+    // Kubernetes mounts name the container, not its ID.
+    var k8s = "1 0 0:1 /var/lib/kubelet/pods/0b6f/containers/app/1a2b /dev/termination-log rw\n";
+    assertNull(PluginBase.containerId("0::/", k8s));
   }
 }
