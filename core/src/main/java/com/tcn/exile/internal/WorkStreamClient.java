@@ -619,6 +619,7 @@ public final class WorkStreamClient implements AutoCloseable {
     workSpanContexts.put(workId, span.getSpanContext());
 
     boolean itemSuccess = false;
+    boolean notReady = false;
     try (Scope ignored = span.makeCurrent()) {
       MDC.put("traceId", span.getSpanContext().getTraceId());
       MDC.put("spanId", span.getSpanContext().getSpanId());
@@ -636,7 +637,11 @@ public final class WorkStreamClient implements AutoCloseable {
     } catch (Exception e) {
       span.setStatus(StatusCode.ERROR, e.getMessage());
       span.recordException(e);
-      failedTotal.incrementAndGet();
+      // Not a plugin failure, so it stays out of the failure count and adaptive capacity.
+      notReady = e instanceof PluginNotReadyException;
+      if (!notReady) {
+        failedTotal.incrementAndGet();
+      }
       log.warn("Work item {} failed: {}", workId, e.getMessage());
       if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB && causedByStreamLoss(e)) {
         nackOnNextStream(workId);
@@ -668,23 +673,25 @@ public final class WorkStreamClient implements AutoCloseable {
       long elapsedNanos = System.nanoTime() - startNanos;
       double elapsedSec = elapsedNanos / 1_000_000_000.0;
 
-      // Existing unified recorder (backward compat).
-      var recorder = durationRecorder;
-      if (recorder != null) {
-        recorder.accept(elapsedSec);
-      }
+      if (!notReady) {
+        // Existing unified recorder (backward compat).
+        var recorder = durationRecorder;
+        if (recorder != null) {
+          recorder.accept(elapsedSec);
+        }
 
-      // Category-aware recorders.
-      if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB) {
-        var jr = jobCompletionRecorder;
-        if (jr != null) jr.record(elapsedNanos, itemSuccess);
-        var jd = jobDurationRecorder;
-        if (jd != null) jd.accept(elapsedSec);
-      } else {
-        var er = eventCompletionRecorder;
-        if (er != null) er.record(elapsedNanos, itemSuccess);
-        var ed = eventDurationRecorder;
-        if (ed != null) ed.accept(elapsedSec);
+        // Category-aware recorders.
+        if (item.getCategory() == WorkCategory.WORK_CATEGORY_JOB) {
+          var jr = jobCompletionRecorder;
+          if (jr != null) jr.record(elapsedNanos, itemSuccess);
+          var jd = jobDurationRecorder;
+          if (jd != null) jd.accept(elapsedSec);
+        } else {
+          var er = eventCompletionRecorder;
+          if (er != null) er.record(elapsedNanos, itemSuccess);
+          var ed = eventDurationRecorder;
+          if (ed != null) ed.accept(elapsedSec);
+        }
       }
 
       inflight.decrementAndGet();
@@ -703,7 +710,7 @@ public final class WorkStreamClient implements AutoCloseable {
     try {
       // An error result, not a Nack: the gate resends a nacked job right away.
       if (adminOnly && !ADMIN_TASKS.contains(item.getTaskCase())) {
-        throw new IllegalStateException(NOT_READY_MESSAGE);
+        throw new PluginNotReadyException();
       }
       switch (item.getTaskCase()) {
         case LIST_POOLS -> {
@@ -888,7 +895,7 @@ public final class WorkStreamClient implements AutoCloseable {
     boolean methodSuccess = false;
     try {
       if (adminOnly) {
-        throw new IllegalStateException(NOT_READY_MESSAGE);
+        throw new PluginNotReadyException();
       }
       switch (item.getTaskCase()) {
         case AGENT_CALL -> eventHandler.onAgentCall(toAgentCallEvent(item.getAgentCall()));
@@ -1004,6 +1011,12 @@ public final class WorkStreamClient implements AutoCloseable {
   private static final class JobStreamLostException extends java.io.IOException {
     JobStreamLostException() {
       super("work stream closed while sending job results");
+    }
+  }
+
+  private static final class PluginNotReadyException extends IllegalStateException {
+    PluginNotReadyException() {
+      super(NOT_READY_MESSAGE);
     }
   }
 

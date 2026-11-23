@@ -93,6 +93,7 @@ class ExileClientAdminOnlyTest {
             .setCategory(WorkCategory.WORK_CATEGORY_EVENT)
             .setAgentCall(AgentCall.newBuilder().setCallSid(1)));
     waitFor(() -> gate.nacks.contains("e1"), "event nack");
+    assertEquals(0, client.streamStatus().failedTotal(), "not-ready rejections aren't failures");
 
     // Same config on the next poll; the database is back now.
     var streamLogger =
