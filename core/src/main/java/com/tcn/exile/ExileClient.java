@@ -28,12 +28,10 @@ import org.slf4j.LoggerFactory;
 /**
  * Main entry point for the Exile client library.
  *
- * <p>On {@link #start()}, only the config poller begins. The WorkStream does not open until:
- *
- * <ol>
- *   <li>The first successful config poll from the gate
- *   <li>The {@link Plugin#onConfig} returns {@code true}
- * </ol>
+ * <p>On {@link #start()}, only the config poller begins. The WorkStream opens after the first
+ * successful config poll from the gate. Until {@link Plugin#onConfig} first returns {@code true}
+ * the client is admin-only: it runs only admin jobs (diagnostics, logs, log level, info, shutdown)
+ * and retries {@code onConfig} on every poll.
  */
 public final class ExileClient implements AutoCloseable {
 
@@ -43,6 +41,7 @@ public final class ExileClient implements AutoCloseable {
   private final Plugin plugin;
   private final WorkStreamClient workStream;
   private final ManagedChannel serviceChannel;
+  private final ManagedChannel testChannel;
   private final ScheduledExecutorService configPoller;
   private final Duration configPollInterval;
 
@@ -62,6 +61,8 @@ public final class ExileClient implements AutoCloseable {
 
   private volatile ConfigService.ClientConfiguration lastConfig;
   private final AtomicBoolean pluginReady = new AtomicBoolean(false);
+  // Unlike pluginReady, stays true when a later config change is rejected.
+  private final AtomicBoolean everReady = new AtomicBoolean(false);
   private final AtomicBoolean workStreamStarted = new AtomicBoolean(false);
 
   private ExileClient(Builder builder) {
@@ -85,8 +86,11 @@ public final class ExileClient implements AutoCloseable {
             builder.maxConcurrency,
             builder.capabilities,
             builder.shutdownDrainTimeout);
+    // Admin-only until the plugin accepts its first config.
+    workStream.setAdminOnly(true);
 
-    this.serviceChannel = ChannelFactory.create(config);
+    this.testChannel = builder.testChannel;
+    this.serviceChannel = testChannel != null ? testChannel : ChannelFactory.create(config);
     var services = ServiceFactory.create(serviceChannel);
     this.agentService = services.agent();
     this.callService = services.call();
@@ -137,7 +141,7 @@ public final class ExileClient implements AutoCloseable {
 
   /**
    * Start the client. Only the config poller begins immediately. The WorkStream opens after the
-   * plugin accepts the first config via {@link Plugin#onConfig}.
+   * first config poll, admin-only until the plugin accepts a config via {@link Plugin#onConfig}.
    */
   public void start() {
     log.info(
@@ -149,7 +153,7 @@ public final class ExileClient implements AutoCloseable {
         this::pollConfig, 0, configPollInterval.toSeconds(), TimeUnit.SECONDS);
   }
 
-  private void pollConfig() {
+  void pollConfig() {
     try {
       var newConfig = configService.getClientConfiguration();
       if (newConfig == null) return;
@@ -162,27 +166,22 @@ public final class ExileClient implements AutoCloseable {
             "Config received from gate (org={}, configName={})",
             newConfig.orgId(),
             newConfig.configName());
-
-        boolean ready;
-        try {
-          ready = plugin.onConfig(newConfig);
-        } catch (Exception e) {
-          log.warn("Plugin {} rejected config: {}", plugin.pluginName(), e.getMessage());
-          pluginReady.set(false);
-          return;
+      }
+      // A rejected config is tried again on every poll until the plugin accepts it.
+      if (changed || !pluginReady.get()) {
+        boolean ready = applyConfig(newConfig, changed);
+        pluginReady.set(ready);
+        if (ready && !everReady.getAndSet(true)) {
+          workStream.setAdminOnly(false);
+          if (workStreamStarted.get()) {
+            log.info("Plugin {} ready, leaving admin-only mode", plugin.pluginName());
+            workStream.reconnect();
+          }
         }
-
-        if (!ready) {
-          log.warn("Plugin {} not ready — WorkStream will not start yet", plugin.pluginName());
-          pluginReady.set(false);
-          return;
-        }
-
-        pluginReady.set(true);
       }
 
-      // Only start WorkStream + metrics once plugin has explicitly accepted a config.
-      if (pluginReady.get() && workStreamStarted.compareAndSet(false, true)) {
+      // Start on the first config even if the plugin rejected it, so admin jobs still run.
+      if (workStreamStarted.compareAndSet(false, true)) {
         // Initialize MetricsManager now that we have org_id and certificate_name.
         this.metricsManager =
             new MetricsManager(
@@ -196,6 +195,7 @@ public final class ExileClient implements AutoCloseable {
         workStream.setMethodRecorder(metricsManager::recordMethodCall);
         workStream.setReconnectRecorder(metricsManager::recordReconnectDuration);
         metricsManager.registerDiskGauge();
+        metricsManager.registerPluginReadyGauge(everReady::get);
 
         // Feed job completions into the adaptive controller (if active) and
         // register the corresponding OTel gauges so dashboards can see the
@@ -207,12 +207,55 @@ public final class ExileClient implements AutoCloseable {
           metricsManager.registerAdaptiveGauges(adaptive);
         }
 
-        log.info("Plugin {} ready, starting WorkStream", plugin.pluginName());
-        workStream.start();
+        if (everReady.get()) {
+          log.info("Plugin {} ready, starting WorkStream", plugin.pluginName());
+        } else {
+          log.warn(
+              "Plugin {} not ready, starting WorkStream in admin-only mode", plugin.pluginName());
+        }
+        startWorkStream();
       }
     } catch (Exception e) {
       log.debug("Config poll failed ({}): {}", e.getClass().getSimpleName(), e.getMessage());
     }
+  }
+
+  private void startWorkStream() {
+    if (testChannel != null) {
+      workStream.start(testChannel);
+    } else {
+      workStream.start();
+    }
+  }
+
+  // Logs a rejection at warn the first time per config, then at debug, so retries every poll
+  // don't flood the log.
+  private boolean applyConfig(ConfigService.ClientConfiguration newConfig, boolean firstTry) {
+    try {
+      if (plugin.onConfig(newConfig)) {
+        return true;
+      }
+      if (firstTry) {
+        log.warn("Plugin {} not ready; retrying the config every poll", plugin.pluginName());
+      } else {
+        log.debug("Plugin {} still not ready", plugin.pluginName());
+      }
+    } catch (Exception e) {
+      if (firstTry) {
+        log.warn(
+            "Plugin {} rejected config: {}; retrying every poll",
+            plugin.pluginName(),
+            e.getMessage());
+      } else {
+        log.debug("Plugin {} rejected config: {}", plugin.pluginName(), e.getMessage());
+      }
+    }
+    return false;
+  }
+
+  /** True once the plugin has accepted a config. Until then only admin jobs run. */
+  public boolean pluginEverReady() {
+    return everReady.get();
   }
 
   /** Returns the last polled config from the gate, or null if never polled. */
@@ -385,8 +428,15 @@ public final class ExileClient implements AutoCloseable {
     private Duration shutdownDrainTimeout =
         com.tcn.exile.internal.WorkStreamClient.DEFAULT_SHUTDOWN_DRAIN_TIMEOUT;
     private double tracingSamplingFraction = 0.0;
+    private ManagedChannel testChannel;
 
     private Builder() {}
+
+    // Tests only: use this channel for every call instead of building an mTLS one.
+    Builder testChannel(ManagedChannel channel) {
+      this.testChannel = channel;
+      return this;
+    }
 
     public Builder config(ExileConfig config) {
       this.config = Objects.requireNonNull(config);

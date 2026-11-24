@@ -48,14 +48,20 @@ stream immediately. Instead it:
 
 1. Starts a config poller (`ConfigService.getClientConfiguration`) on a
    single-thread scheduled executor. Poll interval defaults to 10 s.
-2. On each poll, if the config differs from the previous one, calls
-   `Plugin.onConfig(...)`. The plugin validates the gate-supplied payload and
+2. On each poll, calls `Plugin.onConfig(...)` if the config differs from the
+   previous one, or if the plugin rejected the last call (the same config is
+   retried every poll). The plugin validates the gate-supplied payload and
    initialises its own resources (DB pools, HTTP clients, …).
-3. Opens the `WorkStream` only after `onConfig` returns `true`. Until then, the
-   plugin is considered "not ready" and the gate never sees the client as live.
+3. Opens the `WorkStream` after the first config, even if `onConfig` rejected
+   it. Until `onConfig` first returns `true` the client is **admin-only**: it
+   registers with admin capabilities only (so the gate sends no events), runs
+   admin jobs, and answers every other job with an error result. On the first
+   `true` it reconnects with full capabilities.
 
-This gates stream admission on the plugin's readiness and means a mis-configured
-integration simply retries instead of flapping.
+A plugin that can't start (e.g. its database is down) therefore stays reachable
+for diagnostics and recovers on its own once `onConfig` succeeds. Because
+`onConfig` can be retried every poll, a failed call must release anything it
+opened.
 
 Shared infrastructure (`serviceChannel`, `MetricsManager`, `GrpcLogShipper`) is
 constructed lazily: the metrics manager is created after the first config poll
@@ -77,8 +83,9 @@ because it needs `org_id` and the certificate name for OTel resource attributes.
 - `EventHandler` — fire-and-acknowledge events: `onAgentCall`,
   `onTelephonyResult`, `onAgentResponse`, `onTransferInstance`,
   `onCallRecording`, `onTask`.
-- `onConfig(ClientConfiguration)` — called before the stream opens and on every
-  config change. Returning `true` gates stream admission.
+- `onConfig(ClientConfiguration)` — called on the first config, on every config
+  change, and on every poll until it returns `true`. Until the first `true` the
+  stream runs admin jobs only.
 
 All `JobHandler` methods default to throwing `UnsupportedOperationException`;
 integrations override only the jobs they implement and declare those as

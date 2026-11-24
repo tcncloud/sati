@@ -40,6 +40,30 @@ class ConfigParserTest {
   }
 
   @Test
+  void parsesCertificateNameAndDescription() {
+    var json =
+        """
+        {
+          "ca_certificate": "root",
+          "certificate": "pub",
+          "private_key": "key",
+          "api_endpoint": "gate.example.com",
+          "certificate_name": "prod-cert",
+          "certificate_description": "Main office"
+        }
+        """;
+    var config = ConfigParser.parse(json.getBytes(StandardCharsets.UTF_8)).orElseThrow();
+    assertEquals("prod-cert", config.certificateName());
+    assertEquals("Main office", config.certificateDescription());
+  }
+
+  @Test
+  void certificateDescriptionDefaultsToEmpty() {
+    var config = ConfigParser.parse(VALID_JSON.getBytes(StandardCharsets.UTF_8)).orElseThrow();
+    assertEquals("", config.certificateDescription());
+  }
+
+  @Test
   void parsesJsonWithoutPort() {
     var json =
         """
